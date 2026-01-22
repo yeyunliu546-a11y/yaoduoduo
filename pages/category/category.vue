@@ -5,6 +5,7 @@
 		</view>
 
 		<view class="u-menu-wrap">
+			
 			<scroll-view scroll-y scroll-with-animation class="u-tab-view menu-scroll-view">
 				<view class="u-tab-item" :class="{ 'u-tab-item-active': selectedFilter.manufacturer === '' }"
 					@tap="onSelectManufacturer('')">
@@ -17,9 +18,9 @@
 				</view>
 			</scroll-view>
 
-			<scroll-view scroll-y class="right-box" @scrolltolower="onReachBottomRight">
+			<view class="right-box">
 				
-				<view class="sticky-header">
+				<view class="fixed-header">
 					<view class="attribute-filter">
 						<view class="filter-row" v-if="filterOptions.packageTypes.length > 0">
 							<text class="row-label">包装</text>
@@ -48,7 +49,6 @@
 						<view class="sort-btn" :class="{active: currentSort === 'default'}" @tap="onSort('default')">
 							综合
 						</view>
-						
 						<view class="sort-btn" :class="{active: currentSort === 'sales'}" @tap="onSort('sales')">
 							销量 
 							<view class="sort-icon-box">
@@ -56,7 +56,6 @@
 								<text class="arrow down" :class="{on: currentSort === 'sales' && sortOrder === 'desc'}">▼</text>
 							</view>
 						</view>
-						
 						<view class="sort-btn" :class="{active: currentSort === 'price'}" @tap="onSort('price')">
 							价格 
 							<view class="sort-icon-box">
@@ -67,47 +66,50 @@
 					</view>
 				</view>
 
-				<view class="page-view">
-					<view v-if="isLoading && goodsList.length === 0" class="loading-center">
-						<u-loading mode="flower"></u-loading>
-					</view>
-					
-					<u-empty v-if="!isLoading && goodsList.length === 0" mode="list" text="暂无商品" margin-top="100"></u-empty>
+				<scroll-view scroll-y class="right-content" @scrolltolower="onReachBottomRight">
+					<view class="page-view">
+						<view v-if="isLoading && goodsList.length === 0" class="loading-center">
+							<u-loading mode="flower"></u-loading>
+						</view>
+						
+						<u-empty v-if="!isLoading && goodsList.length === 0" mode="list" text="暂无商品" margin-top="100"></u-empty>
 
-					<view class="class-item" v-for="(item, index) in goodsList" :key="index" @tap="goToDetail(item.id)">
-						<view class="item-img">
-							<u-image width="140rpx" height="140rpx" :src="item.imageUrl" mode="aspectFill"></u-image>
-						</view>
-						<view class="item-info">
-							<view class="item-title u-line-2">{{ item.goodsName }}</view>
-							
-							<view class="item-desc">
-                                <text>规格: {{ item.spec }}</text>
-                                <text class="ml-10">厂家: {{ item.manufacturer }}</text>
-                            </view>
-                            
-							<view class="item-tags">
-								<u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
-								<u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType"/>
+						<view class="class-item" v-for="(item, index) in goodsList" :key="index" @tap="goToDetail(item.id)">
+							<view class="item-img">
+								<u-image width="140rpx" height="140rpx" :src="item.imageUrl" mode="aspectFill"></u-image>
 							</view>
-                            
-							<view class="item-price-row">
-								<view class="price-box">
-                                    <text class="price-symbol">¥</text>
-                                    <text class="price-num">{{ item.salePrice }}</text>
-                                    <view class="vip-tag">协议价</view>
+							<view class="item-info">
+								<view class="item-title u-line-2">{{ item.goodsName }}</view>
+								
+								<view class="item-desc">
+                                    <text>规格: {{ item.spec }}</text>
+                                    <text class="ml-10">厂家: {{ item.manufacturer }}</text>
                                 </view>
-								<view class="cart-box" @tap.stop="addToCart(item)">
-                                    <text class="sales">已售{{ item.sales }}</text>
-									<u-icon name="plus-circle-fill" color="#2979ff" size="44"></u-icon>
-                                </view>
+                                
+								<view class="item-tags">
+									<u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
+									<u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType"/>
+								</view>
+                                
+								<view class="item-price-row">
+									<view class="price-box">
+                                        <text class="price-symbol">¥</text>
+                                        <text class="price-num">{{ item.salePrice }}</text>
+                                        <view class="vip-tag">协议价</view>
+                                    </view>
+									<view class="cart-box" @tap.stop="addToCart(item)">
+                                        <text class="sales">已售{{ item.sales }}</text>
+										<u-icon name="plus-circle-fill" color="#2979ff" size="44"></u-icon>
+                                    </view>
+								</view>
 							</view>
 						</view>
+						
+						<u-loadmore :status="loadStatus" v-if="goodsList.length > 0" margin-top="30" margin-bottom="30"></u-loadmore>
+						<view style="height: 50rpx"></view>
 					</view>
-					
-					<u-loadmore :status="loadStatus" v-if="goodsList.length > 0" margin-top="30" margin-bottom="30"></u-loadmore>
-				</view>
-			</scroll-view>
+				</scroll-view>
+			</view>
 		</view>
 	</view>
 </template>
@@ -129,30 +131,13 @@
 					packageType: '',
 					standard: ''
 				},
-                // --- 排序状态 ---
-                currentSort: 'default', // default, sales, price
-                sortOrder: 'desc',      // 通用排序顺序：asc, desc
-                
+                currentSort: 'default', 
+                sortOrder: 'desc',     
 				goodsList: [],
 				page: 1,
 				limit: 10,
 				isLoading: false,
 				loadStatus: 'loadmore',
-                
-                // 模拟数据库
-                mockDatabase: [
-                    { id: 101, goodsName: '感冒灵颗粒 (热销)', manufacturer: '华润三九', standard: '国标', packageType: '大包', spec: '10g*9袋', salePrice: 15.50, sales: 5000, imageUrl: '/static/logo.png' },
-                    { id: 102, goodsName: '感冒灵颗粒 (便携)', manufacturer: '华润三九', standard: '省标', packageType: '小包', spec: '5g*12袋', salePrice: 9.90, sales: 1200, imageUrl: '/static/logo.png' },
-                    { id: 103, goodsName: '板蓝根颗粒', manufacturer: '华润三九', standard: '国标', packageType: '大包', spec: '10g*20袋', salePrice: 12.00, sales: 800, imageUrl: '/static/logo.png' },
-                    { id: 104, goodsName: '六味地黄丸', manufacturer: '北京同仁堂', standard: '国标', packageType: '盒装', spec: '120丸/瓶', salePrice: 48.00, sales: 3000, imageUrl: '/static/logo.png' },
-                    { id: 105, goodsName: '安宫牛黄丸', manufacturer: '北京同仁堂', standard: '国标', packageType: '盒装', spec: '3g*1丸', salePrice: 580.00, sales: 100, imageUrl: '/static/logo.png' },
-                    { id: 106, goodsName: '大活络丹', manufacturer: '北京同仁堂', standard: '企标', packageType: '大包', spec: '3.5g*10丸', salePrice: 35.00, sales: 600, imageUrl: '/static/logo.png' },
-                    { id: 107, goodsName: '云南白药气雾剂', manufacturer: '云南白药', standard: '国标', packageType: '瓶装', spec: '85g+30g', salePrice: 28.50, sales: 4500, imageUrl: '/static/logo.png' },
-                    { id: 108, goodsName: '三七粉', manufacturer: '云南白药', standard: '省标', packageType: '瓶装', spec: '50g/瓶', salePrice: 128.00, sales: 200, imageUrl: '/static/logo.png' },
-                    { id: 109, goodsName: '创可贴', manufacturer: '云南白药', standard: '企标', packageType: '小包', spec: '100片/盒', salePrice: 5.00, sales: 9999, imageUrl: '/static/logo.png' },
-                    { id: 110, goodsName: '斯达舒', manufacturer: '修正药业', standard: '国标', packageType: '盒装', spec: '24片/盒', salePrice: 22.00, sales: 1500, imageUrl: '/static/logo.png' },
-                    { id: 112, goodsName: '藿香正气口服液', manufacturer: '太极集团', standard: '国标', packageType: '盒装', spec: '10ml*10支', salePrice: 14.50, sales: 3200, imageUrl: '/static/logo.png' },
-                ]
 			}
 		},
 		onLoad() {
@@ -161,13 +146,11 @@
 		},
 		methods: {
 			loadFilterOptions() {
-				setTimeout(() => {
-					this.filterOptions = {
-						manufacturers: ['华润三九', '北京同仁堂', '云南白药', '修正药业', '太极集团'],
-						packageTypes: ['大包', '小包', '瓶装', '盒装'],
-						standards: ['国标', '省标', '企标']
-					};
-				}, 200);
+				GoodsApi.getFilterOptions().then(res => {
+                    if(res.code === 200) {
+                        this.filterOptions = res.result;
+                    }
+				});
 			},
 
 			loadGoodsData(reset = false) {
@@ -178,36 +161,32 @@
 				}
 				this.isLoading = true;
 
-				setTimeout(() => {
-                    const { manufacturer, packageType, standard } = this.selectedFilter;
-                    
-                    let result = this.mockDatabase.filter(item => {
-                        const matchBrand = manufacturer ? item.manufacturer === manufacturer : true;
-                        const matchPkg = packageType ? item.packageType === packageType : true;
-                        const matchStd = standard ? item.standard === standard : true;
-                        const matchKeyword = this.keyword ? (item.goodsName.includes(this.keyword) || item.manufacturer.includes(this.keyword)) : true;
-                        return matchBrand && matchPkg && matchStd && matchKeyword;
-                    });
+                const params = {
+                    page: this.page,
+                    limit: this.limit,
+                    keyword: this.keyword,
+                    manufacturer: this.selectedFilter.manufacturer,
+                    packageType: this.selectedFilter.packageType,
+                    standard: this.selectedFilter.standard,
+                    sortField: this.currentSort,
+                    sortOrder: this.sortOrder
+                };
 
-                    // --- 核心：通用排序逻辑 ---
-                    if (this.currentSort !== 'default') {
-                        // 升序系数 (1: 升序, -1: 降序)
-                        const factor = this.sortOrder === 'asc' ? 1 : -1;
-                        
-                        result.sort((a, b) => {
-                            if (this.currentSort === 'sales') {
-                                return (a.sales - b.sales) * factor;
-                            } else if (this.currentSort === 'price') {
-                                return (a.salePrice - b.salePrice) * factor;
-                            }
-                            return 0;
-                        });
-                    }
-
-                    this.goodsList = result;
+				GoodsApi.getGoodsListByWhere(params).then(res => {
+					const list = res.data.list || [];
+					this.goodsList = [...this.goodsList, ...list];
 					this.isLoading = false;
-					this.loadStatus = 'nomore'; 
-				}, 300);
+                    
+                    if (list.length < this.limit) {
+                        this.loadStatus = 'nomore'; 
+                    } else {
+                        this.loadStatus = 'loadmore';
+                    }
+				}).catch(err => {
+                    this.isLoading = false;
+                    this.loadStatus = 'nomore';
+                    console.error('加载失败', err);
+                });
 			},
 
 			onSelectManufacturer(name) {
@@ -215,58 +194,41 @@
 				this.selectedFilter.manufacturer = name;
 				this.loadGoodsData(true);
 			},
-
 			onSelectPackage(name) {
                 this.selectedFilter.packageType = (this.selectedFilter.packageType === name) ? '' : name;
 				this.loadGoodsData(true);
 			},
-
 			onSelectStandard(name) {
                 this.selectedFilter.standard = (this.selectedFilter.standard === name) ? '' : name;
 				this.loadGoodsData(true);
 			},
-            
-            // --- 点击排序（通用版）---
             onSort(type) {
-                // 如果点的就是当前激活的类型，则反转顺序
                 if (this.currentSort === type) {
                     this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
                 } else {
-                    // 切换新类型，默认降序 (销量和价格通常大家先看最高的或最低的，默认降序符合习惯)
                     this.currentSort = type;
                     this.sortOrder = 'desc'; 
                 }
                 this.loadGoodsData(true);
             },
-			
 			onSearch() {
 				this.loadGoodsData(true);
 			},
-
+			
 			onReachBottomRight() {
+                if(this.loadStatus === 'nomore') return;
+                this.page++;
+                this.loadGoodsData();
 			},
-
+			
 			goToDetail(id) {
-				uni.navigateTo({
-					url: `/pages/good/detail?id=${id}`
-				});
+				uni.navigateTo({ url: `/pages/good/detail?id=${id}` });
 			},
-            
-            // --- 加入购物车 (简单模拟) ---
             addToCart(item) {
-                // 1. 检查登录 (模拟)
-                // const token = uni.getStorageSync('token');
-                // if (!token) return uni.navigateTo({ url: '/pages/login/index' });
-                
-                // 2. 模拟调用 API
                 uni.showLoading({ title: '加购中...' });
                 setTimeout(() => {
                     uni.hideLoading();
-                    uni.showToast({
-                        title: `已加入购物车: ${item.goodsName}`,
-                        icon: 'success'
-                    });
-                    // 这里通常需要调用 store 更新购物车角标
+                    uni.showToast({ title: `已加入: ${item.goodsName}`, icon: 'success' });
                 }, 500);
             }
 		}
@@ -274,32 +236,38 @@
 </script>
 
 <style lang="scss" scoped>
+	/* 核心修复：锁死页面高度，禁止原生滚动 */
+	page {
+		height: 100vh; /* 强制满屏 */
+		overflow: hidden; /* 禁止溢出滚动 */
+	}
+
 	.u-wrap {
-		height: calc(100vh);
-		/* #ifdef H5 */
-		height: calc(100vh - var(--window-top));
-		/* #endif */
+		height: 100vh; /* 继承满屏高度 */
 		display: flex;
 		flex-direction: column;
+		overflow: hidden; /* 双重保险 */
 	}
 
 	.u-search-box-box {
 		background-color: #fff;
 		padding: 20rpx 30rpx;
 		border-bottom: 1px solid #f2f2f2;
+		flex-shrink: 0; /* 防止被挤压 */
 	}
 
 	.u-menu-wrap {
-		flex: 1;
+		flex: 1; /* 占据剩余所有空间 */
 		display: flex;
-		overflow: hidden;
+		overflow: hidden; /* 关键：禁止这个容器本身滚动 */
 	}
 
 	/* 左侧导航 */
 	.u-tab-view {
 		width: 180rpx;
-		height: 100%;
+		height: 100%; /* 充满父容器高度 */
 		background-color: #f6f6f6;
+		flex-shrink: 0; 
 	}
 
 	.u-tab-item {
@@ -311,7 +279,7 @@
 		font-size: 26rpx;
 		color: #444;
 		border-bottom: 1px solid #f0f0f0;
-        padding: 0 10rpx;
+		padding: 0 10rpx;
 	}
 	
 	.u-tab-item-active {
@@ -331,32 +299,40 @@
 		top: 34rpx;
 	}
 
-	/* 右侧内容 */
+	/* 右侧整体容器 */
 	.right-box {
 		flex: 1;
 		background-color: #fff;
-		height: 100%;
-        display: flex;
-        flex-direction: column;
+		height: 100%; /* 充满高度 */
+		display: flex;
+		flex-direction: column; /* 垂直布局 */
+		overflow: hidden; /* 关键：禁止溢出 */
 	}
     
-    .sticky-header {
-        position: sticky;
-        top: 0;
-        z-index: 10;
+    /* 顶部筛选区 (固定) */
+    .fixed-header {
         background-color: #fff;
         border-bottom: 1px solid #f0f0f0;
         box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.02);
+        z-index: 10;
+		flex-shrink: 0; /* 防止被挤压 */
+    }
+    
+    /* 滚动列表区 (只允许这里滚) */
+    .right-content {
+        flex: 1;
+		/* 魔法代码：在 flex:1 同时也限制高度为 0，
+		   这样它就会乖乖呆在剩余空间里，内部产生滚动条，而不会撑破父容器 */
+		height: 0; 
     }
 	
+    /* 属性筛选样式 */
     .attribute-filter {
         padding: 16rpx 20rpx 6rpx;
-        
         .filter-row {
             display: flex;
             align-items: center;
             margin-bottom: 14rpx;
-            
             .row-label {
                 font-size: 24rpx;
                 color: #999;
@@ -364,12 +340,10 @@
                 flex-shrink: 0;
                 font-weight: bold;
             }
-            
             .row-scroll {
                 flex: 1;
                 white-space: nowrap;
                 overflow: hidden;
-                
                 .tag-item {
                     display: inline-block;
                     font-size: 22rpx;
@@ -379,7 +353,6 @@
                     border-radius: 6rpx;
                     margin-right: 16rpx;
                     border: 1px solid transparent;
-                    
                     &.active {
                         background: #e6f1fc;
                         color: #2979ff;
@@ -390,31 +363,27 @@
         }
     }
 
-    /* 排序工具栏 */
+    /* 排序工具栏样式 */
     .sort-toolbar {
         display: flex;
         justify-content: space-around;
         padding: 16rpx 0;
         background: #fff;
         border-top: 1px solid #f8f8f8;
-        
         .sort-btn {
             font-size: 28rpx;
             color: #666;
             display: flex;
             align-items: center;
-            
             &.active {
                 color: #2979ff;
                 font-weight: bold;
             }
-            
             .sort-icon-box {
                 display: flex;
                 flex-direction: column;
                 margin-left: 6rpx;
                 line-height: 1;
-                
                 .arrow {
                     font-size: 14rpx;
                     color: #ccc;
@@ -425,7 +394,7 @@
         }
     }
 
-	/* 商品列表 */
+	/* 列表样式 */
 	.page-view {
 		padding: 16rpx;
 	}
@@ -454,38 +423,32 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-			
 			.item-title {
 				font-size: 28rpx;
 				color: #333;
 				font-weight: bold;
                 line-height: 1.4;
 			}
-            
             .item-desc {
                 font-size: 22rpx;
                 color: #999;
                 margin-top: 6rpx;
                 .ml-10 { margin-left: 10rpx; }
             }
-			
 			.item-tags {
 				margin-top: 8rpx;
                 .mr-10 { margin-right: 10rpx; }
 			}
-			
 			.item-price-row {
 				display: flex;
 				justify-content: space-between;
 				align-items: flex-end;
                 margin-top: 10rpx;
-				
                 .price-box {
                     display: flex;
                     align-items: baseline;
                     .price-symbol { color: #ff3b30; font-size: 24rpx; }
                     .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; }
-                    
                     .vip-tag {
                         font-size: 18rpx;
                         color: #bfa170;
@@ -496,7 +459,6 @@
                         transform: scale(0.9);
                     }
                 }
-                
                 .cart-box {
                     display: flex;
                     align-items: center;
