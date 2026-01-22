@@ -119,9 +119,6 @@
 function inArray(val, arr) {
   return Array.isArray(arr) && arr.includes(val);
 }
-function arrayIntersect(a, b) {
-  return a.filter(x => b.includes(x));
-}
 
 export default {
   data() {
@@ -131,7 +128,7 @@ export default {
       // 数据结构保持不变
       cartList: {
         '劲牌持正堂': [
-          { id: 201, goodsId: 'g3', goodsName: '满199起批，还差51.00元', skuName: '去凑单 >', salePrice: 0, goodsNum: 0, isMsg: true }, // 模拟凑单行，实际开发需特殊处理
+          { id: 201, goodsId: 'g3', goodsName: '满199起批，还差51.00元', skuName: '去凑单 >', salePrice: 0, goodsNum: 0, isMsg: true },
           { id: 101, goodsId: 'g1', goodsName: '大蓟', skuName: '2.25g/9g', salePrice: 0.82, goodsNum: 100 }
         ],
         '凌霄花(美洲凌霄)': [
@@ -139,25 +136,35 @@ export default {
         ]
       },
       checkedIds: [101, 102],
-      totalPrice: '0.00'
+      // [修改] totalPrice 移除了，改为 computed
     }
   },
   computed: {
+    // [新增] 实时计算总件数
     sumNum() {
       // 过滤掉非商品行（如果有）
       return Object.values(this.cartList).flat()
-        .filter(i => !i.isMsg)
+        .filter(i => !i.isMsg && this.inArray(i.id, this.checkedIds)) // 只计算选中的
         .reduce((sum, item) => sum + item.goodsNum, 0);
+    },
+    
+    // [核心修改] 实时计算总价 (解决不灵敏问题)
+    totalPrice() {
+      let total = 0;
+      Object.values(this.cartList).forEach(items => {
+        items.forEach(item => {
+          // 只有当商品被选中时才计算
+          if (this.inArray(item.id, this.checkedIds)) {
+            // 确保是数字进行计算
+            total += Number(item.salePrice) * Number(item.goodsNum);
+          }
+        });
+      });
+      return total.toFixed(2);
     }
   },
-  watch: {
-    checkedIds: {
-      handler() {
-        this.onCalcTotalPrice();
-      },
-      immediate: true
-    }
-  },
+  // [修改] 移除了 watch，因为 computed 会自动监听变化
+  
   onShow() {
     this.isLoading = false;
     // 模拟去除凑单提示行
@@ -186,27 +193,17 @@ export default {
       const ids = items.map(i => i.id);
       
       if (isChecked) {
-        // 取消全选：从 checkedIds 中移除该厂家的所有ID
+        // 取消全选
         this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
       } else {
-        // 全选：将该厂家未选中的ID加入 checkedIds
+        // 全选
         const newIds = ids.filter(id => !this.checkedIds.includes(id));
         this.checkedIds.push(...newIds);
       }
     },
 
-    onCalcTotalPrice() {
-      let total = 0;
-      Object.values(this.cartList).forEach(items => {
-        items.forEach(item => {
-          if (this.inArray(item.id, this.checkedIds)) {
-            total += item.salePrice * item.goodsNum;
-          }
-        });
-      });
-      this.totalPrice = total.toFixed(2);
-    },
-	
+    // [修改] 移除了 onCalcTotalPrice 方法，逻辑已合并到 computed
+
     //删除厂家
     handleDeleteBrand(brandName) {
       uni.showModal({
@@ -214,13 +211,9 @@ export default {
         content: `确定要删除 ${brandName} 下的所有商品吗？`,
         success: ({ confirm }) => {
           if (confirm) {
-            // 1. 清除选中状态
             const idsToDelete = this.cartList[brandName].map(i => i.id);
             this.checkedIds = this.checkedIds.filter(id => !idsToDelete.includes(id));
-            
-            // 2. 删除数据 (Vue3 直接使用 delete，Vue2 兼容写法)
             delete this.cartList[brandName]; 
-            // 强制更新视图 (防止有时候直接delete不触发更新)
             this.cartList = { ...this.cartList };
           }
         }
@@ -234,23 +227,17 @@ export default {
         content: '确定要删除该商品吗？',
         success: ({ confirm }) => {
           if (confirm) {
-            // 找到所属品牌并删除
             for (const brand in this.cartList) {
               const index = this.cartList[brand].findIndex(item => item.id === id);
               if (index >= 0) {
-                // 删除数组中的元素
                 this.cartList[brand].splice(index, 1);
-                
-                // 如果该品牌下没商品了，删除该品牌
                 if (this.cartList[brand].length === 0) {
                   delete this.cartList[brand];
-                  // 强制触发更新
                   this.cartList = { ...this.cartList };
                 }
                 break;
               }
             }
-            // 移除选中状态
             this.checkedIds = this.checkedIds.filter(cid => cid !== id);
           }
         }
@@ -275,16 +262,19 @@ export default {
     },
 
     increaseQuantity(item) { item.goodsNum++; },
+    
     decreaseQuantity(item) { if (item.goodsNum > 1) item.goodsNum--; },
+    
     updateQuantity(item, val) { 
         const num = parseInt(val) || 1;
         item.goodsNum = Math.max(1, num);
     },
+    
     handleOrder() {
         console.log("生成需求");
     },
+    
     onTargetIndex() {
-        // 假设你的主页（TabBar中的页面）路径是 '/pages/index/index'
         uni.switchTab({
             url: '/pages/index/index',
             success: () => {
