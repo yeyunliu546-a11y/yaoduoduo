@@ -1,7 +1,20 @@
 <template>
 	<view class="u-wrap">
-		<view class="u-search-box-box">
-			<u-search placeholder="输入药品名称/厂家搜索" :show-action="true" action-text="搜索" bg-color="#f2f2f2" v-model="keyword" @custom="onSearch" @search="onSearch"></u-search>
+		<view class="custom-search-area">
+			<view class="search-bar">
+				<u-icon name="search" color="#999" size="32"></u-icon>
+				<input 
+					class="search-input" 
+					placeholder="输入药品名称/厂家搜索" 
+					v-model="keyword"
+					confirm-type="search"
+					@confirm="onSearch"
+				/>
+				<view class="clear-icon" v-if="keyword" @tap="onClearSearch">
+					<u-icon name="close-circle-fill" color="#ccc" size="32"></u-icon>
+				</view>
+			</view>
+			<view class="search-btn" @tap="onSearch">搜索</view>
 		</view>
 
 		<view class="u-menu-wrap">
@@ -21,7 +34,8 @@
 			<view class="right-box">
 				
 				<view class="fixed-header">
-					<view class="attribute-filter">
+					<view class="attribute-filter" v-if="filterOptions.packageTypes.length > 0 || filterOptions.standards.length > 0">
+						
 						<view class="filter-row" v-if="filterOptions.packageTypes.length > 0">
 							<text class="row-label">包装</text>
 							<scroll-view scroll-x class="row-scroll">
@@ -68,6 +82,11 @@
 
 				<scroll-view scroll-y class="right-content" @scrolltolower="onReachBottomRight">
 					<view class="page-view">
+						
+						<view v-if="keyword" class="search-tip">
+							搜索: "<text class="keyword">{{keyword}}</text>" 的结果
+						</view>
+
 						<view v-if="isLoading && goodsList.length === 0" class="loading-center">
 							<u-loading mode="flower"></u-loading>
 						</view>
@@ -76,7 +95,11 @@
 
 						<view class="class-item" v-for="(item, index) in goodsList" :key="index" @tap="goToDetail(item.id)">
 							<view class="item-img">
-								<u-image width="140rpx" height="140rpx" :src="item.imageUrl" mode="aspectFill"></u-image>
+								<u-image width="140rpx" height="140rpx" :src="item.imageUrl" mode="aspectFill">
+									<template v-slot:error>
+										<image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
+									</template>
+								</u-image>
 							</view>
 							<view class="item-info">
 								<view class="item-title u-line-2">{{ item.goodsName }}</view>
@@ -98,7 +121,7 @@
                                         <view class="vip-tag">协议价</view>
                                     </view>
 									<view class="cart-box" @tap.stop="addToCart(item)">
-                                        <text class="sales">已售{{ item.sales }}</text>
+                                        <text class="sales">已售{{ item.sales || 0 }}</text>
 										<u-icon name="plus-circle-fill" color="#2979ff" size="44"></u-icon>
                                     </view>
 								</view>
@@ -120,7 +143,7 @@
 	export default {
 		data() {
 			return {
-				keyword: '',
+				keyword: '', // 搜索关键词
 				filterOptions: {
 					manufacturers: [],
 					packageTypes: [],
@@ -131,8 +154,8 @@
 					packageType: '',
 					standard: ''
 				},
-                currentSort: 'default', 
-                sortOrder: 'desc',     
+                currentSort: 'default', // default, sales, price
+                sortOrder: 'desc',      // asc, desc
 				goodsList: [],
 				page: 1,
 				limit: 10,
@@ -147,10 +170,10 @@
 		methods: {
 			loadFilterOptions() {
 				GoodsApi.getFilterOptions().then(res => {
-                    if(res.code === 200) {
+                    if(res.code === 200 && res.result) {
                         this.filterOptions = res.result;
                     }
-				});
+				}).catch(e => { console.error(e) });
 			},
 
 			loadGoodsData(reset = false) {
@@ -173,7 +196,7 @@
                 };
 
 				GoodsApi.getGoodsListByWhere(params).then(res => {
-					const list = res.data.list || [];
+					const list = res.data?.list || res.result || [];
 					this.goodsList = [...this.goodsList, ...list];
 					this.isLoading = false;
                     
@@ -185,7 +208,6 @@
 				}).catch(err => {
                     this.isLoading = false;
                     this.loadStatus = 'nomore';
-                    console.error('加载失败', err);
                 });
 			},
 
@@ -212,60 +234,104 @@
                 this.loadGoodsData(true);
             },
 			onSearch() {
+                this.selectedFilter.manufacturer = ''; 
+                this.selectedFilter.packageType = '';
+                this.selectedFilter.standard = '';
+                this.currentSort = 'default';
 				this.loadGoodsData(true);
 			},
-			
+            onClearSearch() {
+                this.keyword = '';
+                this.loadGoodsData(true);
+            },
 			onReachBottomRight() {
                 if(this.loadStatus === 'nomore') return;
                 this.page++;
                 this.loadGoodsData();
 			},
-			
 			goToDetail(id) {
 				uni.navigateTo({ url: `/pages/good/detail?id=${id}` });
 			},
             addToCart(item) {
-                uni.showLoading({ title: '加购中...' });
-                setTimeout(() => {
-                    uni.hideLoading();
-                    uni.showToast({ title: `已加入: ${item.goodsName}`, icon: 'success' });
-                }, 500);
+                uni.showToast({ title: '已加入购物车', icon: 'success' });
             }
 		}
 	}
 </script>
 
 <style lang="scss" scoped>
-	/* 核心修复：锁死页面高度，禁止原生滚动 */
 	page {
-		height: 100vh; /* 强制满屏 */
-		overflow: hidden; /* 禁止溢出滚动 */
+		height: 100vh;
+		overflow: hidden;
+		background-color: #f8f8f8;
 	}
 
 	.u-wrap {
-		height: 100vh; /* 继承满屏高度 */
+		height: calc(100vh - var(--window-top)); 
 		display: flex;
 		flex-direction: column;
-		overflow: hidden; /* 双重保险 */
+		overflow: hidden;
 	}
 
-	.u-search-box-box {
+	/* 自定义搜索栏 */
+	.custom-search-area {
 		background-color: #fff;
-		padding: 20rpx 30rpx;
-		border-bottom: 1px solid #f2f2f2;
-		flex-shrink: 0; /* 防止被挤压 */
-	}
-
-	.u-menu-wrap {
-		flex: 1; /* 占据剩余所有空间 */
+		padding: 16rpx 24rpx;
 		display: flex;
-		overflow: hidden; /* 关键：禁止这个容器本身滚动 */
+		align-items: center;
+		border-bottom: 1px solid #f2f2f2;
+		flex-shrink: 0;
+		z-index: 100;
+	}
+	.search-bar {
+		flex: 1;
+		height: 64rpx;
+		background-color: #f2f2f2;
+		border-radius: 32rpx;
+		display: flex;
+		align-items: center;
+		padding: 0 20rpx;
+	}
+	.search-input {
+		flex: 1;
+		margin-left: 10rpx;
+		font-size: 28rpx;
+		height: 100%;
+		color: #333;
+	}
+	.search-btn {
+		margin-left: 20rpx;
+		font-size: 28rpx;
+		color: #2979ff;
+		font-weight: bold;
+	}
+	.clear-icon {
+		padding: 10rpx;
+		display: flex;
+		align-items: center;
+	}
+	.search-tip {
+		font-size: 24rpx;
+		color: #666;
+		padding: 10rpx 20rpx;
+		background: #fff;
+		.keyword {
+			color: #2979ff;
+			font-weight: bold;
+			margin: 0 4rpx;
+		}
 	}
 
-	/* 左侧导航 */
+	/* 主体布局 */
+	.u-menu-wrap {
+		flex: 1;
+		display: flex;
+		overflow: hidden;
+	}
+
 	.u-tab-view {
 		width: 180rpx;
-		height: 100%; /* 充满父容器高度 */
+		height: 100%;
 		background-color: #f6f6f6;
 		flex-shrink: 0; 
 	}
@@ -299,99 +365,113 @@
 		top: 34rpx;
 	}
 
-	/* 右侧整体容器 */
 	.right-box {
 		flex: 1;
 		background-color: #fff;
-		height: 100%; /* 充满高度 */
+		height: 100%;
 		display: flex;
-		flex-direction: column; /* 垂直布局 */
-		overflow: hidden; /* 关键：禁止溢出 */
+		flex-direction: column;
+		position: relative;
 	}
     
-    /* 顶部筛选区 (固定) */
+    /* 顶部固定区 */
     .fixed-header {
         background-color: #fff;
-        border-bottom: 1px solid #f0f0f0;
-        box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.02);
-        z-index: 10;
-		flex-shrink: 0; /* 防止被挤压 */
+        border-bottom: 1px solid #f8f8f8;
+        box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.02);
+		flex-shrink: 0;
+        z-index: 9;
     }
     
-    /* 滚动列表区 (只允许这里滚) */
-    .right-content {
-        flex: 1;
-		/* 魔法代码：在 flex:1 同时也限制高度为 0，
-		   这样它就会乖乖呆在剩余空间里，内部产生滚动条，而不会撑破父容器 */
-		height: 0; 
-    }
-	
-    /* 属性筛选样式 */
+    /* 修复：属性筛选改为垂直行结构 */
     .attribute-filter {
         padding: 16rpx 20rpx 6rpx;
-        .filter-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 14rpx;
-            .row-label {
-                font-size: 24rpx;
-                color: #999;
-                width: 60rpx;
-                flex-shrink: 0;
-                font-weight: bold;
-            }
-            .row-scroll {
-                flex: 1;
-                white-space: nowrap;
-                overflow: hidden;
-                .tag-item {
-                    display: inline-block;
-                    font-size: 22rpx;
-                    color: #666;
-                    background: #f7f7f7;
-                    padding: 6rpx 20rpx;
-                    border-radius: 6rpx;
-                    margin-right: 16rpx;
-                    border: 1px solid transparent;
-                    &.active {
-                        background: #e6f1fc;
-                        color: #2979ff;
-                        border-color: #a3d3ff;
-                    }
-                }
-            }
-        }
+		
+		.filter-row {
+			display: flex;
+			align-items: center;
+			margin-bottom: 14rpx; /* 行间距 */
+			
+			.row-label {
+				font-size: 24rpx;
+				color: #999;
+				width: 60rpx; /* 固定标签宽度 */
+				flex-shrink: 0;
+				font-weight: bold;
+			}
+			
+			.row-scroll {
+				flex: 1;
+				white-space: nowrap;
+				overflow: hidden;
+				width: 0; /* 配合flex:1 实现内部滚动 */
+				
+				.tag-item {
+					display: inline-block;
+					font-size: 22rpx;
+					color: #666;
+					background: #f7f7f7;
+					padding: 6rpx 20rpx;
+					border-radius: 6rpx;
+					margin-right: 16rpx;
+					border: 1px solid transparent;
+					
+					&.active {
+						background: #e6f1fc;
+						color: #2979ff;
+						border-color: #a3d3ff;
+					}
+				}
+			}
+		}
     }
 
-    /* 排序工具栏样式 */
+    /* 排序工具栏 */
     .sort-toolbar {
         display: flex;
         justify-content: space-around;
         padding: 16rpx 0;
         background: #fff;
         border-top: 1px solid #f8f8f8;
+        
         .sort-btn {
             font-size: 28rpx;
             color: #666;
             display: flex;
             align-items: center;
+            height: 40rpx; /* 固定高度确保对齐 */
+            
             &.active {
                 color: #2979ff;
                 font-weight: bold;
             }
+            
             .sort-icon-box {
                 display: flex;
                 flex-direction: column;
-                margin-left: 6rpx;
-                line-height: 1;
+                justify-content: center;
+                margin-left: 8rpx;
+                height: 100%;
+                
                 .arrow {
-                    font-size: 14rpx;
-                    color: #ccc;
+                    font-size: 16rpx; /* 调大一点点 */
+                    color: #ddd;
                     height: 14rpx;
-                    &.on { color: #2979ff; }
+                    line-height: 14rpx;
+                    
+                    &.on { 
+                        color: #2979ff; 
+                    }
+                    
+                    &.up { margin-bottom: 2rpx; }
                 }
             }
         }
+    }
+
+	.right-content {
+        flex: 1;
+		height: 0; 
     }
 
 	/* 列表样式 */
