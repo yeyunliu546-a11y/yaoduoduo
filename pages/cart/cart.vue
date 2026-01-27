@@ -24,14 +24,10 @@
             </view>
           </view>
           <view class="brand-right">
-             <view class="delete-brand-btn" @click="handleDeleteBrand(brandName)">
+             <view class="delete-brand-btn" @click="handleDeleteBrand(brandName, items)">
                <text class="iconfont icon-shanchu"></text> 删除厂家
              </view>
           </view>
-        </view>
-
-        <view class="brand-promo" v-if="brandName === '劲牌持正堂'">
-          <text>/满3000元，可赠送1500元药品 /满2000元，可赠送600元药品</text>
         </view>
 
         <view class="brand-products">
@@ -43,34 +39,30 @@
             <view class="product-content">
               <view class="goods-header">
                 <text class="goods-title">{{ item.goodsName }}</text>
-                <view class="delete-text" @click="handleDeleteItem(item.id)">
+                <view class="delete-text" @click="handleDeleteItem(item)">
                    <text class="del-icon">ⓧ</text> 删除商品
                 </view>
               </view>
 
               <view class="goods-tags">
-                <text class="tag tag-blue">国标</text>
-                <text class="tag tag-green">小包装</text>
-                <text v-if="idx % 2 !== 0" class="tag tag-red">近效期</text>
+                <text class="tag tag-blue" v-if="item.standard">{{ item.standard }}</text>
+                <text class="tag tag-green" v-if="item.packageType">{{ item.packageType }}</text>
               </view>
 
               <view class="goods-props">
-                <text>规格：{{ item.skuName }}</text>
+                <text>规格：{{ item.spec || item.skuName }}</text>
                 <text class="unit-price">￥{{ item.salePrice }}</text>
               </view>
               
-              <view class="goods-sub-info">
-                <text>相当于每g饮片￥0.09元</text>
-              </view>
-               <view class="goods-sub-info">
-                <text>有效期：2026-10-18</text>
+              <view class="goods-sub-info" v-if="item.manufacturer">
+                <text>厂家：{{ item.manufacturer }}</text>
               </view>
 
               <view class="item-foot">
                 <view class="price-placeholder"></view> 
                 <view class="stepper-box">
                   <button class="step-btn" @click="decreaseQuantity(item)">-</button>
-                  <input class="step-input" type="number" :value="item.goodsNum" @input="e => updateQuantity(item, e.target.value)" />
+                  <input class="step-input" type="number" :value="item.goodsNum" @blur="e => updateQuantity(item, e.detail.value)" />
                   <button class="step-btn" @click="increaseQuantity(item)">+</button>
                 </view>
               </view>
@@ -81,7 +73,7 @@
     </view>
 
     <view v-if="!Object.keys(cartList).length && !isLoading" class="empty-cart">
-      <text>暂无需求商品，快去添加吧！</text>
+      <u-empty text="购物车空空如也" mode="cart"></u-empty>
       <button class="go-shop" @click="onTargetIndex">去添加</button>
     </view>
 
@@ -93,7 +85,7 @@
       <view class="footer-fixed">
         <label class="all-radio" @click="handleCheckAll">
           <radio class="radio" color="#ff3800"
-            :checked="checkedIds.length > 0 && checkedIds.length === getAllCheckedCount()" />
+            :checked="allIds.length > 0 && checkedIds.length === allIds.length" />
           <text class="select-text">全选 共{{sumNum}}件</text>
         </label>
         
@@ -115,7 +107,10 @@
 </template>
 
 <script>
-// 工具函数
+// 引入API
+import { getCartList, updateCartNum, deleteCart } from '@/api/goods/cart.js';
+
+// 工具函数：判断元素是否在数组中
 function inArray(val, arr) {
   return Array.isArray(arr) && arr.includes(val);
 }
@@ -125,125 +120,98 @@ export default {
     return {
       inArray,
       isLoading: true,
-      // 数据结构保持不变
-      cartList: {
-        '劲牌持正堂': [
-          { id: 201, goodsId: 'g3', goodsName: '满199起批，还差51.00元', skuName: '去凑单 >', salePrice: 0, goodsNum: 0, isMsg: true },
-          { id: 101, goodsId: 'g1', goodsName: '大蓟', skuName: '2.25g/9g', salePrice: 0.82, goodsNum: 100 }
-        ],
-        '凌霄花(美洲凌霄)': [
-          { id: 102, goodsId: 'g2', goodsName: '凌霄花(美洲凌霄)', skuName: '3.33g/5g', salePrice: 0.66, goodsNum: 100 }
-        ]
-      },
-      checkedIds: [101, 102],
-      // [修改] totalPrice 移除了，改为 computed
+      cartList: {}, // 初始为空，依赖Mock加载
+      checkedIds: [], // 存储选中的购物车ID
+      debounceTimers: {} // 存储防抖定时器
     }
   },
   computed: {
-    // [新增] 实时计算总件数
-    sumNum() {
-      // 过滤掉非商品行（如果有）
-      return Object.values(this.cartList).flat()
-        .filter(i => !i.isMsg && this.inArray(i.id, this.checkedIds)) // 只计算选中的
-        .reduce((sum, item) => sum + item.goodsNum, 0);
+    // 获取所有商品ID（用于全选判断）
+    allIds() {
+        return Object.values(this.cartList).flat().map(item => item.id);
     },
-    
-    // [核心修改] 实时计算总价 (解决不灵敏问题)
+    // 实时计算选中总件数
+    sumNum() {
+      let count = 0;
+      Object.values(this.cartList).flat().forEach(item => {
+          if (this.inArray(item.id, this.checkedIds)) {
+              count += Number(item.goodsNum);
+          }
+      });
+      return count;
+    },
+    // 实时计算总价
     totalPrice() {
       let total = 0;
-      Object.values(this.cartList).forEach(items => {
-        items.forEach(item => {
-          // 只有当商品被选中时才计算
-          if (this.inArray(item.id, this.checkedIds)) {
-            // 确保是数字进行计算
-            total += Number(item.salePrice) * Number(item.goodsNum);
-          }
-        });
+      Object.values(this.cartList).flat().forEach(item => {
+        if (this.inArray(item.id, this.checkedIds)) {
+          total += Number(item.salePrice) * Number(item.goodsNum);
+        }
       });
       return total.toFixed(2);
     }
   },
-  // [修改] 移除了 watch，因为 computed 会自动监听变化
-  
   onShow() {
-    this.isLoading = false;
-    // 模拟去除凑单提示行
-    if(this.cartList['劲牌持正堂'] && this.cartList['劲牌持正堂'][0].isMsg) {
-       this.cartList['劲牌持正堂'].shift();
-    }
+    this.loadData();
   },
   methods: {
-    getAllItemIds() {
-      return Object.values(this.cartList).flat().map(item => item.id);
+    // --- 1. 数据加载与转换 ---
+    loadData() {
+        // 仅在列表为空时显示加载loading，提升体验
+        if(!Object.keys(this.cartList).length) {
+             this.isLoading = true;
+        }
+        
+        // 调用查询接口
+        getCartList({ limit: 100 }).then(res => {
+            this.isLoading = false;
+            if(res.code === 200) {
+                // 兼容不同后端返回结构 data.list 或 result
+                const list = res.data?.list || res.result || [];
+                // 关键步骤：将扁平列表转换为按厂家分组的对象
+                this.cartList = this.groupCartByBrand(list);
+            }
+        }).catch(err => {
+            this.isLoading = false;
+            console.error('加载购物车失败', err);
+        });
     },
-    getAllCheckedCount() {
-      return this.getAllItemIds().length;
+
+    // [核心逻辑] 将列表按 Manufacturer 字段分组
+    groupCartByBrand(list) {
+        const groups = {};
+        list.forEach(item => {
+            // 如果后端没返回 manufacturer 字段，给个默认值 "其他厂家"
+            const brand = item.manufacturer || '其他厂家';
+            if (!groups[brand]) {
+                groups[brand] = [];
+            }
+            groups[brand].push(item);
+        });
+        return groups;
     },
-    
+
+    // --- 2. 勾选逻辑 ---
     // 判断某个厂家是否全选
     isBrandChecked(items) {
       if (!items || items.length === 0) return false;
       const ids = items.map(i => i.id);
       return ids.every(id => this.checkedIds.includes(id));
     },
-
     // 点击厂家全选
     handleCheckBrand(brandName, items) {
       const isChecked = this.isBrandChecked(items);
       const ids = items.map(i => i.id);
-      
       if (isChecked) {
-        // 取消全选
+        // 取消全选：从 checkedIds 中移除该厂家的所有ID
         this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
       } else {
-        // 全选
+        // 全选：将该厂家的所有ID加入 checkedIds (去重)
         const newIds = ids.filter(id => !this.checkedIds.includes(id));
         this.checkedIds.push(...newIds);
       }
     },
-
-    // [修改] 移除了 onCalcTotalPrice 方法，逻辑已合并到 computed
-
-    //删除厂家
-    handleDeleteBrand(brandName) {
-      uni.showModal({
-        title: '提示',
-        content: `确定要删除 ${brandName} 下的所有商品吗？`,
-        success: ({ confirm }) => {
-          if (confirm) {
-            const idsToDelete = this.cartList[brandName].map(i => i.id);
-            this.checkedIds = this.checkedIds.filter(id => !idsToDelete.includes(id));
-            delete this.cartList[brandName]; 
-            this.cartList = { ...this.cartList };
-          }
-        }
-      });
-    },
-	
-	//删除单个商品
-    handleDeleteItem(id) {
-      uni.showModal({
-        title: '提示',
-        content: '确定要删除该商品吗？',
-        success: ({ confirm }) => {
-          if (confirm) {
-            for (const brand in this.cartList) {
-              const index = this.cartList[brand].findIndex(item => item.id === id);
-              if (index >= 0) {
-                this.cartList[brand].splice(index, 1);
-                if (this.cartList[brand].length === 0) {
-                  delete this.cartList[brand];
-                  this.cartList = { ...this.cartList };
-                }
-                break;
-              }
-            }
-            this.checkedIds = this.checkedIds.filter(cid => cid !== id);
-          }
-        }
-      });
-    },
-
+    // 点击单个商品勾选
     handleCheckItem(id) {
       const index = this.checkedIds.indexOf(id);
       if (index === -1) {
@@ -252,38 +220,112 @@ export default {
         this.checkedIds.splice(index, 1);
       }
     },
-
+    // 底部全选按钮
     handleCheckAll() {
-      if (this.checkedIds.length === this.getAllCheckedCount()) {
-        this.checkedIds = [];
+      if (this.checkedIds.length === this.allIds.length) {
+        this.checkedIds = []; // 全部取消
       } else {
-        this.checkedIds = [...this.getAllItemIds()];
+        this.checkedIds = [...this.allIds]; // 全部选中
       }
     },
 
-    increaseQuantity(item) { item.goodsNum++; },
-    
-    decreaseQuantity(item) { if (item.goodsNum > 1) item.goodsNum--; },
-    
+    // --- 3. 数量修改逻辑 (乐观更新+防抖) ---
+    increaseQuantity(item) {
+        this.updateQuantity(item, item.goodsNum + 1);
+    },
+    decreaseQuantity(item) { 
+        if (item.goodsNum > 1) {
+            this.updateQuantity(item, item.goodsNum - 1);
+        } else {
+            uni.showToast({ title: '至少购买一件', icon: 'none' });
+        }
+    },
     updateQuantity(item, val) { 
-        const num = parseInt(val) || 1;
-        item.goodsNum = Math.max(1, num);
+        const targetNum = parseInt(val);
+        if(!targetNum || targetNum < 1) return;
+
+        // 1. 乐观更新：立刻修改界面，不等待服务器
+        const oldNum = item.goodsNum;
+        item.goodsNum = targetNum;
+
+        // 2. 防抖：清除旧定时器
+        if (this.debounceTimers[item.id]) {
+            clearTimeout(this.debounceTimers[item.id]);
+        }
+
+        // 3. 延迟发送请求
+        this.debounceTimers[item.id] = setTimeout(() => {
+            const params = {
+                goodsSkuId: item.goodsSkuId || item.goodsId || item.id, 
+                goodsNum: targetNum
+            };
+
+            // 4. 静默请求 (不显示Loading)
+            updateCartNum(params).then(res => {
+                if(res.code !== 200) {
+                    // 失败回滚
+                    item.goodsNum = oldNum;
+                    uni.showToast({ title: res.message || '修改失败', icon: 'none' });
+                }
+            }).catch(() => {
+                // 网络错误回滚
+                item.goodsNum = oldNum;
+                uni.showToast({ title: '网络请求失败', icon: 'none' });
+            });
+            delete this.debounceTimers[item.id];
+        }, 500); // 500ms 防抖
     },
-    
-    handleOrder() {
-        console.log("生成需求");
+
+    // --- 4. 删除逻辑 ---
+    // 删除整个厂家
+    handleDeleteBrand(brandName, items) {
+      const ids = items.map(i => i.id); 
+      this.execDelete(ids, `确定要删除 ${brandName} 下的所有商品吗？`);
     },
-    
-    onTargetIndex() {
-        uni.switchTab({
-            url: '/pages/index/index',
-            success: () => {
-                console.log('成功跳转到主页');
-            },
-            fail: (res) => {
-                console.error('跳转主页失败:', res);
+    // 删除单个商品
+    handleDeleteItem(item) {
+      this.execDelete([item.id], '确定要删除该商品吗？');
+    },
+    // 执行删除请求封装
+    execDelete(ids, content) {
+        uni.showModal({
+            title: '提示',
+            content: content,
+            success: ({ confirm }) => {
+                if (confirm) {
+                    uni.showLoading({ title: '删除中' });
+                    deleteCart(ids).then(res => {
+                        uni.hideLoading();
+                        if(res.code === 200) {
+                            // 本地移除选中状态
+                            this.checkedIds = this.checkedIds.filter(cid => !ids.includes(cid));
+                            // 重新加载数据
+                            this.loadData();
+                            uni.showToast({ title: '删除成功', icon: 'success' });
+                        } else {
+                            uni.showToast({ title: res.message || '删除失败', icon: 'none' });
+                        }
+                    });
+                }
             }
         });
+    },
+    
+    // --- 5. 结算逻辑 ---
+    handleOrder() {
+        if (this.checkedIds.length === 0) {
+            return uni.showToast({ title: '请先选择商品', icon: 'none' });
+        }
+        // 跳转到确认订单页
+        const selectedIdsStr = this.checkedIds.join(',');
+        uni.navigateTo({
+            url: `/pages/order/create?cartIds=${selectedIdsStr}`
+        });
+    },
+    
+    // 跳转到分类页
+    onTargetIndex() {
+        uni.switchTab({ url: '/pages/category/category' });
     }
   }
 }
@@ -335,10 +377,10 @@ export default {
     height: 72rpx;
     line-height: 72rpx;
     text-align: center;
-    background: #007aff; // 蓝色按钮
+    background: #2979ff; // uView 主题蓝
     color: #fff;
     font-size: 28rpx;
-    border-radius: 10rpx;
+    border-radius: 36rpx;
   }
 }
 
@@ -440,7 +482,7 @@ export default {
     }
     .delete-text {
       font-size: 24rpx;
-      color: #fa2209; /* 红色删除 */
+      color: #999;
       display: flex;
       align-items: center;
       white-space: nowrap;
@@ -527,7 +569,10 @@ export default {
 /* 4. 底部栏 */
 .footer-wrapper {
   position: fixed;
-  bottom: 0; /* 如果有tabbar，这里可能需要改为 var(--window-bottom) */
+  bottom: 0; 
+  /* #ifdef H5 */
+  bottom: var(--window-bottom);
+  /* #endif */
   left: 0;
   right: 0;
   z-index: 99;
@@ -584,7 +629,7 @@ export default {
       color: #fff;
       font-size: 30rpx;
       font-weight: 500;
-      border-radius: 8rpx; /* 方角微圆 */
+      border-radius: 38rpx;
     }
   }
 }
@@ -594,9 +639,13 @@ export default {
   padding-top: 200rpx;
   color: #999;
   font-size: 28rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  
   .go-shop {
-    margin-top: 30rpx;
-    background: #ff9900;
+    margin-top: 40rpx;
+    background: #2979ff;
     color: white;
     width: 240rpx;
     border-radius: 40rpx;

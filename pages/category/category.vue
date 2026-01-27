@@ -101,6 +101,7 @@
 									</template>
 								</u-image>
 							</view>
+							
 							<view class="item-info">
 								<view class="item-title u-line-2">{{ item.goodsName }}</view>
 								
@@ -120,9 +121,10 @@
                                         <text class="price-num">{{ item.salePrice }}</text>
                                         <view class="vip-tag">协议价</view>
                                     </view>
+									
 									<view class="cart-box" @tap.stop="addToCart(item)">
                                         <text class="sales">已售{{ item.sales || 0 }}</text>
-										<u-icon name="plus-circle-fill" color="#2979ff" size="44"></u-icon>
+										<view class="add-btn-circle">+</view>
                                     </view>
 								</view>
 							</view>
@@ -138,24 +140,35 @@
 </template>
 
 <script>
+	// 引入商品相关 API
 	import * as GoodsApi from '@/api/goods/goods.js';
+    // 引入购物车 API (请确保 api/goods/cart.js 文件已存在)
+	import { addCart } from '@/api/goods/cart.js';
 
 	export default {
 		data() {
 			return {
 				keyword: '', // 搜索关键词
+				
+				// 筛选选项配置
 				filterOptions: {
 					manufacturers: [],
 					packageTypes: [],
 					standards: []
 				},
+				
+				// 当前选中的筛选状态
 				selectedFilter: {
 					manufacturer: '',
 					packageType: '',
 					standard: ''
 				},
-                currentSort: 'default', // default, sales, price
-                sortOrder: 'desc',      // asc, desc
+				
+				// 排序状态
+                currentSort: 'default', // 可选值: default, sales, price
+                sortOrder: 'desc',      // 可选值: asc, desc
+				
+				// 列表数据
 				goodsList: [],
 				page: 1,
 				limit: 10,
@@ -168,14 +181,18 @@
 			this.loadGoodsData(true);
 		},
 		methods: {
+			// 1. 加载筛选配置项
 			loadFilterOptions() {
 				GoodsApi.getFilterOptions().then(res => {
                     if(res.code === 200 && res.result) {
                         this.filterOptions = res.result;
                     }
-				}).catch(e => { console.error(e) });
+				}).catch(e => {
+					console.error("加载筛选配置失败", e);
+				});
 			},
 
+			// 2. 加载商品列表 (核心逻辑)
 			loadGoodsData(reset = false) {
 				if (reset) {
 					this.page = 1;
@@ -184,6 +201,7 @@
 				}
 				this.isLoading = true;
 
+                // 构造查询参数
                 const params = {
                     page: this.page,
                     limit: this.limit,
@@ -196,10 +214,12 @@
                 };
 
 				GoodsApi.getGoodsListByWhere(params).then(res => {
+					// 兼容 data.list 或 result 两种返回结构
 					const list = res.data?.list || res.result || [];
 					this.goodsList = [...this.goodsList, ...list];
 					this.isLoading = false;
                     
+                    // 判断是否还有更多数据
                     if (list.length < this.limit) {
                         this.loadStatus = 'nomore'; 
                     } else {
@@ -208,58 +228,101 @@
 				}).catch(err => {
                     this.isLoading = false;
                     this.loadStatus = 'nomore';
+                    console.error("加载商品列表失败", err);
                 });
 			},
 
+			// 3. 筛选点击事件 - 厂家
 			onSelectManufacturer(name) {
 				if (this.selectedFilter.manufacturer === name) return;
 				this.selectedFilter.manufacturer = name;
 				this.loadGoodsData(true);
 			},
+			
+			// 3. 筛选点击事件 - 包装
 			onSelectPackage(name) {
+                // 点击已选中的项，则取消选中
                 this.selectedFilter.packageType = (this.selectedFilter.packageType === name) ? '' : name;
 				this.loadGoodsData(true);
 			},
+			
+			// 3. 筛选点击事件 - 标准
 			onSelectStandard(name) {
+                // 点击已选中的项，则取消选中
                 this.selectedFilter.standard = (this.selectedFilter.standard === name) ? '' : name;
 				this.loadGoodsData(true);
 			},
+
+            // 4. 排序点击事件
             onSort(type) {
                 if (this.currentSort === type) {
+                    // 同一个字段点击：切换升降序
                     this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
                 } else {
+                    // 切换新字段：默认重置为降序
                     this.currentSort = type;
                     this.sortOrder = 'desc'; 
                 }
                 this.loadGoodsData(true);
             },
+
+			// 5. 搜索事件
 			onSearch() {
+                // 搜索时，通常意味着用户想在全局查找，因此清空其他筛选条件
                 this.selectedFilter.manufacturer = ''; 
                 this.selectedFilter.packageType = '';
                 this.selectedFilter.standard = '';
                 this.currentSort = 'default';
 				this.loadGoodsData(true);
 			},
+			
+			// 清空搜索框
             onClearSearch() {
                 this.keyword = '';
                 this.loadGoodsData(true);
             },
+			
+			// 6. 触底加载更多
 			onReachBottomRight() {
                 if(this.loadStatus === 'nomore') return;
                 this.page++;
                 this.loadGoodsData();
 			},
+			
+			// 7. 跳转商品详情
 			goToDetail(id) {
 				uni.navigateTo({ url: `/pages/good/detail?id=${id}` });
 			},
+            
+            // 8. 加入购物车逻辑
             addToCart(item) {
-                uni.showToast({ title: '已加入购物车', icon: 'success' });
+                uni.showLoading({ title: '正在加入...' });
+                
+                // 构造API参数
+                const params = {
+                    goodsSkuId: item.id,
+                    goodsNum: 1
+                };
+
+                addCart(params).then(res => {
+                    uni.hideLoading();
+                    if(res.code === 200) {
+                        uni.showToast({ title: '已加入购物车', icon: 'success' });
+                    } else {
+                        uni.showToast({ title: res.message || '添加失败', icon: 'none' });
+                    }
+                }).catch(err => {
+                    uni.hideLoading();
+                    uni.showToast({ title: '网络请求失败', icon: 'none' });
+                    console.error("加入购物车异常", err);
+                });
             }
 		}
 	}
 </script>
 
 <style lang="scss" scoped>
+	/* 页面整体设置 */
 	page {
 		height: 100vh;
 		overflow: hidden;
@@ -267,13 +330,14 @@
 	}
 
 	.u-wrap {
+		/* 计算高度：减去原生导航栏高度，防止内容被遮挡 */
 		height: calc(100vh - var(--window-top)); 
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 	}
 
-	/* 自定义搜索栏 */
+	/* --- 自定义搜索栏样式 --- */
 	.custom-search-area {
 		background-color: #fff;
 		padding: 16rpx 24rpx;
@@ -322,13 +386,14 @@
 		}
 	}
 
-	/* 主体布局 */
+	/* --- 主体内容布局 --- */
 	.u-menu-wrap {
 		flex: 1;
 		display: flex;
 		overflow: hidden;
 	}
 
+	/* 左侧厂家导航 */
 	.u-tab-view {
 		width: 180rpx;
 		height: 100%;
@@ -365,6 +430,7 @@
 		top: 34rpx;
 	}
 
+	/* 右侧内容容器 */
 	.right-box {
 		flex: 1;
 		background-color: #fff;
@@ -374,7 +440,7 @@
 		position: relative;
 	}
     
-    /* 顶部固定区 */
+    /* 右侧顶部固定区 (筛选+排序) */
     .fixed-header {
         background-color: #fff;
         border-bottom: 1px solid #f8f8f8;
@@ -383,19 +449,19 @@
         z-index: 9;
     }
     
-    /* 修复：属性筛选改为垂直行结构 */
+    /* 属性筛选 */
     .attribute-filter {
         padding: 16rpx 20rpx 6rpx;
 		
 		.filter-row {
 			display: flex;
 			align-items: center;
-			margin-bottom: 14rpx; /* 行间距 */
+			margin-bottom: 14rpx;
 			
 			.row-label {
 				font-size: 24rpx;
 				color: #999;
-				width: 60rpx; /* 固定标签宽度 */
+				width: 60rpx;
 				flex-shrink: 0;
 				font-weight: bold;
 			}
@@ -439,7 +505,7 @@
             color: #666;
             display: flex;
             align-items: center;
-            height: 40rpx; /* 固定高度确保对齐 */
+            height: 40rpx;
             
             &.active {
                 color: #2979ff;
@@ -454,31 +520,29 @@
                 height: 100%;
                 
                 .arrow {
-                    font-size: 16rpx; /* 调大一点点 */
+                    font-size: 16rpx;
                     color: #ddd;
                     height: 14rpx;
                     line-height: 14rpx;
                     
-                    &.on { 
-                        color: #2979ff; 
-                    }
-                    
+                    &.on { color: #2979ff; }
                     &.up { margin-bottom: 2rpx; }
                 }
             }
         }
     }
 
+	/* 列表滚动容器 */
 	.right-content {
         flex: 1;
 		height: 0; 
     }
 
-	/* 列表样式 */
 	.page-view {
 		padding: 16rpx;
 	}
 
+	/* 商品卡片样式 */
 	.class-item {
 		display: flex;
 		margin-bottom: 30rpx;
@@ -503,6 +567,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+			
 			.item-title {
 				font-size: 28rpx;
 				color: #333;
@@ -519,11 +584,13 @@
 				margin-top: 8rpx;
                 .mr-10 { margin-right: 10rpx; }
 			}
+			
 			.item-price-row {
 				display: flex;
 				justify-content: space-between;
 				align-items: flex-end;
                 margin-top: 10rpx;
+				
                 .price-box {
                     display: flex;
                     align-items: baseline;
@@ -539,14 +606,37 @@
                         transform: scale(0.9);
                     }
                 }
+				
+                /* 加购按钮容器 */
                 .cart-box {
                     display: flex;
                     align-items: center;
                     .sales {
                         font-size: 20rpx;
                         color: #ccc;
-                        margin-right: 10rpx;
                     }
+					
+					/* 【核心样式】：纯CSS绘制的蓝色圆形加号按钮 
+					   不依赖字体图标库，保证 100% 显示
+					*/
+					.add-btn-circle {
+						width: 50rpx;
+						height: 50rpx;
+						background: #2979ff;
+						border-radius: 50%;
+						margin-left: 12rpx;
+						box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3);
+						
+						/* 文字居中设置 */
+						color: #fff;
+						font-size: 40rpx;
+						font-weight: bold;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						padding-bottom: 4rpx; /* 微调加号垂直位置 */
+						line-height: 1;
+					}
                 }
 			}
 		}
