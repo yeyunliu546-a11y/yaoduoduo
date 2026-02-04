@@ -112,9 +112,9 @@
 								<view class="item-price-row">
 									<view class="price-box">
                                         <text class="price-symbol">¥</text>
-                                        <text class="price-num">{{ item.salePrice }}</text>
+										<text class="price-num">{{ item.pricePerGram || item.salePrice }}</text>
 										<text v-if="businessType === 'dispensing'" class="unit-text">/g</text>
-                                        <view class="vip-tag">协议价</view>
+                                        <view class="vip-tag" v-else>协议价</view>
                                     </view>
 									<view class="cart-box" @tap.stop="addToCart(item)">
                                         <text class="sales">已售{{ item.sales || 0 }}</text>
@@ -208,8 +208,6 @@
 		methods: {
 			// 打开筛选
 			openFilter() {
-				console.log("手动打开抽屉");
-				// 同步当前选中状态到临时状态
 				this.tempFilter.packageType = this.selectedFilter.packageType;
 				this.tempFilter.standard = this.selectedFilter.standard;
 				this.showFilter = true;
@@ -244,9 +242,12 @@
 				}
 				this.isLoading = true;
 
+                // [核心修复] 将业务字符串转换为后端需要的 goodsType (1或2)
+                const targetGoodsType = this.businessType === 'dispensing' ? 2 : 1;
+
                 const params = {
                     page: this.page, limit: this.limit, keyword: this.keyword,
-					businessType: this.businessType,
+					goodsType: targetGoodsType, // 传入 goodsType
                     manufacturer: this.selectedFilter.manufacturer,
                     packageType: this.selectedFilter.packageType,
                     standard: this.selectedFilter.standard,
@@ -282,7 +283,7 @@
 			confirmFilter() {
 				this.selectedFilter.packageType = this.tempFilter.packageType;
 				this.selectedFilter.standard = this.tempFilter.standard;
-				this.showFilter = false; // 关闭抽屉
+				this.showFilter = false; 
 				this.loadGoodsData(true);
 			},
 
@@ -311,7 +312,9 @@
 			goToDetail(id) { uni.navigateTo({ url: `/pages/good/detail?id=${id}` }); },
             addToCart(item) {
                 uni.showLoading({ title: '加入中' });
-                addCart({ goodsSkuId: item.id, goodsNum: 1 }).then(res => {
+                // 加入购物车时也携带 goodsType，虽然目前mock会自动判断，但传过去更稳
+                const type = this.businessType === 'dispensing' ? 2 : 1;
+                addCart({ goodsSkuId: item.id, goodsNum: 1, goodsType: type }).then(res => {
                     uni.hideLoading();
                     if(res.code === 200) uni.showToast({ title: '已加入', icon: 'success' });
                     else uni.showToast({ title: res.message || '失败', icon: 'none' });
@@ -366,123 +369,20 @@
 	.class-item { display: flex; margin-bottom: 30rpx; background-color: #fff; padding: 20rpx; border-radius: 12rpx; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03); border-bottom: 1px solid #f8f8f8; .item-img { width: 140rpx; height: 140rpx; border-radius: 8rpx; overflow: hidden; border: 1px solid #f0f0f0; margin-right: 20rpx; flex-shrink: 0; } .item-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4; .type-tag { display: inline-block; font-size: 20rpx; color: #fff; background: #ff9900; padding: 0 6rpx; border-radius: 4rpx; margin-right: 8rpx; vertical-align: middle; } } .item-desc { font-size: 22rpx; color: #999; margin-top: 6rpx; .ml-10 { margin-left: 10rpx; } } .item-tags { margin-top: 8rpx; .mr-10 { margin-right: 10rpx; } } .item-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx; .price-box { display: flex; align-items: baseline; .price-symbol { color: #ff3b30; font-size: 24rpx; } .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; } .unit-text { font-size: 22rpx; color: #999; margin-left: 2rpx; } .vip-tag { font-size: 18rpx; color: #bfa170; border: 1px solid #bfa170; padding: 0 6rpx; border-radius: 4rpx; margin-left: 10rpx; transform: scale(0.9); } } .cart-box { display: flex; align-items: center; .sales { font-size: 20rpx; color: #ccc; } .add-btn-circle { width: 50rpx; height: 50rpx; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 12rpx; box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3); color: #fff; font-size: 40rpx; font-weight: bold; line-height: 1; padding-bottom: 4rpx; &.dispensing-btn { background: #ff9900; box-shadow: 0 2rpx 6rpx rgba(255, 153, 0, 0.3); } } } } } }
 	.loading-center { padding: 50rpx; display: flex; justify-content: center; }
 
-	/* --- 手写抽屉样式 (纯 CSS 实现，不依赖 u-popup) --- */
-	
-	/* 遮罩层 */
-	.custom-mask {
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background-color: rgba(0, 0, 0, 0.5);
-		z-index: 998; /* 确保在商品列表之上 */
-	}
-	
-	/* 抽屉本体 */
-	.custom-drawer {
-		position: fixed;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		width: 80%; /* 抽屉宽度 */
-		background-color: #fff;
-		z-index: 999; /* 在遮罩层之上 */
-		transform: translateX(100%); /* 默认移出屏幕外 */
-		transition: transform 0.3s ease; /* 滑动动画 */
-		
-		&.show {
-			transform: translateX(0); /* 显示时滑入 */
-		}
-		
-		.drawer-container {
-			width: 100%;
-			height: 100%;
-			display: flex;
-			flex-direction: column;
-		}
-		
-		.drawer-header {
-			height: 88rpx;
-			line-height: 88rpx;
-			text-align: center;
-			font-size: 32rpx;
-			font-weight: bold;
-			border-bottom: 1px solid #f0f0f0;
-		}
-		
-		.drawer-scroll {
-			flex: 1;
-			height: 0;
-			padding: 24rpx;
-		}
-		
-		.filter-block {
-			margin-bottom: 40rpx;
-			
-			.block-title {
-				font-size: 28rpx;
-				font-weight: bold;
-				color: #333;
-				margin-bottom: 20rpx;
-			}
-			
-			.tag-box {
-				display: flex;
-				flex-wrap: wrap;
-				
-				.tag-item {
-					min-width: 160rpx;
-					height: 64rpx;
-					line-height: 64rpx;
-					text-align: center;
-					background-color: #f6f6f6;
-					border-radius: 32rpx;
-					font-size: 26rpx;
-					color: #666;
-					margin-right: 20rpx;
-					margin-bottom: 20rpx;
-					padding: 0 20rpx;
-					border: 1px solid transparent;
-					
-					&.active {
-						background-color: #e6f1fc;
-						color: #2979ff;
-						font-weight: 500;
-						border-color: #2979ff;
-					}
-				}
-			}
-		}
-		
-		.drawer-footer {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 20rpx 30rpx;
-			border-top: 1px solid #f0f0f0;
-			background-color: #fff;
-            /* 适配底部安全区 */
-            padding-bottom: calc(20rpx + constant(safe-area-inset-bottom));
-            padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
-			
-			.drawer-btn {
-				width: 48%;
-				height: 80rpx;
-				line-height: 80rpx;
-				text-align: center;
-				border-radius: 40rpx;
-				font-size: 28rpx;
-				
-				&.reset {
-					background-color: #f6f6f6;
-					color: #666;
-				}
-				&.confirm {
-					background-color: #2979ff;
-					color: #fff;
-				}
-			}
-		}
-	}
+	/* --- 手写抽屉样式 --- */
+	.custom-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
+	.custom-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 80%; background-color: #fff; z-index: 999; transform: translateX(100%); transition: transform 0.3s ease; 
+		&.show { transform: translateX(0); }
+		.drawer-container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+		.drawer-header { height: 88rpx; line-height: 88rpx; text-align: center; font-size: 32rpx; font-weight: bold; border-bottom: 1px solid #f0f0f0; }
+		.drawer-scroll { flex: 1; height: 0; padding: 24rpx; }
+		.filter-block { margin-bottom: 40rpx; 
+			.block-title { font-size: 28rpx; font-weight: bold; color: #333; margin-bottom: 20rpx; }
+			.tag-box { display: flex; flex-wrap: wrap; 
+				.tag-item { min-width: 160rpx; height: 64rpx; line-height: 64rpx; text-align: center; background-color: #f6f6f6; border-radius: 32rpx; font-size: 26rpx; color: #666; margin-right: 20rpx; margin-bottom: 20rpx; padding: 0 20rpx; border: 1px solid transparent; 
+					&.active { background-color: #e6f1fc; color: #2979ff; font-weight: 500; border-color: #2979ff; } } } }
+		.drawer-footer { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 30rpx; border-top: 1px solid #f0f0f0; background-color: #fff; padding-bottom: calc(20rpx + constant(safe-area-inset-bottom)); padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); 
+			.drawer-btn { width: 48%; height: 80rpx; line-height: 80rpx; text-align: center; border-radius: 40rpx; font-size: 28rpx; 
+				&.reset { background-color: #f6f6f6; color: #666; }
+				&.confirm { background-color: #2979ff; color: #fff; } } } }
 </style>
