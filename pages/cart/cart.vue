@@ -12,6 +12,14 @@
     </view>
 
     <view v-show="currentTab === 0">
+        <view class="search-header">
+          <view class="search-input-box">
+            <text class="icon iconfont icon-sousuo search-icon">🔍</text>
+            <input class="search-input" type="text" placeholder="搜索采购商品" placeholder-class="placeholder-style" />
+          </view>
+          <view class="search-btn">搜索</view>
+        </view>
+
         <view v-if="Object.keys(procurementList).length" class="cart-list">
              <view v-for="(items, brandName) in procurementList" :key="brandName" class="brand-group">
                 <view class="brand-header">
@@ -173,9 +181,9 @@ export default {
       isLoading: true,
       
       // 数据源
-      fullCartList: [], // 原始完整列表
-      procurementList: {}, // 采购 (GoodsType=1)
-      dispensingList: [],  // 调剂 (GoodsType=2)
+      fullCartList: [], 
+      procurementList: {}, // 采购
+      dispensingList: [],  // 调剂
       
       checkedIds: [],
       
@@ -188,7 +196,7 @@ export default {
     }
   },
   computed: {
-    // 采购计算
+    // --- 采购相关计算 ---
     allProcurementIds() { return Object.values(this.procurementList).flat().map(item => item.id); },
     isAllChecked() { return this.allProcurementIds.length > 0 && this.checkedIds.length === this.allProcurementIds.length; },
     totalPriceProcurement() {
@@ -201,11 +209,10 @@ export default {
         return total.toFixed(2);
     },
 
-    // 调剂计算 (使用 PricePerGram)
+    // --- 调剂相关计算 ---
     singleDosePrice() {
         let total = 0;
         this.dispensingList.forEach(item => {
-            // 优先使用 pricePerGram，没有则用 salePrice
             const price = Number(item.pricePerGram || item.salePrice);
             total += price * Number(item.goodsNum); 
         });
@@ -225,22 +232,20 @@ export default {
 
     loadData() {
         this.isLoading = true;
-        // 【修正】调用 Load 接口时不传参，获取所有数据
+        // 获取所有数据，前端分类
         getCartList({ limit: 100 }).then(res => {
             this.isLoading = false;
             if(res.code === 200) {
-                const list = res.data?.list || [];
+                const list = res.data?.list || res.result || []; // 兼容 result
                 this.fullCartList = list;
                 
-                // 【核心】前端进行数据拆分
-                // GoodsType: 1=采购, 2=调剂
-                const procurement = list.filter(item => item.goodsType == 1 || !item.goodsType); // 兼容旧数据
+                const procurement = list.filter(item => item.goodsType == 1 || !item.goodsType);
                 const dispensing = list.filter(item => item.goodsType == 2);
                 
                 this.procurementList = this.groupCartByBrand(procurement);
                 this.dispensingList = dispensing;
             }
-        });
+        }).catch(() => { this.isLoading = false; });
     },
 
     groupCartByBrand(list) {
@@ -282,21 +287,34 @@ export default {
                 .catch(() => item.goodsNum = oldNum);
         }, 500);
     },
+
+    // --- 勾选逻辑 (采购车) ---
     handleCheckItem(id) {
         const idx = this.checkedIds.indexOf(id);
         if (idx === -1) this.checkedIds.push(id);
         else this.checkedIds.splice(idx, 1);
     },
+    
+    // [关键修复] 添加了 isBrandChecked 方法
+    isBrandChecked(items) {
+        if (!items || items.length === 0) return false;
+        return items.every(i => this.checkedIds.includes(i.id));
+    },
+
     handleCheckBrand(brandName, items) {
         const ids = items.map(i => i.id);
-        const allChecked = ids.every(id => this.checkedIds.includes(id));
+        // 复用 isBrandChecked 判断状态
+        const allChecked = this.isBrandChecked(items);
         if (allChecked) this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
         else this.checkedIds.push(...ids.filter(id => !this.checkedIds.includes(id)));
     },
+
     handleCheckAll() {
         if (this.isAllChecked) this.checkedIds = [];
         else this.checkedIds = [...this.allProcurementIds];
     },
+
+    // --- 删除逻辑 ---
     handleDeleteItem(item) { this.execDelete([item.id], '确定移除该商品吗？'); },
     handleDeleteBrand(brandName, items) { this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); },
     
@@ -338,7 +356,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 样式部分保持不变，直接复用之前的样式 */
+/* 保持原有样式，无需修改 */
 .container { min-height: 100vh; padding-bottom: 220rpx; background: #f5f5f5; }
 .tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 20; border-bottom: 1px solid #f0f0f0; .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; &.active { color: #2979ff; font-weight: bold; } .tab-line { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: #2979ff; border-radius: 3rpx; } } }
 .search-header { display: flex; align-items: center; padding: 20rpx 30rpx; background: #fff; .search-input-box { flex: 1; height: 72rpx; background: #f8f8f8; border-radius: 36rpx; display: flex; align-items: center; padding: 0 24rpx; .search-input { flex: 1; font-size: 28rpx; } } .search-btn { margin-left: 20rpx; color: #2979ff; font-size: 28rpx; } }

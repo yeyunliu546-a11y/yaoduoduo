@@ -3,84 +3,93 @@
 		"^u-(.*)": "@/uview-ui/components/u-$1/u-$1.vue"
 	},
 	"pages": [
-		{
-			"path": "pages/login/index",
-			"style": {
-				"navigationBarTitleText": "会员登录"
-			}
-		},
-		{
-			"path": "pages/auth/certUpload",
-			"style": {
-				"navigationBarTitleText": "提交诊所资质"
-			}
-		},
-		{
-			"path": "pages/auth/certStatus",
-			"style": {
-				"navigationBarTitleText": "审核状态"
-			}
-		},
+		// =========================================================
+		// 1. 底部 TabBar 页面
+		// =========================================================
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "药多多"
-			}
-		},
-		{
-			"path": "pages/cart/cart",
-			"style": {
-				"navigationBarTitleText": "购物车"
+				"navigationBarTitleText": "首页",
+				"enablePullDownRefresh": true
 			}
 		},
 		{
 			"path": "pages/category/category",
 			"style": {
-				"navigationBarTitleText": "全部分类"
+				"navigationBarTitleText": "分类"
+			}
+		},
+		{
+			"path": "pages/cart/cart",
+			"style": {
+				"navigationBarTitleText": "购物车",
+				"enablePullDownRefresh": true
 			}
 		},
 		{
 			"path": "pages/user/user",
 			"style": {
-				"navigationBarTitleText": "个人中心"
+				"navigationBarTitleText": "个人中心",
+				"navigationStyle": "custom"
 			}
 		},
+
+		// =========================================================
+		// 2. 订单与交易 (本次核心修改)
+		// =========================================================
 		{
-			"path": "pages/search/search",
+			"path": "pages/order/create",
 			"style": {
-				"navigationBarTitleText": "商品搜索"
-			}
-		},
-		{
-			"path": "pages/good/detail",
-			"style": {
-				"navigationBarTitleText": "商品详情页"
-			}
-		},
-		{
-			"path": "pages/good/brand-detail",
-			"style": {
-				"navigationBarTitleText": "厂家详情"
-			}
-		},
-		{
-			"path": "pages/good/components/Recommend",
-			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "确认订单",
+				"enablePullDownRefresh": false
 			}
 		},
 		{
 			"path": "pages/order/order",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "我的订单",
+				"enablePullDownRefresh": true
 			}
 		},
 		{
 			"path": "pages/order/detail",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "订单详情"
 			}
 		},
+		{
+			"path": "pages/order/center",
+			"style": {
+				"navigationBarTitleText": "订单中心"
+			}
+		},
+
+		// =========================================================
+		// 3. 商品详情
+		// =========================================================
+		{
+			"path": "pages/good/detail",
+			"style": {
+				"navigationBarTitleText": "商品详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/good/brand-detail",
+			"style": {
+				"navigationBarTitleText": "品牌详情"
+			}
+		},
+		{
+			"path": "pages/search/search",
+			"style": {
+				"navigationBarTitleText": "搜索"
+			}
+		},
+
+		// =========================================================
+		// 4. 收货地址
+		// =========================================================
 		{
 			"path": "pages/address/index",
 			"style": {
@@ -99,6 +108,32 @@
 				"navigationBarTitleText": "编辑地址"
 			}
 		},
+
+		// =========================================================
+		// 5. 售后退款
+		// =========================================================
+		{
+			"path": "pages/refund/index",
+			"style": {
+				"navigationBarTitleText": "退款/售后"
+			}
+		},
+		{
+			"path": "pages/refund/apply",
+			"style": {
+				"navigationBarTitleText": "申请退款"
+			}
+		},
+		{
+			"path": "pages/refund/detail",
+			"style": {
+				"navigationBarTitleText": "退款详情"
+			}
+		},
+
+		// =========================================================
+		// 6. 用户资产 (优惠券、钱包、积分)
+		// =========================================================
 		{
 			"path": "pages/coupon/index",
 			"style": {
@@ -112,34 +147,9 @@
 			}
 		},
 		{
-			"path": "pages/points/log",
+			"path": "pages/wallet/recharge/index",
 			"style": {
-				"navigationBarTitleText": "账单明细"
-			}
-		},
-		{
-			"path": "pages/refund/index",
-			"style": {
-				"navigationBarTitleText": "退换/售后"
-			}
-		},
-		{
-			"path": "pages/refund/detail",
-			"style": {
-				"navigationBarTitleText": "售后详情"
-			}
-		},
-		{
-			"path": "pages/refund/apply",
-			"style": {
-				"navigationBarTitleText": "申请售后"
-			}
-		},
-		{
-			"path": "pages/order/center",
-			"style": {
-				"navigationBarTitleText": "订单中心",
-				"enablePullDownRefresh": true
+				"navigationBarTitleText": "充值中心"
 			}
 		},
 		{
@@ -149,113 +159,51 @@
 			}
 		},
 		{
-			"path": "pages/wallet/recharge/index",
+			"path": "pages/points/log",
 			"style": {
-				"navigationBarTitleText": "充值中心"
+				"navigationBarTitleText": "积分明细"
+			}
+		},
+
+		// =========================================================
+		// 7. 基础服务 (登录、帮助、认证)
+		// =========================================================
+		{
+			"path": "pages/login/index",
+			"style": {
+				"navigationBarTitleText": "登录"
 			}
 		},
 		{
 			"path": "pages/help/index",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "帮助中心"
 			}
 		},
 		{
-			"path": "components/page/article/index",
+			"path": "pages/auth/certUpload",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "资质上传"
 			}
 		},
 		{
-			"path": "components/page/banner/index",
+			"path": "pages/auth/certStatus",
 			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/blank/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/goods/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/guide/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/image/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/navBar/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/notice/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/richText/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/search/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/service/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/video/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/window/index",
-			"style": {
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "components/page/index",
-			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "认证状态"
 			}
 		}
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "药多多",
-		"navigationBarBackgroundColor": "#F8F8F8",
+		"navigationBarBackgroundColor": "#FFFFFF",
 		"backgroundColor": "#F8F8F8"
 	},
 	"tabBar": {
-		"color": "#999999",
-		"selectedColor": "#007AFF",
-		"backgroundColor": "#ffffff",
+		"color": "#909399",
+		"selectedColor": "#2979ff",
 		"borderStyle": "black",
+		"backgroundColor": "#ffffff",
 		"list": [
 			{
 				"pagePath": "pages/index/index",
