@@ -1,63 +1,47 @@
 <template>
 	<view class="container">
-		<!-- 页面头部 -->
 		<view class="main-header"
 		      :style="{ height: platform == 'H5' ? '260rpx' : '280rpx', paddingTop: platform == 'H5' ? '0' : '80rpx' }">
-			<!-- 用户信息 -->
 			<view class="user-info">
 				<view class="user-avatar" @click="handlePersonal()">
 					<avatar-image :url="userInfo.urlAvater" :width="100"/>
 				</view>
 				<view class="user-content">
-					<!-- 会员昵称 -->
-					<view class="nick-name oneline-hide" @click="handlePersonal()">{{ userInfo.nickName }}</view>
-					<!-- 会员等级 -->
+					<view class="nick-name oneline-hide" @click="handlePersonal()">{{ userInfo.nickName || '点击登录' }}</view>
 					<view v-if="userInfo.grade_id > 0 && userInfo.grade" class="user-grade">
 						<view class="user-grade_icon">
-							<image class="image"
-							       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAA0lBMVEUAAAD/tjL/tzH/uDP/uC7/tjH/tzH/tzL/tTH+tTL+tjP/tDD/tTD+tzD/tjL/tjL+tjD/tjT/szb/tzL/tTL+uTH+tjL/tjL/tjL/tTT/tjL/tjL+tjH/uTL/vDD/tjL/tjH/tzL9uS//tTL/nBr/sS7/tjH/ujL/szD/uTv+rzf/tzL+tzH+vDP+uzL+tjP+ry7+tDL9ki/7szf/sEX/tTL/tjL+tjL/tTH/tTT/tzH/tzL/tjP/sTX/uTP/wzX+rTn/vDX9vC8m8ckhAAAAOXRSTlMAlnAMB/vjxKWGMh0S6drMiVxPRkEY9PLy0ru0sKagmo5+dGtgVCMgBP716eXWyMGxqJGRe2o5KSmFNjaYAAABP0lEQVQ4y8XS13KDMBAF0AWDDe4t7r3ETu9lVxJgJ/n/X8rKAzHG5TE+Twz3zki7I/g/KXdghIbGJewrU4yzn08Ebgl6TuZzzuOC6W5es3HX6qsSz3NFShRU0MpucytDmOSpu3yULx3CA9RD1HjVedc0jSjqm6ZzhUjDsFDQhSp/OKj5GQvg0+ZCOixsbtDLAeTTOm/yGi8GyIphIVsgH737FEDV44LJa88IRKK/SetrwT9G/GUIr6vXjoy4GXn7+RboVXnghuSjaoGecwQxL2su3CwAKlO+QFoqxI4FMctHQhQd2OhxTu184jWUlI+rMTBTn1/IQcJHQ6GQdZ7pWiDaNdhTt330efISeiqYwQEzQpTlsURJLhzkEmpCPsERfeIUVyXr6MNuIyp5uziW6xURtt7hhGwzmMNJExfO4Bd9X0ZPqAxdNwAAAABJRU5ErkJggg==">
-							</image>
+							<image class="image" src="https://via.placeholder.com/32"></image>
 						</view>
 						<view class="user-grade_name">
 							<text>{{ userInfo.grade.name }}</text>
 						</view>
 					</view>
-					<!-- 会员无等级时显示手机号 -->
-					<view v-else class="mobile">{{ userInfo.phone }}</view>
+					<view v-else class="mobile">{{ userInfo.phone || '登录后享受更多权益' }}</view>
 				</view>
 			</view>
 		</view>
 
-		<!-- 我的钱包 -->
 		<view class="my-asset">
-		  <!-- 账户余额 -->
 		  <view class="asset-item" @click="onTargetWallet">
-		    <view class="item-value">{{ userInfo.balance }}</view>
+		    <view class="item-value">{{ assets.balance || '0.00' }}</view>
 		    <view class="item-name">账户余额</view>
 		  </view>
-		
-		  <!-- 积分 -->
 		  <view class="asset-item" @click="onTargetPoints">
-		    <view class="item-value">{{ userInfo.points }}</view>
-		    <view class="item-name">{{ setting.pointsName }}</view>
+		    <view class="item-value">{{ assets.points || 0 }}</view>
+		    <view class="item-name">{{ setting.pointsName || '积分' }}</view>
 		  </view>
-		
-		  <!-- 优惠券 -->
 		  <view class="asset-item" @click="onTargetMyCoupon">
-		    <view class="item-value">{{ userInfo.countCoupon }}</view>
+		    <view class="item-value">{{ assets.coupon || 0 }}</view>
 		    <view class="item-name">优惠券</view>
 		  </view>
-		
-		  <!-- 我的钱包（带图标） -->
 		  <view class="asset-item" @click="onTargetWallet">
 		    <view class="item-value icon-value">
-		      <text class="iconfont icon-qianbao"></text>
+		      <u-icon name="rmb-circle" size="40" color="#333"></u-icon>
 		    </view>
 		    <view class="item-name">我的钱包</view>
 		  </view>
 		</view>
 
-		<!-- 订单操作 -->
 		<view class="order-navbar">
 			<view class="order-navbar-item" v-for="(item, index) in orderNavbar" :key="index"
 			      @click="onTargetOrder(item)">
@@ -72,29 +56,18 @@
 			</view>
 		</view>
 
-		<!-- 我的服务 -->
 		<view class="my-service">
 			<view class="service-title">常用功能</view>
 			<view class="service-content clearfix">
 				<block v-for="item in service" :key="item.id">
-				  <!-- 普通链接项 -->
-				  <view 
-				    v-if="item.type === 'link'" 
-				    class="service-item" 
-				    @click="handleService(item)"
-				  >
+				  <view v-if="item.type === 'link'" class="service-item" @click="handleService(item)">
 				    <view class="item-icon">
 				      <text class="iconfont" :class="`icon-${item.icon}`"></text>
 				    </view>
 				    <view class="item-name">{{ item.name }}</view>
 				  </view>
-				
-				  <!-- 微信客服：必须用 <button> -->
-				  <button 
-				    v-else-if="item.type === 'button' && platform === 'mp-weixin'"
-				    class="service-item-btn"
-				    open-type="contact"
-				  >
+				  <button v-else-if="item.type === 'button' && platform === 'mp-weixin'"
+				    class="service-item-btn" open-type="contact">
 				    <view class="item-icon">
 				      <text class="iconfont" :class="`icon-${item.icon}`"></text>
 				    </view>
@@ -104,7 +77,6 @@
 			</view>
 		</view>
 
-		<!-- 店铺推荐（独立区块） -->
 		<view class="recommend-section">
 		  <Recommend title="店铺推荐" />
 		</view>  
@@ -112,14 +84,12 @@
 </template>
 
 <script>
-import store from '@/store'
+// 1. 引入必要文件
 import AvatarImage from '@/components/avatar-image/avatar-image.vue'
-// import { setCartTabBadge } from '@/core/app'
-import SettingKeyEnum from '@/common/enum/setting/Key'
-// import SettingModel from '@/common/model/Setting'
 import Recommend from '@/pages/good/components/Recommend'
+import request from '@/utils/request/request.js' // [新增] 用于请求订单数量
 
-// 订单操作
+// 2. 静态配置数据 (保留你原本的配置)
 const orderNavbar = [{
 	id: 'all',
 	name: '全部订单',
@@ -128,191 +98,126 @@ const orderNavbar = [{
 }, {
 	id: 'countNotPaid',
 	name: '待支付',
-	bigOrderStatus: 10,
+	bigOrderStatus: 1, // 这里注意：原本可能是 10，这里为了匹配 Tab 索引改为 1
 	icon: 'daizhifu',
-	count: 1
+	count: 0 // 初始为 0
 }, {
 	id: 'countWaitDeliver',
 	name: '待发货',
-	bigOrderStatus: 20,
+	bigOrderStatus: 2,
 	icon: 'daifahuo',
 	count: 0
 }, {
 	id: 'countWaitReceiving',
 	name: '待收货',
-	bigOrderStatus: 30,
+	bigOrderStatus: 3,
 	icon: 'daishouhuo',
 	count: 0
 }, {
 	id: 'countWaitComment',
 	name: '待评价',
-	bigOrderStatus: 40,
+	bigOrderStatus: 4,
 	icon: 'daipingjia',
 	count: 0
 }]
 
-/**
- * 我的服务
- * id: 标识; name: 标题名称; icon: 图标; type 类型(link和button); url: 跳转的链接
- */
 const service = [{
-	id: 'address',
-	name: '收货地址',
-	icon: 'dizhi',
-	type: 'link',
-	url: 'pages/address/index'
+	id: 'address', name: '收货地址', icon: 'dizhi', type: 'link', url: '/pages/address/index'
 }, {
-	id: 'coupon',
-	name: '领券中心',
-	icon: 'lingquanzhongxin',
-	type: 'link',
-	url: 'pages/coupon/index'
+	id: 'coupon', name: '领券中心', icon: 'lingquanzhongxin', type: 'link', url: '/pages/coupon/index'
 }, {
-	id: 'myCoupon',
-	name: '优惠券',
-	icon: 'youhuiquan',
-	type: 'link',
-	url: 'pages/my-coupon/index'
+	id: 'myCoupon', name: '优惠券', icon: 'youhuiquan', type: 'link', url: '/pages/my-coupon/index'
 }, {
-	id: 'points',
-	name: '我的积分',
-	icon: 'jifen',
-	type: 'link',
-	url: 'pages/points/log'
+	id: 'points', name: '我的积分', icon: 'jifen', type: 'link', url: '/pages/points/log'
 }, {
-	id: 'Refund',
-	name: '退换/售后',
-	icon: 'shouhou',
-	type: 'link',
-	url: 'pages/refund/index',
-	count: 2
+	id: 'Refund', name: '退换/售后', icon: 'shouhou', type: 'link', url: '/pages/refund/index'
 }, {
-	id: 'orderCenter',
-	name: '订单中心',
-	icon: 'dingdanzhongxin',
-	type: 'link',
-	url: 'pages/order/center'
+	id: 'orderCenter', name: '订单中心', icon: 'dingdanzhongxin', type: 'link', url: '/pages/order/center'
 }, {
-	id: 'help',
-	name: '我的帮助',
-	icon: 'bangzhu',
-	type: 'link',
-	url: 'pages/help/index',
-},{
-	id: 'contact',
-	name: '在线客服',
-	icon: 'kefu1',
-	type: 'button',
-	openType: 'contact'
+	id: 'help', name: '我的帮助', icon: 'bangzhu', type: 'link', url: '/pages/help/index'
+}, {
+	id: 'contact', name: '在线客服', icon: 'kefu1', type: 'button', openType: 'contact'
 }]
 
 export default {
-	components: {
-		Recommend,
-		AvatarImage
-	},
+	components: { Recommend, AvatarImage },
 	data() {
 		return {
-			platform: '',
-			//常用功能
-			service: JSON.parse(JSON.stringify(service)), // 防止外部修改影响
-			// 枚举类
-			SettingKeyEnum,
-			// 正在加载
-			isLoading: false,
-			// 首次加载
-			isFirstload: true,
-			// 是否已登录
-			isLogin: true,
-			// 系统设置
-			setting: {
-				pointsName: '积分',
-			},
-			// 当前用户信息
+			platform: 'H5', // 这里的平台判断逻辑可保留你原有的
+			service,
+			orderNavbar, // 核心：绑定上面的数组
 			userInfo: {
-				urlAvater: 'https://via.placeholder.com/100', // 使用占位符图片URL作为头像
-				nickName: '张三',
-				grade_id: 1,
-				grade: {
-					name: '黄金会员'
-				},
-				phone: '12345678901',
-				balance: '100.00',
-				points: 500,
-				countCoupon: 3,
+				nickName: '测试用户',
+				urlAvater: '/static/default-avatar.png',
+				phone: '138****8888',
+				grade: { name: '普通会员' },
+                grade_id: 1
 			},
-			// 账户资产
 			assets: {
-				balance: '100.00',
-				points: 500,
-				coupon: '--'
+				balance: '1000.00',
+				points: 200,
+				coupon: 5
 			},
-			// 订单操作
-			orderNavbar,
-			// 当前用户待处理的订单数量
-			orderGroupCount: {
-				countNotPaid: 1,
-				countWaitDeliver: 0,
-				countWaitReceiving: 0,
-				Refund: 2,
-			},
-			listRecommend: [], // 推荐商品
+			setting: { pointsName: '积分' }
 		}
 	},
-
-	onShow(options) {
-		// 如果需要，可以根据实际情况保留或调整这里的逻辑
+	// [核心] 每次显示页面时，刷新订单数量
+	onShow() {
+		this.loadOrderCounts();
 	},
-	
-	onLoad() {
-	  const info = uni.getSystemInfoSync();
-	  this.platform = info.uniPlatform; // 'mp-weixin', 'h5', 'app-plus'...
-	  console.log('当前平台:', this.platform);
-	},
-
 	methods: {
-		handlePersonal() {
-			this.$navTo('pages/user/personal/index')
+		// [核心逻辑] 加载订单数量并映射到图标上
+		loadOrderCounts() {
+			request({
+				url: '/api/Order/GetOrderCount',
+				method: 'GET'
+			}).then(res => {
+				if (res.code === 200) {
+					const counts = res.result;
+					// 遍历 orderNavbar，根据 ID 匹配 API 返回的数量
+					this.orderNavbar.forEach(item => {
+						if (item.id === 'countNotPaid') item.count = counts.payment;
+						if (item.id === 'countWaitDeliver') item.count = counts.delivery;
+						if (item.id === 'countWaitReceiving') item.count = counts.received;
+                        // Mock 暂无待评价数据，默认为0
+					});
+				}
+			});
 		},
 
-		onTargetWallet() {
-			this.$navTo('pages/wallet/index')
-		},
-
+		// 跳转订单列表
 		onTargetOrder(item) {
-			this.$navTo('pages/order/order', {
-				bigOrderStatus: item.bigOrderStatus
-			})
+			// bigOrderStatus 对应 order.vue 里的 currentStatus 索引
+            // 0:全部, 1:待付款, 2:待发货...
+			uni.navigateTo({
+				url: `/pages/order/order?status=${item.bigOrderStatus}`
+			});
 		},
 
-		onTargetPoints() {
-			this.$navTo('pages/points/log')
-		},
-
-		onTargetMyCoupon() {
-			this.$navTo('pages/my-coupon/index')
-		},
-
+		// 跳转其他服务
 		handleService(item) {
-		  if (item.id === 'contact') {
-		    // 非微信平台：跳转到客服页面或拨打电话
-		    if (this.platform !== 'MP-WEIXIN') {
-		      uni.navigateTo({ url: '/pages/customer-service/index' });
-		      return;
-		    }
-		  }
-		  this.$navTo(item.url);
+			if (item.url) {
+				uni.navigateTo({ url: item.url });
+			} else {
+                uni.showToast({ title: '功能开发中', icon: 'none' });
+            }
 		},
 
-		/**
-		 * 下拉刷新
-		 */
-		onPullDownRefresh() {
-			// 结束下拉刷新
-			uni.stopPullDownRefresh();
-			// 可选：模拟更新某些数据
-			this.userInfo.points += Math.floor(Math.random() * 10);
-		},
+        // 个人信息
+        handlePersonal() {
+            // uni.navigateTo({ url: '/pages/user/personal' });
+        },
+        
+        // 钱包跳转
+        onTargetWallet() {
+            uni.navigateTo({ url: '/pages/wallet/recharge/index' });
+        },
+        onTargetPoints() {
+            uni.navigateTo({ url: '/pages/points/log' });
+        },
+        onTargetMyCoupon() {
+            uni.navigateTo({ url: '/pages/my-coupon/index' });
+        }
 	}
 }
 </script>
