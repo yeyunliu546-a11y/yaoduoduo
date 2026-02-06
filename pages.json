@@ -164,7 +164,14 @@
 				"navigationBarTitleText": "积分明细"
 			}
 		},
-
+		//收藏夹
+		{
+			"path": "pages/favorite/index",
+			"style": {
+				"navigationBarTitleText": "调剂收藏夹",
+				"enablePullDownRefresh": false
+			}
+		},
 		// =========================================================
 		// 7. 基础服务 (登录、帮助、认证)
 		// =========================================================

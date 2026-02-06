@@ -1,7 +1,7 @@
 // mock/goods.js
 
 // ==========================================
-// 1. 【药品采购】数据池 (GoodsType = 1)
+// 1. 【药品采购】数据池 (GoodsType = 1) - 原样保留
 // ==========================================
 const dbProcurement = [
     // --- 华润三九 ---
@@ -49,7 +49,7 @@ const dbProcurement = [
 ];
 
 // ==========================================
-// 2. 【处方调剂】数据池 (GoodsType = 2, 使用 PricePerGram)
+// 2. 【处方调剂】数据池 (GoodsType = 2) - 原样保留
 // ==========================================
 const dbDispensing = [
     { id: 201, goodsType: 2, goodsName: '柴胡 (配方颗粒)', manufacturer: '一方制药', standard: '国标', spec: '1g(相当于饮片5g)', pricePerGram: 2.50, sales: 10000, imageUrl: '/static/logo.png' },
@@ -67,8 +67,21 @@ const dbDispensing = [
 // 3. 内存数据库 (Stateful)
 // ==========================================
 // 注意：每次修改代码保存后，这里会被重置
-let _cartDatabase = []; // 购物车
-let _orderDatabase = []; // 订单 (这里初始为空，保证你进入订单列表是干净的)
+let _cartDatabase = []; 
+let _orderDatabase = []; 
+
+// [本次新增] 收藏夹数据库 - 预置一条示例数据
+let _favoriteDatabase = [
+    {
+        id: 'FAV_DEFAULT_01',
+        name: '感冒退烧方 (经典)',
+        createTime: '2023-10-01',
+        goodsList: [
+            { id: 201, goodsName: '柴胡 (配方颗粒)', manufacturer: '一方制药', goodsNum: 15, pricePerGram: 2.50 },
+            { id: 202, goodsName: '甘草 (配方颗粒)', manufacturer: '一方制药', goodsNum: 6, pricePerGram: 1.20 }
+        ]
+    }
+];
 
 export default {
     // ---------------- 商品接口 ----------------
@@ -134,7 +147,7 @@ export default {
         if (existingItem) {
             existingItem.goodsNum += addNum;
         } else {
-            // [核心] 使用随机数防止 ID 重复，修复前端白屏问题
+            // [核心修复] 使用随机数防止 ID 重复
             const uniqueId = 'cart_' + new Date().getTime() + '_' + Math.floor(Math.random() * 10000);
             
             _cartDatabase.unshift({
@@ -174,9 +187,80 @@ export default {
         return { code: 200, message: '删除成功' };
     },
 
+    // ---------------- 收藏夹接口 (本次新增) ----------------
+
+    // 1. 收藏列表
+    'GET /api/Favorite/List': () => {
+        return { code: 200, message: 'success', result: JSON.parse(JSON.stringify(_favoriteDatabase)) };
+    },
+
+    // 2. 添加收藏 (从购物车或选择的数据保存)
+    'POST /api/Favorite/Add': (params) => {
+        if (!params.name) return { code: 400, message: '请输入方剂名称' };
+        if (!params.goodsList || params.goodsList.length === 0) return { code: 400, message: '方剂内容不能为空' };
+
+        const newFav = {
+            id: 'FAV_' + new Date().getTime(),
+            name: params.name,
+            createTime: new Date().toLocaleDateString(),
+            goodsList: JSON.parse(JSON.stringify(params.goodsList)) // 深拷贝防止引用
+        };
+        _favoriteDatabase.unshift(newFav);
+        return { code: 200, message: '收藏成功' };
+    },
+
+    // 3. 删除收藏
+    'POST /api/Favorite/Delete': (params) => {
+        _favoriteDatabase = _favoriteDatabase.filter(f => f.id !== params.id);
+        return { code: 200, message: '删除成功' };
+    },
+
+    // 4. 更新收藏 (编辑功能)
+    'POST /api/Favorite/Update': (params) => {
+        const target = _favoriteDatabase.find(f => f.id === params.id);
+        if (!target) return { code: 404, message: '收藏不存在' };
+        
+        target.name = params.name;
+        target.goodsList = JSON.parse(JSON.stringify(params.goodsList));
+        return { code: 200, message: '更新成功' };
+    },
+
+    // 5. 收藏加购 (核心：合并逻辑)
+    'POST /api/Favorite/AddToCart': (params) => {
+        const fav = _favoriteDatabase.find(f => f.id === params.id);
+        if (!fav) return { code: 404, message: '收藏不存在' };
+
+        fav.goodsList.forEach(favItem => {
+            // 在购物车中查找是否存在相同 GoodsSkuId 且为调剂药(goodsType=2)
+            const existingCartItem = _cartDatabase.find(c => c.goodsSkuId === favItem.id);
+            
+            if (existingCartItem) {
+                // 合并数量
+                existingCartItem.goodsNum += parseInt(favItem.goodsNum);
+            } else {
+                // 新增购物车条目 (需要补全商品详细信息)
+                const product = dbDispensing.find(p => p.id === favItem.id);
+                if (product) {
+                    _cartDatabase.unshift({
+                        id: 'cart_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000),
+                        goodsSkuId: product.id,
+                        goodsType: 2,
+                        pricePerGram: product.pricePerGram,
+                        goodsName: product.goodsName,
+                        manufacturer: product.manufacturer,
+                        imageUrl: product.imageUrl,
+                        spec: product.spec,
+                        goodsNum: parseInt(favItem.goodsNum)
+                    });
+                }
+            }
+        });
+        
+        return { code: 200, message: '已加入调剂车' };
+    },
+
     // ---------------- 订单接口 (核心闭环) ----------------
 
-    // 1. 结算预览
     'GET /api/Order/GetOrderSettlement': (params) => {
         const address = {
             id: 101, name: '张三', mobile: '13800138000',
@@ -230,7 +314,6 @@ export default {
         };
     },
 
-    // 2. 创建订单 (核心：存入 _orderDatabase)
     'POST /api/Order/CreateOrder': (params) => {
         if (!params.addressId) return { code: 400, message: '请选择收货地址' };
         
@@ -250,10 +333,9 @@ export default {
             _cartDatabase = _cartDatabase.filter(item => !ids.includes(item.id.toString()));
         }
 
-        // 计算总价 (简化逻辑，实际应由后端重算)
+        // 计算总价
         let payPrice = 100.00; 
         if(orderGoods.length > 0) {
-             // 简单累加一下 Mock 价格
              payPrice = orderGoods.reduce((sum, item) => sum + (item.salePrice || item.pricePerGram) * item.goodsNum, 0);
         }
 
@@ -268,11 +350,9 @@ export default {
             createTime: new Date().toLocaleString(),
             buyerRemark: params.buyerRemark || '',
             goodsList: orderGoods,
-            // 如果是调剂单，存入处方信息
             prescriptionInfo: isDispensing ? { days: 3, packs: 2 } : null 
         };
 
-        // 【关键】存入内存数据库，供订单列表查询
         _orderDatabase.unshift(newOrder);
 
         return {
@@ -281,11 +361,10 @@ export default {
         };
     },
 
-    // 3. 订单列表查询 (闭环关键)
+    // 订单列表查询
     'GET /api/Order/Load': (params) => {
         let list = [..._orderDatabase];
         
-        // 筛选逻辑
         if (params.orderType && params.orderType != 0) {
             list = list.filter(item => item.orderType == params.orderType);
         }
@@ -293,14 +372,13 @@ export default {
             list = list.filter(item => item.orderStatus == params.orderStatus);
         }
 
-        // 模拟 Result 结构返回
         return {
             code: 200, message: 'success',
             result: list
         };
     },
 
-    // 4. 订单详情
+    // 订单详情
     'GET /api/Order/GetDetail': (params) => {
         const order = _orderDatabase.find(item => item.id == params.id);
         if (order) {
@@ -308,30 +386,26 @@ export default {
         }
         return { code: 404, message: '订单不存在' };
     },
-	// ... (接在原本的 GetDetail 接口后面)
-	
-	    // 5. [新增] 获取订单各状态数量 (用于更新个人中心角标)
-	    'GET /api/Order/GetOrderCount': () => {
-	        const counts = {
-	            payment: _orderDatabase.filter(o => o.orderStatus === 10).length, // 待付款
-	            delivery: _orderDatabase.filter(o => o.orderStatus === 30).length, // 待发货
-	            received: _orderDatabase.filter(o => o.orderStatus === 40).length, // 待收货
-	            refund: 0 // 退款暂不计算
-	        };
-	        return { code: 200, message: 'success', result: counts };
-	    },
-	
-	    // 6. [新增] 模拟支付接口
-	    'POST /api/Order/Pay': (params) => {
-	        const order = _orderDatabase.find(o => o.id == params.orderId);
-	        if (!order) return { code: 404, message: '订单不存在' };
-	        
-	        if (order.orderStatus !== 10) return { code: 400, message: '订单状态不正确' };
-	
-	        // 修改状态：10(待付款) -> 30(待发货)
-	        order.orderStatus = 30;
-	        order.orderStatusName = '待发货';
-	        
-	        return { code: 200, message: '支付成功' };
-	    }
+
+    // 个人中心数量统计
+    'GET /api/Order/GetOrderGroupCount': () => {
+        const counts = {
+            payment: _orderDatabase.filter(o => o.orderStatus === 10).length,
+            delivery: _orderDatabase.filter(o => o.orderStatus === 30).length,
+            received: _orderDatabase.filter(o => o.orderStatus === 40).length,
+            refund: 0 
+        };
+        return { code: 200, message: 'success', result: counts };
+    },
+
+    // 模拟支付
+    'POST /api/Order/Pay': (params) => {
+        const order = _orderDatabase.find(o => o.id == params.orderId);
+        if (!order) return { code: 404, message: '订单不存在' };
+        if (order.orderStatus !== 10) return { code: 400, message: '订单状态不正确' };
+
+        order.orderStatus = 30;
+        order.orderStatusName = '待发货';
+        return { code: 200, message: '支付成功' };
+    }
 }

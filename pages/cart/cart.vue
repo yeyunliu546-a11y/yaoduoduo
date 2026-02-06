@@ -2,24 +2,14 @@
   <view class="container">
     <view class="tab-header">
       <view class="tab-item" :class="{ active: currentTab === 0 }" @click="switchTab(0)">
-        药品采购
-        <view class="tab-line" v-if="currentTab === 0"></view>
+        药品采购 <view class="tab-line" v-if="currentTab === 0"></view>
       </view>
       <view class="tab-item" :class="{ active: currentTab === 1 }" @click="switchTab(1)">
-        处方调剂
-        <view class="tab-line" v-if="currentTab === 1"></view>
+        处方调剂 <view class="tab-line" v-if="currentTab === 1"></view>
       </view>
     </view>
 
     <view v-show="currentTab === 0">
-        <view class="search-header">
-          <view class="search-input-box">
-            <text class="icon iconfont icon-sousuo search-icon">🔍</text>
-            <input class="search-input" type="text" placeholder="搜索采购商品" placeholder-class="placeholder-style" />
-          </view>
-          <view class="search-btn">搜索</view>
-        </view>
-
         <view v-if="Object.keys(procurementList).length" class="cart-list">
              <view v-for="(items, brandName) in procurementList" :key="brandName" class="brand-group">
                 <view class="brand-header">
@@ -76,7 +66,7 @@
                     <text class="label">服用天数</text>
                     <view class="stepper-box orange">
                         <button class="step-btn" @click="updateDays(-1)">-</button>
-                        <input class="step-input" type="number" v-model="prescriptionDays" @blur="validateDays" />
+                        <input class="step-input" type="number" v-model="prescriptionDays" />
                         <button class="step-btn" @click="updateDays(1)">+</button>
                     </view>
                     <text class="unit">天</text>
@@ -96,7 +86,7 @@
         <view class="prescription-config-card" v-if="dispensingList.length > 0">
             <view class="config-title">医嘱 (选填)</view>
             <view class="advice-box">
-                <textarea class="advice-input" v-model="doctorAdvice" placeholder="请输入医嘱，如：饭后服用..." maxlength="200"></textarea>
+                <textarea class="advice-input" v-model="doctorAdvice" placeholder="请输入医嘱..." maxlength="200"></textarea>
                 <text class="word-count">{{ doctorAdvice.length }}/200</text>
             </view>
         </view>
@@ -126,7 +116,7 @@
                     <text class="unit">g</text>
                 </view>
                 <view class="delete-btn" @click="handleDeleteItem(item)">
-                    <text class="iconfont icon-shanchu">×</text>
+                    <u-icon name="close" color="#ccc"></u-icon>
                 </view>
             </view>
         </view>
@@ -162,14 +152,33 @@
                     <text v-else class="fee-tag free"> (免运费)</text>
                 </view>
             </view>
-            <view class="action-btn orange" @click="handleOrder">立即下单</view>
+            
+            <view class="btn-group">
+                <view class="action-btn outline" @click.stop="openFavModal">收藏方剂</view>
+                <view class="action-btn orange" @click="handleOrder">立即下单</view>
+            </view>
         </view>
     </view>
+
+    <view class="custom-modal-mask" v-if="showFavNameModal" @click.stop="showFavNameModal = false">
+        <view class="custom-modal-content" @click.stop>
+            <view class="modal-title">收藏方剂</view>
+            <view class="modal-input-box">
+                <input class="modal-input" type="text" v-model="favName" placeholder="给方剂起个名 (如: 柴胡疏肝散)" />
+            </view>
+            <view class="modal-footer">
+                <view class="modal-btn cancel" @click="showFavNameModal = false">取消</view>
+                <view class="modal-btn confirm" @click="confirmFavorite">确定收藏</view>
+            </view>
+        </view>
+    </view>
+
   </view>
 </template>
 
 <script>
 import { getCartList, updateCartNum, deleteCart } from '@/api/goods/cart.js';
+import request from '@/utils/request/request.js';
 
 function inArray(val, arr) { return Array.isArray(arr) && arr.includes(val); }
 
@@ -179,37 +188,30 @@ export default {
       inArray,
       currentTab: 0, 
       isLoading: true,
-      
-      // 数据源
       fullCartList: [], 
-      procurementList: {}, // 采购
-      dispensingList: [],  // 调剂
-      
+      procurementList: {}, 
+      dispensingList: [],  
       checkedIds: [],
-      
-      // 处方配置
       prescriptionDays: 3, 
       prescriptionPacks: 2,
       doctorAdvice: '', 
+      debounceTimers: {},
       
-      debounceTimers: {}
+      // 收藏相关
+      showFavNameModal: false,
+      favName: ''
     }
   },
   computed: {
-    // --- 采购相关计算 ---
     allProcurementIds() { return Object.values(this.procurementList).flat().map(item => item.id); },
     isAllChecked() { return this.allProcurementIds.length > 0 && this.checkedIds.length === this.allProcurementIds.length; },
     totalPriceProcurement() {
         let total = 0;
         Object.values(this.procurementList).flat().forEach(item => {
-            if (this.inArray(item.id, this.checkedIds)) {
-                total += Number(item.salePrice) * Number(item.goodsNum);
-            }
+            if (this.inArray(item.id, this.checkedIds)) total += Number(item.salePrice) * Number(item.goodsNum);
         });
         return total.toFixed(2);
     },
-
-    // --- 调剂相关计算 ---
     singleDosePrice() {
         let total = 0;
         this.dispensingList.forEach(item => {
@@ -226,28 +228,21 @@ export default {
     this.loadData();
   },
   methods: {
-    switchTab(index) {
-        this.currentTab = index;
-    },
-
+    switchTab(index) { this.currentTab = index; },
     loadData() {
         this.isLoading = true;
-        // 获取所有数据，前端分类
         getCartList({ limit: 100 }).then(res => {
             this.isLoading = false;
             if(res.code === 200) {
-                const list = res.data?.list || res.result || []; // 兼容 result
+                const list = res.data?.list || res.result || [];
                 this.fullCartList = list;
-                
                 const procurement = list.filter(item => item.goodsType == 1 || !item.goodsType);
                 const dispensing = list.filter(item => item.goodsType == 2);
-                
                 this.procurementList = this.groupCartByBrand(procurement);
                 this.dispensingList = dispensing;
             }
         }).catch(() => { this.isLoading = false; });
     },
-
     groupCartByBrand(list) {
         const groups = {};
         list.forEach(item => {
@@ -257,8 +252,6 @@ export default {
         });
         return groups;
     },
-
-    // --- 处方配置 ---
     updateDays(delta) {
         let newVal = this.prescriptionDays + delta;
         if (newVal < 1) newVal = 1; if (newVal > 99) newVal = 99;
@@ -274,8 +267,6 @@ export default {
         const ids = this.dispensingList.map(item => item.id);
         this.execDelete(ids, '确定清空当前处方吗？');
     },
-
-    // --- 交互逻辑 ---
     changeQty(item, delta) {
         const newNum = item.goodsNum + delta;
         if (newNum < 1) return uni.showToast({ title: '不能再少了', icon: 'none' });
@@ -283,41 +274,28 @@ export default {
         item.goodsNum = newNum;
         if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
         this.debounceTimers[item.id] = setTimeout(() => {
-            updateCartNum({ goodsSkuId: item.goodsSkuId || item.id, goodsNum: newNum })
-                .catch(() => item.goodsNum = oldNum);
+            updateCartNum({ goodsSkuId: item.goodsSkuId || item.id, goodsNum: newNum }).catch(() => item.goodsNum = oldNum);
         }, 500);
     },
-
-    // --- 勾选逻辑 (采购车) ---
     handleCheckItem(id) {
         const idx = this.checkedIds.indexOf(id);
-        if (idx === -1) this.checkedIds.push(id);
-        else this.checkedIds.splice(idx, 1);
+        if (idx === -1) this.checkedIds.push(id); else this.checkedIds.splice(idx, 1);
     },
-    
-    // [关键修复] 添加了 isBrandChecked 方法
     isBrandChecked(items) {
         if (!items || items.length === 0) return false;
         return items.every(i => this.checkedIds.includes(i.id));
     },
-
     handleCheckBrand(brandName, items) {
         const ids = items.map(i => i.id);
-        // 复用 isBrandChecked 判断状态
         const allChecked = this.isBrandChecked(items);
         if (allChecked) this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
         else this.checkedIds.push(...ids.filter(id => !this.checkedIds.includes(id)));
     },
-
     handleCheckAll() {
-        if (this.isAllChecked) this.checkedIds = [];
-        else this.checkedIds = [...this.allProcurementIds];
+        if (this.isAllChecked) this.checkedIds = []; else this.checkedIds = [...this.allProcurementIds];
     },
-
-    // --- 删除逻辑 ---
     handleDeleteItem(item) { this.execDelete([item.id], '确定移除该商品吗？'); },
     handleDeleteBrand(brandName, items) { this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); },
-    
     execDelete(ids, content) {
         uni.showModal({
             title: '提示', content,
@@ -334,13 +312,10 @@ export default {
             }
         });
     },
-
     handleOrder() {
         if (this.currentTab === 0) {
             if (this.checkedIds.length === 0) return uni.showToast({ title: '请选择商品', icon: 'none' });
-            uni.navigateTo({
-                url: `/pages/order/create?type=procurement&cartIds=${this.checkedIds.join(',')}`
-            });
+            uni.navigateTo({ url: `/pages/order/create?type=procurement&cartIds=${this.checkedIds.join(',')}` });
         } else {
             if (this.dispensingList.length === 0) return uni.showToast({ title: '处方为空', icon: 'none' });
             const allIds = this.dispensingList.map(item => item.id).join(',');
@@ -350,16 +325,52 @@ export default {
             });
         }
     },
-    onTargetIndex() { uni.switchTab({ url: '/pages/category/category' }); }
+    onTargetIndex() { uni.switchTab({ url: '/pages/category/category' }); },
+
+    // --- 收藏弹窗逻辑 ---
+    openFavModal() {
+        if (this.dispensingList.length === 0) {
+            return uni.showToast({ title: '处方为空', icon: 'none' });
+        }
+        this.favName = '';
+        this.showFavNameModal = true;
+    },
+    confirmFavorite() {
+        if (!this.favName.trim()) {
+            return uni.showToast({ title: '请输入名称', icon: 'none' });
+        }
+        
+        uni.showLoading({ title: '收藏中...' });
+        const goodsList = this.dispensingList.map(item => ({
+            id: item.goodsSkuId || item.id, 
+            goodsName: item.goodsName,
+            goodsNum: item.goodsNum,
+            manufacturer: item.manufacturer
+        }));
+
+        request({
+            url: '/api/Favorite/Add',
+            method: 'POST',
+            data: { name: this.favName, goodsList }
+        }).then(res => {
+            uni.hideLoading();
+            if(res.code === 200) {
+                uni.showToast({ title: '收藏成功', icon: 'success' });
+                this.showFavNameModal = false;
+            }
+        }).catch(() => uni.hideLoading());
+    }
   }
 }
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式，无需修改 */
+/* 保持原有布局样式 */
 .container { min-height: 100vh; padding-bottom: 220rpx; background: #f5f5f5; }
 .tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 20; border-bottom: 1px solid #f0f0f0; .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; &.active { color: #2979ff; font-weight: bold; } .tab-line { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: #2979ff; border-radius: 3rpx; } } }
-.search-header { display: flex; align-items: center; padding: 20rpx 30rpx; background: #fff; .search-input-box { flex: 1; height: 72rpx; background: #f8f8f8; border-radius: 36rpx; display: flex; align-items: center; padding: 0 24rpx; .search-input { flex: 1; font-size: 28rpx; } } .search-btn { margin-left: 20rpx; color: #2979ff; font-size: 28rpx; } }
+
+/* .search-header 已移除 */
+
 .cart-list { padding: 20rpx; }
 .brand-group { background: #fff; border-radius: 16rpx; margin-bottom: 20rpx; padding-bottom: 10rpx; overflow: hidden;}
 .brand-header { display: flex; justify-content: space-between; padding: 20rpx; border-bottom: 1px solid #f5f5f5; background: #fff; .brand-left { display: flex; align-items: center; font-weight: bold; font-size: 28rpx; } .delete-brand-btn { font-size: 24rpx; color: #999; } }
@@ -367,8 +378,34 @@ export default {
 .stepper-box { display: flex; border: 1px solid #ddd; border-radius: 8rpx; background: #fff; .step-btn { width: 50rpx; height: 44rpx; line-height: 44rpx; background: #f9f9f9; padding: 0; margin: 0; font-size: 28rpx; display: flex; align-items: center; justify-content: center; &::after{border:none} } .step-input { width: 70rpx; height: 44rpx; text-align: center; font-size: 26rpx; border-left: 1px solid #eee; border-right: 1px solid #eee; } &.orange { border-color: #ffaa00; .step-btn { color: #ffaa00; background: #fffbf0; } .step-input { color: #ffaa00; } } }
 .prescription-config-card { margin: 20rpx; padding: 24rpx; background: #fff; border-radius: 16rpx; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.03); .config-title { font-weight: bold; font-size: 30rpx; margin-bottom: 20rpx; border-left: 6rpx solid #ffaa00; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; } .config-item { display: flex; align-items: center; background: #fdfdfd; padding: 16rpx; border-radius: 12rpx; border: 1px solid #f0f0f0; .label { margin-right: 16rpx; font-size: 28rpx; color: #555; } .unit { margin-left: 10rpx; font-size: 24rpx; color: #999; } } .advice-box { position: relative; .advice-input { width: 100%; height: 160rpx; background: #f9f9f9; border-radius: 8rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box;} .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
 .dispensing-list { margin: 20rpx; background: #fff; border-radius: 16rpx; overflow: hidden; .list-title { display: flex; justify-content: space-between; padding: 24rpx; background: #fffbf0; color: #d48806; font-size: 28rpx; .clear-btn { color: #999; font-size: 24rpx; text-decoration: underline; } } .herb-item { display: flex; align-items: center; padding: 24rpx; border-bottom: 1px solid #f5f5f5; .herb-info { flex: 1; .name-row { margin-bottom: 6rpx; .name { font-size: 30rpx; font-weight: bold; margin-right: 10rpx; } .factory { font-size: 22rpx; color: #999; background: #f5f5f5; padding: 2rpx 6rpx; border-radius: 4rpx;} } .price-row { font-size: 24rpx; color: #999; } } .weight-control { display: flex; align-items: center; .label { font-size: 24rpx; color: #666; margin-right: 8rpx; } .unit { font-size: 24rpx; color: #333; margin-left: 8rpx; width: 20rpx;} } .delete-btn { width: 60rpx; text-align: right; color: #ccc; } } }
-.footer-wrapper { position: fixed; bottom: 0; left: 0; right: 0; /* #ifdef H5 */ bottom: var(--window-bottom); /* #endif */ z-index: 99; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
-.footer-fixed { display: flex; align-items: center; height: 100rpx; padding: 0 30rpx; .all-radio { display: flex; align-items: center; margin-right: 20rpx; .select-text { margin-left: 10rpx; font-size: 26rpx;} } .total-info { flex: 1; display: flex; align-items: baseline; justify-content: flex-end; padding-right: 20rpx; .label { font-size: 26rpx; } .goods-price { color: #ff4400; font-size: 36rpx; font-weight: bold; .unit{font-size: 24rpx;} } } .action-btn { width: 220rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: #2979ff; color: #fff; border-radius: 38rpx; font-size: 28rpx; font-weight: bold; &.orange { background: linear-gradient(90deg, #ffaa00, #ff4400); } } }
-.dispensing-footer { justify-content: space-between; .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ff4400; font-size: 24rpx; } .price-val { color: #ff4400; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #666; margin-top: 4rpx; .fee-tag { color: #ff4400; &.free { color: #52c41a; } } } } }
+.footer-wrapper { position: fixed; bottom: 0; left: 0; right: 0; bottom: var(--window-bottom); z-index: 99; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
+.footer-fixed { display: flex; align-items: center; height: 100rpx; padding: 0 30rpx; .all-radio { display: flex; align-items: center; margin-right: 20rpx; .select-text { margin-left: 10rpx; font-size: 26rpx;} } .total-info { flex: 1; display: flex; align-items: baseline; justify-content: flex-end; padding-right: 20rpx; .label { font-size: 26rpx; } .goods-price { color: #ff4400; font-size: 36rpx; font-weight: bold; .unit{font-size: 24rpx;} } } 
+    .action-btn { width: 220rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: #2979ff; color: #fff; border-radius: 38rpx; font-size: 28rpx; font-weight: bold; 
+        &.outline { background: #fff; border: 1px solid #2979ff; color: #2979ff; margin-right: 20rpx; }
+        &.orange { background: linear-gradient(90deg, #ffaa00, #ff4400); } 
+    } 
+}
+.dispensing-footer { justify-content: space-between; .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ff4400; font-size: 24rpx; } .price-val { color: #ff4400; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #666; margin-top: 4rpx; .fee-tag { color: #ff4400; &.free { color: #52c41a; } } } } .btn-group { display: flex; align-items: center; } }
 .empty-cart { text-align: center; padding-top: 100rpx; .go-shop { margin-top: 40rpx; width: 200rpx; font-size: 28rpx; background: #fff; border: 1px solid #ccc; color: #666;} }
+
+/* 🌟【终极修复】手动编写的 CSS 弹窗，绝对不会跑偏 🌟 */
+.custom-modal-mask {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10000; /* 极高层级 */
+    display: flex; justify-content: center; align-items: center;
+}
+.custom-modal-content {
+    width: 600rpx; background: #fff; border-radius: 20rpx; padding: 40rpx;
+    animation: modal-pop 0.2s ease-out;
+}
+@keyframes modal-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.modal-title { text-align: center; font-size: 34rpx; font-weight: bold; margin-bottom: 40rpx; color: #333; }
+.modal-input-box { margin-bottom: 40rpx; }
+.modal-input { height: 80rpx; background: #f5f5f5; padding: 0 20rpx; border-radius: 10rpx; font-size: 28rpx; }
+.modal-footer { display: flex; justify-content: space-between; gap: 30rpx; }
+.modal-btn { flex: 1; height: 80rpx; line-height: 80rpx; text-align: center; border-radius: 40rpx; font-size: 30rpx; }
+.modal-btn.cancel { background: #f5f5f5; color: #666; }
+.modal-btn.confirm { background: #2979ff; color: #fff; }
 </style>
