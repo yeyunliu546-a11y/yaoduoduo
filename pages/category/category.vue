@@ -57,15 +57,9 @@
 				<view class="fixed-header">
 					<view class="sort-toolbar">
 						<view class="sort-btn" :class="{active: currentSort === 'default'}" @click="onSort('default')">综合</view>
-						
 						<view class="sort-btn" :class="{active: currentSort === 'sales'}" @click="onSort('sales')">
-							销量 
-							<view class="css-icon-box">
-								<view class="css-arrow up" :class="{active: currentSort === 'sales' && sortOrder === 'asc'}"></view>
-								<view class="css-arrow down" :class="{active: currentSort === 'sales' && sortOrder === 'desc'}"></view>
-							</view>
+							销量 <view class="css-icon-box"><view class="css-arrow down" :class="{active: currentSort === 'sales'}"></view></view>
 						</view>
-						
 						<view class="sort-btn" :class="{active: currentSort === 'price'}" @click="onSort('price')">
 							价格 
 							<view class="css-icon-box">
@@ -73,7 +67,6 @@
 								<view class="css-arrow down" :class="{active: currentSort === 'price' && sortOrder === 'desc'}"></view>
 							</view>
 						</view>
-						
 						<view class="sort-btn filter-btn" @click="openFilter">
 							筛选 <u-icon name="list" size="28" color="#666" style="margin-left: 8rpx;"></u-icon>
 						</view>
@@ -102,7 +95,7 @@
 									{{ item.goodsName }}
 								</view>
 								<view class="item-desc">
-                                    <text>规格: {{ item.spec }}</text>
+                                    <text>规格: {{ item.specification || item.spec || '--' }}</text>
                                     <text class="ml-10">厂家: {{ item.manufacturer }}</text>
                                 </view>
 								<view class="item-tags">
@@ -112,12 +105,13 @@
 								<view class="item-price-row">
 									<view class="price-box">
                                         <text class="price-symbol">¥</text>
-										<text class="price-num">{{ item.pricePerGram || item.salePrice }}</text>
+										<text v-if="businessType === 'dispensing'" class="price-num">{{ item.pricePerGram }}</text>
+										<text v-else class="price-num">{{ item.salePrice }}</text>
+										
 										<text v-if="businessType === 'dispensing'" class="unit-text">/g</text>
-                                        <view class="vip-tag" v-else>协议价</view>
                                     </view>
 									<view class="cart-box" @tap.stop="addToCart(item)">
-                                        <text class="sales">已售{{ item.sales || 0 }}</text>
+                                        <text class="sales">已售{{ (item.salesActual || 0) + (item.salesInitial || 0) }}</text>
 										<view class="add-btn-circle" :class="{ 'dispensing-btn': businessType === 'dispensing' }">+</view>
                                     </view>
 								</view>
@@ -131,63 +125,42 @@
 		</view>
 
 		<view class="custom-mask" v-if="showFilter" @click="closeFilter" @touchmove.stop.prevent></view>
-		
 		<view class="custom-drawer" :class="{ 'show': showFilter }" @touchmove.stop.prevent>
 			<view class="drawer-container">
 				<view class="drawer-header">筛选</view>
-				
 				<scroll-view scroll-y class="drawer-scroll">
 					<view class="drawer-content">
 						<view class="filter-block" v-if="filterOptions.packageTypes && filterOptions.packageTypes.length > 0">
 							<view class="block-title">包装类型</view>
 							<view class="tag-box">
-								<view 
-									class="tag-item" 
-									:class="{ active: tempFilter.packageType === item }"
-									v-for="(item, index) in filterOptions.packageTypes" 
-									:key="`pkg-${index}`"
-									@tap="onTempSelect('packageType', item)"
-								>
-									{{ item }}
-								</view>
+								<view class="tag-item" :class="{ active: tempFilter.packageType === item }" v-for="(item, index) in filterOptions.packageTypes" :key="`pkg-${index}`" @tap="onTempSelect('packageType', item)">{{ item }}</view>
 							</view>
 						</view>
-
 						<view class="filter-block" v-if="filterOptions.standards && filterOptions.standards.length > 0">
 							<view class="block-title">执行标准</view>
 							<view class="tag-box">
-								<view 
-									class="tag-item" 
-									:class="{ active: tempFilter.standard === item }"
-									v-for="(item, index) in filterOptions.standards" 
-									:key="`std-${index}`"
-									@tap="onTempSelect('standard', item)"
-								>
-									{{ item }}
-								</view>
+								<view class="tag-item" :class="{ active: tempFilter.standard === item }" v-for="(item, index) in filterOptions.standards" :key="`std-${index}`" @tap="onTempSelect('standard', item)">{{ item }}</view>
 							</view>
 						</view>
 					</view>
 				</scroll-view>
-
 				<view class="drawer-footer">
 					<view class="drawer-btn reset" @click="resetFilter">重置</view>
 					<view class="drawer-btn confirm" @click="confirmFilter">确定</view>
 				</view>
 			</view>
 		</view>
-
 	</view>
 </template>
 
 <script>
 	import * as GoodsApi from '@/api/goods/goods.js';
-	import { addCart } from '@/api/goods/cart.js';
+	import { addCart, addPrescriptionCart } from '@/api/goods/cart.js'; // 【修改】引入两个加购接口
 
 	export default {
 		data() {
 			return {
-				businessType: 'procurement',
+				businessType: 'procurement', // 'procurement' | 'dispensing'
 				keyword: '', 
 				filterOptions: { manufacturers: [], packageTypes: [], standards: [] },
 				selectedFilter: { manufacturer: '', packageType: '', standard: '' },
@@ -206,17 +179,12 @@
 			this.loadGoodsData(true);
 		},
 		methods: {
-			// 打开筛选
 			openFilter() {
 				this.tempFilter.packageType = this.selectedFilter.packageType;
 				this.tempFilter.standard = this.selectedFilter.standard;
 				this.showFilter = true;
 			},
-			
-			// 关闭筛选
-			closeFilter() {
-				this.showFilter = false;
-			},
+			closeFilter() { this.showFilter = false; },
 
 			switchBusiness(type) {
 				if (this.businessType === type) return;
@@ -231,7 +199,7 @@
 			},
 
 			loadFilterOptions() {
-				GoodsApi.getFilterOptions({ businessType: this.businessType }).then(res => {
+				GoodsApi.getFilterOptions({}).then(res => {
                     if(res.code === 200 && res.result) this.filterOptions = res.result;
 				});
 			},
@@ -242,20 +210,32 @@
 				}
 				this.isLoading = true;
 
-                // [核心修复] 将业务字符串转换为后端需要的 goodsType (1或2)
-                const targetGoodsType = this.businessType === 'dispensing' ? 2 : 1;
+                // 排序转换
+                let sortType = 10;
+                if (this.currentSort === 'price') {
+                    sortType = this.sortOrder === 'asc' ? 30 : 20;
+                } else if (this.currentSort === 'sales') {
+                    sortType = 60; 
+                }
+
+                // 【关键修改】根据 businessType 映射 goodsType 参数
+                // 采购药品(procurement) -> 1
+                // 调剂药品(dispensing)  -> 2
+                const goodsType = this.businessType === 'dispensing' ? 2 : 1;
 
                 const params = {
-                    page: this.page, limit: this.limit, keyword: this.keyword,
-					goodsType: targetGoodsType, // 传入 goodsType
+                    page: this.page, 
+                    limit: this.limit, 
+                    key: this.keyword,
+                    goodsType: goodsType, // 【恢复】传递 goodsType 以区分数据源
                     manufacturer: this.selectedFilter.manufacturer,
                     packageType: this.selectedFilter.packageType,
                     standard: this.selectedFilter.standard,
-                    sortField: this.currentSort, sortOrder: this.sortOrder
+                    sortType: sortType 
                 };
 
 				GoodsApi.getGoodsListByWhere(params).then(res => {
-					const list = res.data?.list || res.result || [];
+					const list = res.result || res.data?.list || [];
 					this.goodsList = [...this.goodsList, ...list];
 					this.isLoading = false;
                     this.loadStatus = list.length < this.limit ? 'nomore' : 'loadmore';
@@ -269,17 +249,10 @@
 				this.selectedFilter.manufacturer = name;
 				this.loadGoodsData(true);
 			},
-
 			onTempSelect(key, value) {
-				if (this.tempFilter[key] === value) {
-					this.tempFilter[key] = '';
-				} else {
-					this.tempFilter[key] = value;
-				}
+				this.tempFilter[key] = this.tempFilter[key] === value ? '' : value;
 			},
-			resetFilter() {
-				this.tempFilter = { packageType: '', standard: '' };
-			},
+			resetFilter() { this.tempFilter = { packageType: '', standard: '' }; },
 			confirmFilter() {
 				this.selectedFilter.packageType = this.tempFilter.packageType;
 				this.selectedFilter.standard = this.tempFilter.standard;
@@ -288,10 +261,13 @@
 			},
 
             onSort(type) {
-                if (this.currentSort === type) {
-                    this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+                if (type === 'sales') {
+                    this.currentSort = 'sales'; this.sortOrder = 'desc';
+                } else if (type === 'price') {
+                    if (this.currentSort === 'price') this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+                    else { this.currentSort = 'price'; this.sortOrder = 'desc'; }
                 } else {
-                    this.currentSort = type; this.sortOrder = 'desc'; 
+                    this.currentSort = 'default';
                 }
                 this.loadGoodsData(true);
             },
@@ -300,31 +276,52 @@
                 this.currentSort = 'default';
 				this.loadGoodsData(true);
 			},
-            onClearSearch() {
-                this.keyword = '';
-                this.loadGoodsData(true);
-            },
+            onClearSearch() { this.keyword = ''; this.loadGoodsData(true); },
 			onReachBottomRight() {
                 if(this.loadStatus === 'nomore') return;
                 this.page++;
                 this.loadGoodsData();
 			},
 			goToDetail(id) { uni.navigateTo({ url: `/pages/good/detail?id=${id}` }); },
+            
+            // 【核心修改】加入购物车逻辑分流
             addToCart(item) {
                 uni.showLoading({ title: '加入中' });
-                // 加入购物车时也携带 goodsType，虽然目前mock会自动判断，但传过去更稳
-                const type = this.businessType === 'dispensing' ? 2 : 1;
-                addCart({ goodsSkuId: item.id, goodsNum: 1, goodsType: type }).then(res => {
-                    uni.hideLoading();
-                    if(res.code === 200) uni.showToast({ title: '已加入', icon: 'success' });
-                    else uni.showToast({ title: res.message || '失败', icon: 'none' });
-                }).catch(() => { uni.hideLoading(); uni.showToast({ title: '失败', icon: 'none' }); });
+                
+                if (this.businessType === 'dispensing') {
+                    // --- 处方调剂业务 (GoodsType = 2) ---
+                    // 文档 5.1.1 接口参数: { goodsSkuId, goodsWeight }
+                    // 暂时默认加入 10g (因为列表页直接点击+号无法输入重量，实际业务可能需要弹窗)
+                    const params = {
+                        goodsSkuId: item.id, // 假设 item.id 为 SKU ID
+                        goodsWeight: 10      // 默认加 10g，后续可在购物车修改
+                    };
+                    addPrescriptionCart(params).then(res => {
+                        uni.hideLoading();
+                        if(res.code === 200) uni.showToast({ title: '已加10g', icon: 'success' });
+                        else uni.showToast({ title: res.message || '失败', icon: 'none' });
+                    });
+
+                } else {
+                    // --- 药品采购业务 (GoodsType = 1) ---
+                    // 文档: /api/Cart/AddCart, 参数: { goodsSkuId, goodsNum }
+                    const params = {
+                        goodsSkuId: item.id,
+                        goodsNum: 1
+                    };
+                    addCart(params).then(res => {
+                        uni.hideLoading();
+                        if(res.code === 200) uni.showToast({ title: '已加入', icon: 'success' });
+                        else uni.showToast({ title: res.message || '失败', icon: 'none' });
+                    });
+                }
             }
 		}
 	}
 </script>
 
 <style lang="scss" scoped>
+    /* 样式部分保持不变，省略以节省空间 */
 	page { height: 100vh; overflow: hidden; background-color: #f8f8f8; }
 	.u-wrap { height: calc(100vh - var(--window-top)); display: flex; flex-direction: column; overflow: hidden; }
 

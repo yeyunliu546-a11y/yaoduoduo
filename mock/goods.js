@@ -87,41 +87,66 @@ export default {
     // ---------------- 商品接口 ----------------
     
     // 1. 查询商品列表
-    'GET /api/Goods/ListByWhere': (params) => {
-        let sourceData = [...dbProcurement, ...dbDispensing];
-        
-        let filteredList = sourceData.filter(item => {
-            let match = true;
-            if (params.goodsType) match = match && item.goodsType == params.goodsType;
-            if (params.manufacturer) match = match && item.manufacturer === params.manufacturer;
-            if (params.packageType) match = match && item.packageType === params.packageType;
-            if (params.standard) match = match && item.standard === params.standard;
-            if (params.keyword) {
-                const kw = params.keyword.trim();
-                match = match && (item.goodsName.includes(kw) || (item.manufacturer && item.manufacturer.includes(kw)));
+    // 1. 查询商品列表 (【修改】改为拦截 /api/Goods/Load)
+        'GET /api/Goods/Load': (params) => {
+            let filteredList = allGoods.filter(item => {
+                let match = true;
+                // 兼容 logic: 虽然文档没 goodsType，但如果前端传了，mock 还是照样过滤
+                if (params.goodsType) match = match && item.goodsType == params.goodsType;
+                if (params.manufacturer) match = match && item.manufacturer === params.manufacturer;
+                if (params.packageType) match = match && item.packageType === params.packageType;
+                if (params.standard) match = match && item.standard === params.standard;
+                
+                // 关键词搜索 (Key 对应文档)
+                const keyword = params.key || params.keyword;
+                if (keyword) {
+                    const kw = keyword.trim();
+                    match = match && (item.goodsName.includes(kw) || (item.manufacturer && item.manufacturer.includes(kw)));
+                }
+                return match;
+            });
+            
+            // 排序逻辑 (文档: 20=价格降, 30=价格升, 60=销量降)
+            const sortType = parseInt(params.sortType) || 10;
+            if (sortType === 60) {
+                // 销量降序
+                filteredList.sort((a, b) => (b.salesActual + b.salesInitial) - (a.salesActual + a.salesInitial));
+            } else if (sortType === 20) {
+                // 价格降序
+                filteredList.sort((a, b) => b.salePrice - a.salePrice);
+            } else if (sortType === 30) {
+                // 价格升序
+                filteredList.sort((a, b) => a.salePrice - b.salePrice);
             }
-            return match;
-        });
-        
-        if (params.sortField === 'sales') {
-            const factor = params.sortOrder === 'asc' ? 1 : -1;
-            filteredList.sort((a, b) => (a.sales - b.sales) * factor);
-        } else if (params.sortField === 'price') {
-            const factor = params.sortOrder === 'asc' ? 1 : -1;
-            const getPrice = (p) => p.pricePerGram || p.salePrice;
-            filteredList.sort((a, b) => (getPrice(a) - getPrice(b)) * factor);
-        }
-
-        const page = parseInt(params.page) || 1;
-        const limit = parseInt(params.limit) || 10;
-        const start = (page - 1) * limit;
-        return {
-            code: 200, message: 'success',
-            data: { total: filteredList.length, list: filteredList.slice(start, start + limit) }
-        };
-    },
     
-    // 2. 获取筛选选项
+            const page = parseInt(params.page) || 1;
+            const limit = parseInt(params.limit) || 10;
+            const start = (page - 1) * limit;
+            
+            return {
+                code: 200, message: 'success',
+                // 兼容 result 为数组或 {list:[]}，文档说是数组，但有的后端习惯包一层，这里给 { list } 更稳妥，前端做了兼容
+                result: filteredList.slice(start, start + limit), 
+                count: filteredList.length
+            };
+        },
+		// 2. 商品详情 (【新增】因为你 detail.vue 改为了 /api/Goods/Get)
+		    'GET /api/Goods/Get': (params) => {
+		        const id = params.id;
+		        const item = allGoods.find(p => p.id == id);
+		        if (item) {
+		            return {
+		                code: 200, message: 'success',
+		                result: {
+		                    ...item,
+		                    listSku: [{ ...item, skuName: item.spec, stockNum: 999 }] // 模拟 SKU
+		                }
+		            };
+		        }
+		        return { code: 404, message: '商品未找到' };
+		    },
+    
+    // 3. 获取筛选选项
     'GET /api/Goods/GetFilterOptions': (params) => {
         const isDispensing = params.businessType === 'dispensing' || params.goodsType == 2;
         const targetDB = isDispensing ? dbDispensing : dbProcurement;
