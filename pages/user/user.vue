@@ -7,13 +7,14 @@
 				</view>
 				<view class="user-content">
 					<view class="nick-name oneline-hide" @click="handlePersonal()">{{ userInfo.nickName }}</view>
+					
 					<view v-if="userInfo.grade_id > 0 && userInfo.grade" class="user-grade">
 						<view class="user-grade_icon">
 							<image class="image" src="https://via.placeholder.com/32"></image>
 						</view>
 						<view class="user-grade_name"><text>{{ userInfo.grade.name }}</text></view>
 					</view>
-					<view v-else class="mobile">{{ userInfo.phone }}</view>
+					<view v-else class="mobile">{{ userInfo.phone || '暂无手机号' }}</view>
 				</view>
 			</view>
 		</view>
@@ -91,6 +92,8 @@
 import AvatarImage from '@/components/avatar-image/avatar-image.vue'
 import Recommend from '@/pages/good/components/Recommend'
 import request from '@/utils/request/request.js'
+// 【修改点1】引入 API 方法
+import { getDetail, assets } from '@/api/user/user.js'
 
 const orderNavbar = [{
 	id: 'all', name: '全部订单', bigOrderStatus: 0, icon: 'quanbudingdan'
@@ -104,10 +107,8 @@ const orderNavbar = [{
 	id: 'countWaitComment', name: '待评价', bigOrderStatus: 4, icon: 'daipingjia', count: 0
 }]
 
-// 服务列表
 const service = [
     { id: 'address', name: '收货地址', icon: 'dizhi', type: 'link', url: '/pages/address/index' },
-    // 这里的 icon 属性不再重要，因为 id='fav' 会触发上面的图片渲染
     { id: 'fav', name: '调剂收藏夹', icon: 'star', type: 'link', url: '/pages/favorite/index' },
     { id: 'coupon', name: '领券中心', icon: 'lingquanzhongxin', type: 'link', url: '/pages/coupon/index' },
     { id: 'myCoupon', name: '优惠券', icon: 'youhuiquan', type: 'link', url: '/pages/my-coupon/index' },
@@ -125,15 +126,16 @@ export default {
 			platform: 'H5',
 			service,
 			setting: { pointsName: '积分' },
+            // 【修改点2】默认数据设为空或默认值，不写死假数据
 			userInfo: {
 				urlAvater: '/static/default-avatar.png',
-				nickName: '微信用户',
-				grade_id: 1,
-				grade: { name: '黄金会员' },
-				phone: '138****8888',
-				balance: '100.00',
-				points: 500,
-				countCoupon: 3,
+				nickName: '点击登录',
+				grade_id: 0,
+				grade: null,
+				phone: '',
+				balance: '0.00',
+				points: 0,
+				countCoupon: 0,
 			},
 			orderNavbar
 		}
@@ -143,22 +145,106 @@ export default {
         this.platform = info.uniPlatform;
     },
 	onShow() {
-        this.loadOrderCounts();
+        // 【修改点3】页面显示时，刷新用户数据
+        this.initData();
 	},
 	methods: {
-		handlePersonal() { this.$navTo('pages/user/personal/index') },
-		onTargetWallet() { this.$navTo('pages/wallet/recharge/index') },
-		onTargetOrder(item) { uni.navigateTo({ url: `/pages/order/order?status=${item.bigOrderStatus}` }) },
-		onTargetPoints() { this.$navTo('pages/points/log') },
-		onTargetMyCoupon() { this.$navTo('pages/my-coupon/index') },
+        // 【新增方法】初始化所有数据
+        initData() {
+            const token = uni.getStorageSync('token');
+            if (!token) {
+                this.resetUserInfo();
+                return;
+            }
+            
+            // 1. 获取用户信息
+            getDetail().then(res => {
+                if(res.code === 200 && res.result) {
+                    const info = res.result;
+                    // 字段兼容处理，防止后端字段名不一致
+                    this.userInfo.nickName = info.nickName || info.nickname || '微信用户';
+                    this.userInfo.urlAvater = info.avatar || info.urlAvater || info.avatarUrl || '/static/default-avatar.png';
+                    this.userInfo.grade_id = info.grade_id || 0;
+                    this.userInfo.grade = info.grade || null;
+                    this.userInfo.phone = info.mobile || info.phone || '';
+                }
+            });
+
+            // 2. 获取资产信息 (余额、积分、优惠券)
+            assets().then(res => {
+                if(res.code === 200 && res.result) {
+                    const asset = res.result;
+                    this.userInfo.balance = asset.balance || '0.00';
+                    this.userInfo.points = asset.points || 0;
+                    // 后端可能返回 coupon 或 countCoupon 或 coupon_num
+                    this.userInfo.countCoupon = asset.coupon || asset.countCoupon || asset.coupon_num || 0;
+                }
+            });
+
+            // 3. 获取订单数量
+            this.loadOrderCounts();
+        },
+
+        // 重置为未登录状态
+        resetUserInfo() {
+             this.userInfo = {
+                urlAvater: '/static/default-avatar.png',
+                nickName: '点击登录',
+                grade_id: 0,
+                grade: null,
+                phone: '',
+                balance: '0.00',
+                points: 0,
+                countCoupon: 0,
+            };
+            // 清空订单角标
+            this.orderNavbar.forEach(item => item.count = 0);
+        },
+
+		handlePersonal() { 
+            if(!uni.getStorageSync('token')) {
+                uni.navigateTo({ url: '/pages/login/index' });
+                return;
+            }
+            this.$navTo('pages/user/personal/index') 
+        },
+		onTargetWallet() { 
+            if(!this.checkLogin()) return;
+            this.$navTo('pages/wallet/recharge/index') 
+        },
+		onTargetOrder(item) { 
+            if(!this.checkLogin()) return;
+            uni.navigateTo({ url: `/pages/order/order?status=${item.bigOrderStatus}` }) 
+        },
+		onTargetPoints() { 
+            if(!this.checkLogin()) return;
+            this.$navTo('pages/points/log') 
+        },
+		onTargetMyCoupon() { 
+            if(!this.checkLogin()) return;
+            this.$navTo('pages/my-coupon/index') 
+        },
 		handleService(item) {
 		  if (item.id === 'contact' && this.platform !== 'mp-weixin') {
 		      uni.showToast({title: '请在微信小程序中使用', icon: 'none'});
 		      return;
 		  }
-		  if(item.url) uni.navigateTo({ url: item.url });
+		  if(item.url) {
+              if(!this.checkLogin()) return;
+              uni.navigateTo({ url: item.url });
+          }
 		},
+        
+        checkLogin() {
+             if(!uni.getStorageSync('token')) {
+                uni.navigateTo({ url: '/pages/login/index' });
+                return false;
+            }
+            return true;
+        },
+
         loadOrderCounts() {
+            if(!uni.getStorageSync('token')) return;
             request({
                 url: '/api/Order/GetOrderGroupCount',
                 method: 'GET'
@@ -179,7 +265,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持所有样式不变，只修改了 Template 里的图片路径逻辑 */
+/* 保持原有样式不变 */
 .main-header { background-color: #fff; position: relative; width: 100%; height: 280rpx; display: flex; align-items: center; padding-left: 30rpx;
 	.user-info { display: flex; height: 100rpx; z-index: 1;
 		.user-content { display: flex; flex-direction: column; justify-content: center; margin-left: 30rpx; color: #c59a46;

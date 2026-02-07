@@ -36,7 +36,7 @@
                                 <text class="tag tag-green" v-if="item.packageType">{{ item.packageType }}</text>
                             </view>
                             <view class="goods-props">
-                                <text>规格：{{ item.spec }}</text>
+                                <text>规格：{{ item.spec || item.skuName }}</text>
                                 <text class="unit-price">￥{{ item.salePrice }}</text>
                             </view>
                             <view class="item-foot">
@@ -103,14 +103,14 @@
                         <text class="factory">{{ item.manufacturer }}</text>
                     </view>
                     <view class="price-row">
-                        <text>单价: ￥{{ item.pricePerGram || item.salePrice }}/g</text>
+                        <text>单价: ￥{{ item.salePrice }}/g</text>
                     </view>
                 </view>
                 <view class="weight-control">
                     <text class="label">单剂</text>
                     <view class="stepper-box">
                         <button class="step-btn" @click="changeQty(item, -1)">-</button>
-                        <input class="step-input" type="number" :value="item.goodsNum" disabled />
+                        <input class="step-input" type="number" :value="item.goodsWeight" disabled />
                         <button class="step-btn" @click="changeQty(item, 1)">+</button>
                     </view>
                     <text class="unit">g</text>
@@ -177,10 +177,13 @@
 </template>
 
 <script>
-import { getCartList, updateCartNum, deleteCart } from '@/api/goods/cart.js';
-// 【修改点1】引入收藏API
+// 【核心修复】引入两套接口
+import { 
+    getCartList, updateCartNum, deleteCart, 
+    // 引入处方车接口
+    getPrescriptionCartList, updatePrescriptionCart, removePrescriptionCart 
+} from '@/api/goods/cart.js';
 import { addFavorite } from '@/api/goods/favorite.js';
-import request from '@/utils/request/request.js';
 
 function inArray(val, arr) { return Array.isArray(arr) && arr.includes(val); }
 
@@ -190,9 +193,8 @@ export default {
       inArray,
       currentTab: 0, 
       isLoading: true,
-      fullCartList: [], 
-      procurementList: {}, 
-      dispensingList: [],  
+      procurementList: {}, // 采购车数据 (Tab 0)
+      dispensingList: [],  // 处方车数据 (Tab 1)
       checkedIds: [],
       prescriptionDays: 3, 
       prescriptionPacks: 2,
@@ -214,11 +216,12 @@ export default {
         });
         return total.toFixed(2);
     },
+    // 处方车单剂价格计算
     singleDosePrice() {
         let total = 0;
         this.dispensingList.forEach(item => {
-            const price = Number(item.pricePerGram || item.salePrice);
-            total += price * Number(item.goodsNum); 
+            const price = Number(item.pricePerGram || item.salePrice || 0);
+            total += price * Number(item.goodsWeight || 0); // 注意：处方车用 goodsWeight
         });
         return total;
     },
@@ -230,21 +233,35 @@ export default {
     this.loadData();
   },
   methods: {
-    switchTab(index) { this.currentTab = index; },
+    switchTab(index) { 
+        this.currentTab = index; 
+        this.loadData(); // 切换Tab时刷新数据
+    },
+    
+    // 【核心修复】分Tab加载数据
     loadData() {
         this.isLoading = true;
-        getCartList({ limit: 100 }).then(res => {
-            this.isLoading = false;
-            if(res.code === 200) {
-                const list = res.data?.list || res.result || [];
-                this.fullCartList = list;
-                const procurement = list.filter(item => item.goodsType == 1 || !item.goodsType);
-                const dispensing = list.filter(item => item.goodsType == 2);
-                this.procurementList = this.groupCartByBrand(procurement);
-                this.dispensingList = dispensing;
-            }
-        }).catch(() => { this.isLoading = false; });
+        if (this.currentTab === 0) {
+            // Tab 0: 加载普通采购车
+            getCartList({ limit: 100 }).then(res => {
+                this.isLoading = false;
+                if(res.code === 200) {
+                    const list = res.data?.list || res.result || [];
+                    this.procurementList = this.groupCartByBrand(list);
+                }
+            }).catch(() => { this.isLoading = false; });
+        } else {
+            // Tab 1: 加载处方车
+            getPrescriptionCartList().then(res => {
+                this.isLoading = false;
+                if(res.code === 200) {
+                    // 确保返回的是数组
+                    this.dispensingList = res.result || [];
+                }
+            }).catch(() => { this.isLoading = false; });
+        }
     },
+    
     groupCartByBrand(list) {
         const groups = {};
         list.forEach(item => {
@@ -254,12 +271,80 @@ export default {
         });
         return groups;
     },
+
+    // 【核心修复】修改数量 - 分流处理
+    changeQty(item, delta) {
+        // Tab 0 用 goodsNum, Tab 1 用 goodsWeight
+        const currentNum = this.currentTab === 0 ? item.goodsNum : item.goodsWeight;
+        const newNum = currentNum + delta;
+        
+        if (newNum < 1) return uni.showToast({ title: '不能再少了', icon: 'none' });
+        
+        // 乐观更新视图
+        if (this.currentTab === 0) item.goodsNum = newNum;
+        else item.goodsWeight = newNum;
+
+        if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
+        
+        this.debounceTimers[item.id] = setTimeout(() => {
+            if (this.currentTab === 0) {
+                // 普通车：UpdateCartNum (goodsSkuId, goodsNum)
+                updateCartNum({ 
+                    goodsSkuId: item.goodsSkuId, 
+                    goodsNum: newNum 
+                }).catch(() => { item.goodsNum = currentNum; }); // 失败回滚
+            } else {
+                // 处方车：updatePrescriptionCart (id, goodsWeight)
+                updatePrescriptionCart({ 
+                    id: item.id, // 处方车通常直接用记录ID
+                    goodsWeight: newNum 
+                }).catch(() => { item.goodsWeight = currentNum; });
+            }
+        }, 500);
+    },
+
+    // 【核心修复】删除商品 - 分流处理
+    handleDeleteItem(item) { 
+        this.execDelete([item.id], '确定移除该商品吗？'); 
+    },
+    handleDeleteBrand(brandName, items) { 
+        this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); 
+    },
+    
+    execDelete(ids, content) {
+        uni.showModal({
+            title: '提示', content,
+            success: ({ confirm }) => {
+                if (confirm) {
+                    let promise;
+                    if (this.currentTab === 0) {
+                        // 普通车：deleteCart (string[])
+                        promise = deleteCart(ids);
+                    } else {
+                        // 处方车：removePrescriptionCart ({ ids: [] })
+                        promise = removePrescriptionCart({ ids });
+                    }
+                    
+                    promise.then(res => {
+                        if (res.code === 200) {
+                            if (this.currentTab === 0) {
+                                this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
+                            }
+                            this.loadData();
+                            uni.showToast({ title: '删除成功', icon: 'success' });
+                        }
+                    });
+                }
+            }
+        });
+    },
+
+    // 处方配置逻辑 (保持不变)
     updateDays(delta) {
         let newVal = this.prescriptionDays + delta;
         if (newVal < 1) newVal = 1; if (newVal > 99) newVal = 99;
         this.prescriptionDays = newVal;
     },
-    validateDays() { if (this.prescriptionDays < 1) this.prescriptionDays = 1; },
     updatePacks(delta) {
         let newVal = this.prescriptionPacks + delta;
         if (newVal < 1) newVal = 1; if (newVal > 5) newVal = 5;
@@ -269,16 +354,8 @@ export default {
         const ids = this.dispensingList.map(item => item.id);
         this.execDelete(ids, '确定清空当前处方吗？');
     },
-    changeQty(item, delta) {
-        const newNum = item.goodsNum + delta;
-        if (newNum < 1) return uni.showToast({ title: '不能再少了', icon: 'none' });
-        const oldNum = item.goodsNum;
-        item.goodsNum = newNum;
-        if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
-        this.debounceTimers[item.id] = setTimeout(() => {
-            updateCartNum({ goodsSkuId: item.goodsSkuId || item.id, goodsNum: newNum }).catch(() => item.goodsNum = oldNum);
-        }, 500);
-    },
+    
+    // 选中逻辑 (仅Tab 0)
     handleCheckItem(id) {
         const idx = this.checkedIds.indexOf(id);
         if (idx === -1) this.checkedIds.push(id); else this.checkedIds.splice(idx, 1);
@@ -296,24 +373,7 @@ export default {
     handleCheckAll() {
         if (this.isAllChecked) this.checkedIds = []; else this.checkedIds = [...this.allProcurementIds];
     },
-    handleDeleteItem(item) { this.execDelete([item.id], '确定移除该商品吗？'); },
-    handleDeleteBrand(brandName, items) { this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); },
-    execDelete(ids, content) {
-        uni.showModal({
-            title: '提示', content,
-            success: ({ confirm }) => {
-                if (confirm) {
-                    deleteCart(ids).then(res => {
-                        if (res.code === 200) {
-                            this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
-                            this.loadData();
-                            uni.showToast({ title: '删除成功', icon: 'success' });
-                        }
-                    });
-                }
-            }
-        });
-    },
+
     handleOrder() {
         if (this.currentTab === 0) {
             if (this.checkedIds.length === 0) return uni.showToast({ title: '请选择商品', icon: 'none' });
@@ -329,7 +389,7 @@ export default {
     },
     onTargetIndex() { uni.switchTab({ url: '/pages/category/category' }); },
 
-    // --- 收藏弹窗逻辑 ---
+    // 收藏弹窗逻辑
     openFavModal() {
         if (this.dispensingList.length === 0) {
             return uni.showToast({ title: '处方为空', icon: 'none' });
@@ -338,7 +398,6 @@ export default {
         this.showFavNameModal = true;
     },
     
-    // 【修改点2】确认收藏逻辑
     confirmFavorite() {
         if (!this.favName.trim()) {
             return uni.showToast({ title: '请输入名称', icon: 'none' });
@@ -346,11 +405,11 @@ export default {
         
         uni.showLoading({ title: '收藏中...' });
         
-        // 构造符合文档的参数结构 items: [{ goodsId, goodsSkuId, goodsWeight }]
+        // 构造符合文档的参数
         const items = this.dispensingList.map(item => ({
-            goodsId: item.goodsId || item.id, // 如果购物车没有存goodsId, 暂用id (skuId) 兜底，视后端逻辑而定
-            goodsSkuId: item.goodsSkuId || item.id, 
-            goodsWeight: item.goodsNum // 处方车里的数量即为克重(g)
+            goodsId: item.goodsId, 
+            goodsSkuId: item.goodsSkuId,
+            goodsWeight: item.goodsWeight // 处方车使用 goodsWeight
         }));
 
         addFavorite({ 
@@ -371,7 +430,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有布局样式 */
+/* 保持原有样式不变 */
 .container { min-height: 100vh; padding-bottom: 220rpx; background: #f5f5f5; }
 .tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 20; border-bottom: 1px solid #f0f0f0; .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; &.active { color: #2979ff; font-weight: bold; } .tab-line { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: #2979ff; border-radius: 3rpx; } } }
 
@@ -392,11 +451,10 @@ export default {
 .dispensing-footer { justify-content: space-between; .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ff4400; font-size: 24rpx; } .price-val { color: #ff4400; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #666; margin-top: 4rpx; .fee-tag { color: #ff4400; &.free { color: #52c41a; } } } } .btn-group { display: flex; align-items: center; } }
 .empty-cart { text-align: center; padding-top: 100rpx; .go-shop { margin-top: 40rpx; width: 200rpx; font-size: 28rpx; background: #fff; border: 1px solid #ccc; color: #666;} }
 
-/* 弹窗样式 */
 .custom-modal-mask {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0, 0, 0, 0.6);
-    z-index: 10000; 
+    z-index: 10000;
     display: flex; justify-content: center; align-items: center;
 }
 .custom-modal-content {

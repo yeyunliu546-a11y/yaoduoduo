@@ -30,32 +30,55 @@ const request = (options) => {
         
         // 获取本地 Token
         const token = uni.getStorageSync('token');
+        
+        // 获取 storeId (如果登录时没存，暂时用文档里的测试ID兜底，建议后续在登录逻辑里存入 storeId)
+        const storeId = uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945';
+
+        // 构造请求头
+        const headers = {
+            'content-type': 'application/json',
+            // 【修正1】认证方式改为 X-Token，且不需要 Bearer 前缀
+            'X-Token': token || '', 
+            // 【修正2】必须传递 platform
+            'platform': 'MP-WEIXIN',
+            // 【修正3】必须传递 storeId
+            'storeId': storeId,
+            ...options.header
+        };
 
         uni.request({
             url: fullUrl,
             method: options.method || 'GET',
             data: options.data || options.params, 
-            header: {
-                // 【核心修复】必须加上 'Bearer ' 前缀 (注意 Bearer 后面有个空格)
-                'Authorization': token ? `Bearer ${token}` : '', 
-                'content-type': 'application/json',
-                ...options.header
-            },
+            header: headers,
             success: (res) => {
                 // 打印请求结果，方便调试
                 console.log(`[Response] ${options.url}`, res.data);
                 
+                // HTTP 状态码判断
                 if (res.statusCode === 200) {
-                    // 部分后端成功也可能返回 code != 200，这里视情况处理
-                    resolve(res.data);
+                    // 【修正4】增加业务状态码判断
+                    // 文档说明：50014 为 Token 无效或超时
+                    const code = res.data.code;
+                    if (code === 50014 || code === 401) {
+                        uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
+                        // 清除失效的 Token
+                        uni.removeStorageSync('token');
+                        // 延迟跳转登录页
+                        setTimeout(() => {
+                            uni.reLaunch({ url: '/pages/login/index' });
+                        }, 1500);
+                        reject(res.data);
+                    } else {
+                        // 正常返回（包括 code 200 或其他业务错误，交给页面处理）
+                        resolve(res.data);
+                    }
                 } else if (res.statusCode === 401) {
-                    // Token 过期或无效
-                    uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
-                    // 可选：自动跳转登录页
-                    // uni.navigateTo({ url: '/pages/login/index' });
+                    uni.showToast({ title: '无权访问', icon: 'none' });
                     reject(res);
                 } else {
                     console.error('请求错误:', res);
+                    uni.showToast({ title: '服务器开小差了', icon: 'none' });
                     reject(res);
                 }
             },
