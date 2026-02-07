@@ -78,12 +78,12 @@ export default {
       smsCode: '',
       password: '',
       
-      // 【新增】图形验证码字段
-      captchaCode: '',      // 用户输入的验证码
-      captchaBase64: '',    // 图片Base64
-      captchaId: '',        // 验证码ID
+      // 图形验证码字段
+      captchaCode: '',      
+      captchaBase64: '',    
+      captchaId: '',        
       
-      smsVerifyCodeId: '', // 短信ID
+      smsVerifyCodeId: '', 
       isSending: false,
       countdown: 60
     }
@@ -99,20 +99,12 @@ export default {
       try {
         const res = await apiAuth.getImageCaptcha();
         if (res.code === 200 && res.result) {
-          // 处理 Base64 前缀 (如果后端没返回前缀，手动加上)
           let base64 = res.result.base64Str;
           if (!base64.startsWith('data:image')) {
             base64 = 'data:image/png;base64,' + base64;
           }
-          
           this.captchaBase64 = base64;
           this.captchaId = res.result.verifyCodeId;
-          
-          // 如果是测试环境，后端可能会直接返回 Code，方便测试
-          if (res.result.code) {
-             console.log('测试环境验证码:', res.result.code);
-             // this.captchaCode = res.result.code; // 可选：自动填充
-          }
         }
       } catch (e) {
         console.error('获取验证码失败', e);
@@ -121,13 +113,100 @@ export default {
 
     toggleLoginMode() {
       this.loginMode = this.loginMode === 'sms' ? 'password' : 'sms';
-      // 如果切到密码登录，加载验证码
       if (this.loginMode === 'password') {
         this.refreshCaptcha();
       }
     },
 
-    // 登录逻辑
+    // ----------------------------------------------------
+        // 1. 微信一键登录 (修正版：直接登录，自动注册)
+        // ----------------------------------------------------
+        wechatLogin() {
+          // #ifdef MP-WEIXIN
+          uni.showLoading({ title: '正在登录...' });
+          
+          // 1. 获取微信 Code
+          uni.login({
+            provider: 'weixin',
+            success: async (loginRes) => {
+              console.log('微信 loginRes:', loginRes); 
+              
+              if (loginRes.code) {
+                try {
+                  // 2. 构造参数 (只需 Code 和 InviteCode)
+                  const params = {
+                    WxCode: loginRes.code,
+                    InviteCode: '' 
+                  };
+                  
+                  console.log('调用后端登录:', params);
+    
+                  // 3. 调用后端接口
+                  const res = await apiAuth.loginByWechat(params);
+                  console.log('后端响应:', res);
+    
+                  // 4. 处理结果
+                  this.processLoginResult(res);
+                  
+                } catch (err) {
+                  uni.hideLoading();
+                  console.error('API调用失败:', err);
+                  uni.showToast({ title: '登录请求失败', icon: 'none' });
+                }
+              } else {
+                uni.hideLoading();
+                uni.showToast({ title: '获取微信Code失败', icon: 'none' });
+              }
+            },
+            fail: (err) => {
+              uni.hideLoading();
+              console.error('uni.login 失败:', err);
+              uni.showToast({ title: '无法连接微信', icon: 'none' });
+            }
+          });
+          // #endif
+          
+          // #ifndef MP-WEIXIN
+          uni.showToast({ title: '请在微信小程序中测试', icon: 'none' });
+          // #endif
+        },
+    // ----------------------------------------------------
+    // 2. 发送短信
+    // ----------------------------------------------------
+    async handleSendSms() {
+      if (!this.canSend) return;
+      try {
+        this.isSending = true;
+        const res = await apiAuth.sendSmsCode({ 
+            Mobile: this.mobile, 
+            Type: 'Login' 
+        });
+
+        if (res.code === 200) {
+            uni.showToast({ title: '发送成功', icon: 'success' });
+            if (res.result && res.result.smsVerifyCodeId) {
+                this.smsVerifyCodeId = res.result.smsVerifyCodeId;
+            }
+            let timer = setInterval(() => {
+                this.countdown--;
+                if (this.countdown <= 0) {
+                    clearInterval(timer);
+                    this.isSending = false;
+                    this.countdown = 60;
+                }
+            }, 1000);
+        } else {
+            this.isSending = false;
+            uni.showToast({ title: res.message || '发送失败', icon: 'none' });
+        }
+      } catch (e) {
+        this.isSending = false;
+      }
+    },
+
+    // ----------------------------------------------------
+    // 3. 账号/短信登录
+    // ----------------------------------------------------
     async handleLogin() {
       if (!this.mobile) return uni.showToast({ title: '请输入账号', icon: 'none' });
       
@@ -135,9 +214,7 @@ export default {
       
       try {
         let res;
-        
         if (this.loginMode === 'sms') {
-           // ... 短信登录逻辑保持不变 ...
            if (!this.smsCode) {
                uni.hideLoading();
                return uni.showToast({ title: '请输入验证码', icon: 'none' });
@@ -148,24 +225,22 @@ export default {
                SmsVerifyCodeId: this.smsVerifyCodeId
            });
         } else {
-           // --- 密码登录逻辑 ---
            if (!this.password) {
                uni.hideLoading();
                return uni.showToast({ title: '请输入密码', icon: 'none' });
            }
-           // 【校验】必填的图形验证码
            if (!this.captchaCode || !this.captchaId) {
                uni.hideLoading();
                return uni.showToast({ title: '请输入图形验证码', icon: 'none' });
            }
 
-           // 调用接口，带上所有必填参数
+           // 使用 MP-WEIXIN
            res = await apiAuth.loginByPassword({ 
-               AppKey: 'AppAnchor',       // 必填
-               Account: this.mobile,  // 必填
-               Password: this.password, // 必填
-               VerifyCodeId: this.captchaId, // 必填：验证码ID
-               VerifyCode: this.captchaCode  // 必填：用户输入的答案
+               AppKey: 'MP-WEIXIN',
+               Account: this.mobile,  
+               Password: this.password, 
+               VerifyCodeId: this.captchaId,
+               VerifyCode: this.captchaCode
            });
         }
 
@@ -174,40 +249,63 @@ export default {
       } catch (err) {
         uni.hideLoading();
         console.error('登录异常', err);
-        // 如果失败，建议刷新一下验证码
-        if (this.loginMode === 'password') this.refreshCaptcha();
+        if (this.loginMode === 'password') this.refreshCaptcha(); // 失败刷新验证码
         
-        const msg = err.data?.message || '登录请求失败';
+        // 提取错误信息
+        let msg = '登录失败';
+        if (err.data && err.data.message) msg = err.data.message;
+        else if (err.message) msg = err.message;
+        
         uni.showToast({ title: msg, icon: 'none' });
       }
     },
 
-    // ... 其他方法 (sendSms, wechatLogin, processLoginResult) 保持不变 ...
-    
-    // (为了完整性，这里简略保留 helper 方法)
+    // ----------------------------------------------------
+    // 结果处理 & 跳转
+    // ----------------------------------------------------
     processLoginResult(res) {
         uni.hideLoading();
-        if (res.code === 200 && res.result) {
-            uni.setStorageSync('token', res.result.token);
-            uni.setStorageSync('user_info', res.result);
+        
+        // 只要有 token 就算成功
+        if (res.code === 200 && res.result && res.result.token) {
+            const data = res.result;
+            
+            uni.setStorageSync('token', data.token);
+            uni.setStorageSync('user_info', data.userInfo || data);
+            
             uni.showToast({ title: '登录成功', icon: 'success' });
+            
+            // 延迟跳转
             setTimeout(() => {
-                const status = res.result.clinicAuditStatus;
-                if (status === -99) uni.navigateTo({ url: '/pages/auth/certUpload' });
-                else if (status === 0) uni.navigateTo({ url: '/pages/auth/certStatus' });
-                else if (status === -1) uni.navigateTo({ url: '/pages/auth/certUpload?status=-1' });
-                else uni.switchTab({ url: '/pages/index/index' });
+                const status = data.clinicAuditStatus;
+                // -99: 未提交资质
+                if (status === -99) {
+                    uni.navigateTo({ url: '/pages/auth/certUpload' });
+                } 
+                // 0: 待审核
+                else if (status === 0) {
+                    uni.navigateTo({ url: '/pages/auth/certStatus' });
+                } 
+                // -1: 拒绝
+                else if (status === -1) {
+                    uni.navigateTo({ url: '/pages/auth/certUpload?status=-1' });
+                } 
+                // 1: 通过 (或其它状态) -> 首页
+                else {
+                    uni.switchTab({ url: '/pages/index/index' });
+                }
             }, 1000);
+            
         } else {
+            // 处理业务失败 (如 code 500)
             uni.showToast({ title: res.message || '登录失败', icon: 'none' });
             if (this.loginMode === 'password') this.refreshCaptcha();
         }
     },
-    
-    // ... 微信登录等代码保持原样 ...
-    wechatLogin() { /* ... */ },
-    async handleSendSms() { /* ... */ },
-    skipLogin() { uni.switchTab({ url: '/pages/index/index' }); }
+
+    skipLogin() {
+      uni.switchTab({ url: '/pages/index/index' });
+    }
   }
 }
 </script>

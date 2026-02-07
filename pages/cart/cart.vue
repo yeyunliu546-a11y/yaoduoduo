@@ -178,6 +178,8 @@
 
 <script>
 import { getCartList, updateCartNum, deleteCart } from '@/api/goods/cart.js';
+// 【修改点1】引入收藏API
+import { addFavorite } from '@/api/goods/favorite.js';
 import request from '@/utils/request/request.js';
 
 function inArray(val, arr) { return Array.isArray(arr) && arr.includes(val); }
@@ -335,28 +337,32 @@ export default {
         this.favName = '';
         this.showFavNameModal = true;
     },
+    
+    // 【修改点2】确认收藏逻辑
     confirmFavorite() {
         if (!this.favName.trim()) {
             return uni.showToast({ title: '请输入名称', icon: 'none' });
         }
         
         uni.showLoading({ title: '收藏中...' });
-        const goodsList = this.dispensingList.map(item => ({
-            id: item.goodsSkuId || item.id, 
-            goodsName: item.goodsName,
-            goodsNum: item.goodsNum,
-            manufacturer: item.manufacturer
+        
+        // 构造符合文档的参数结构 items: [{ goodsId, goodsSkuId, goodsWeight }]
+        const items = this.dispensingList.map(item => ({
+            goodsId: item.goodsId || item.id, // 如果购物车没有存goodsId, 暂用id (skuId) 兜底，视后端逻辑而定
+            goodsSkuId: item.goodsSkuId || item.id, 
+            goodsWeight: item.goodsNum // 处方车里的数量即为克重(g)
         }));
 
-        request({
-            url: '/api/Favorite/Add',
-            method: 'POST',
-            data: { name: this.favName, goodsList }
+        addFavorite({ 
+            name: this.favName, 
+            items: items 
         }).then(res => {
             uni.hideLoading();
             if(res.code === 200) {
                 uni.showToast({ title: '收藏成功', icon: 'success' });
                 this.showFavNameModal = false;
+            } else {
+                uni.showToast({ title: res.message || '收藏失败', icon: 'none' });
             }
         }).catch(() => uni.hideLoading());
     }
@@ -368,8 +374,6 @@ export default {
 /* 保持原有布局样式 */
 .container { min-height: 100vh; padding-bottom: 220rpx; background: #f5f5f5; }
 .tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 20; border-bottom: 1px solid #f0f0f0; .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; &.active { color: #2979ff; font-weight: bold; } .tab-line { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: #2979ff; border-radius: 3rpx; } } }
-
-/* .search-header 已移除 */
 
 .cart-list { padding: 20rpx; }
 .brand-group { background: #fff; border-radius: 16rpx; margin-bottom: 20rpx; padding-bottom: 10rpx; overflow: hidden;}
@@ -388,11 +392,11 @@ export default {
 .dispensing-footer { justify-content: space-between; .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ff4400; font-size: 24rpx; } .price-val { color: #ff4400; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #666; margin-top: 4rpx; .fee-tag { color: #ff4400; &.free { color: #52c41a; } } } } .btn-group { display: flex; align-items: center; } }
 .empty-cart { text-align: center; padding-top: 100rpx; .go-shop { margin-top: 40rpx; width: 200rpx; font-size: 28rpx; background: #fff; border: 1px solid #ccc; color: #666;} }
 
-/* 🌟【终极修复】手动编写的 CSS 弹窗，绝对不会跑偏 🌟 */
+/* 弹窗样式 */
 .custom-modal-mask {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0, 0, 0, 0.6);
-    z-index: 10000; /* 极高层级 */
+    z-index: 10000; 
     display: flex; justify-content: center; align-items: center;
 }
 .custom-modal-content {

@@ -7,19 +7,19 @@
             <view class="icon-box">方</view>
             <text class="title">{{ item.name }}</text>
           </view>
-          <text class="date">{{ item.createTime || '2023-10-27' }}</text>
+          <text class="date">{{ item.createTime || '--' }}</text>
         </view>
 
         <view class="goods-content" @click="toggleExpand(index)">
           <view class="summary-text" v-if="!item.expanded">
-            <text class="label">共 {{ item.goodsList.length }} 味药：</text>
-            <text class="value">{{ getSummary(item.goodsList) }}</text>
+            <text class="label">共 {{ item.items ? item.items.length : 0 }} 味药：</text>
+            <text class="value">{{ getSummary(item.items) }}</text>
           </view>
           
           <view class="tags-wrapper" v-else>
-            <view class="herb-tag" v-for="(goods, gIdx) in item.goodsList" :key="gIdx">
+            <view class="herb-tag" v-for="(goods, gIdx) in item.items" :key="gIdx">
               <text class="name">{{ goods.goodsName }}</text>
-              <text class="weight">{{ goods.goodsNum }}g</text>
+              <text class="weight">{{ goods.goodsWeight }}g</text>
             </view>
           </view>
           
@@ -65,21 +65,21 @@
 
           <view class="form-section">
             <view class="section-title-row">
-              <text class="section-title">药品明细 ({{ editForm.goodsList.length }}味)</text>
+              <text class="section-title">药品明细 ({{ editForm.items.length }}味)</text>
               <text class="tip">可修改克数或删除</text>
             </view>
             
             <view class="edit-list">
-              <view class="edit-item" v-for="(goods, idx) in editForm.goodsList" :key="idx">
+              <view class="edit-item" v-for="(goods, idx) in editForm.items" :key="idx">
                 <view class="item-left">
                   <view class="goods-name">{{ goods.goodsName }}</view>
-                  <view class="goods-spec">{{ goods.manufacturer }}</view>
+                  <view class="goods-spec" v-if="goods.skuName">{{ goods.skuName }}</view>
                 </view>
                 
                 <view class="item-right">
                   <view class="stepper">
                     <view class="step-btn minus" @click="updateQty(idx, -1)">-</view>
-                    <input class="step-val" type="number" v-model="goods.goodsNum" disabled />
+                    <input class="step-val" type="number" v-model="goods.goodsWeight" disabled />
                     <view class="step-btn plus" @click="updateQty(idx, 1)">+</view>
                   </view>
                   <view class="del-btn" @click="removeHerb(idx)">
@@ -89,7 +89,7 @@
               </view>
             </view>
             
-            <view class="empty-tip" v-if="editForm.goodsList.length === 0">
+            <view class="empty-tip" v-if="editForm.items.length === 0">
               <text>当前方剂内没有药品，请保存后将被删除</text>
             </view>
           </view>
@@ -102,7 +102,8 @@
 </template>
 
 <script>
-import request from '@/utils/request/request.js';
+// 【修改】引入新的 API
+import { getFavoriteList, deleteFavorite, useFavorite, updateFavorite } from '@/api/goods/favorite.js';
 
 export default {
   data() {
@@ -110,9 +111,9 @@ export default {
       list: [],
       showEdit: false,
       editForm: {
-        id: '',
+        id: '', // 即 favoriteId
         name: '',
-        goodsList: []
+        items: [] // 即 goodsList
       }
     };
   },
@@ -122,10 +123,15 @@ export default {
   methods: {
     // 加载列表
     loadList() {
-      request({ url: '/api/Favorite/List', method: 'GET' }).then(res => {
+      getFavoriteList().then(res => {
         if (res.code === 200) {
           // 给每个item加上展开状态标记
-          this.list = res.result.map(item => ({ ...item, expanded: false }));
+          // 确保 items 存在，防止报错
+          this.list = (res.result || []).map(item => ({ 
+              ...item, 
+              expanded: false,
+              items: item.items || [] 
+          }));
         }
       });
     },
@@ -134,10 +140,10 @@ export default {
       this.list[index].expanded = !this.list[index].expanded;
     },
     // 生成摘要文字
-    getSummary(goodsList) {
-      if(!goodsList || goodsList.length == 0) return '无药品';
-      const names = goodsList.slice(0, 3).map(g => g.goodsName);
-      return names.join('、') + (goodsList.length > 3 ? ' 等' : '');
+    getSummary(items) {
+      if(!items || items.length == 0) return '无药品';
+      const names = items.slice(0, 3).map(g => g.goodsName);
+      return names.join('、') + (items.length > 3 ? ' 等' : '');
     },
     
     // --- 删除整个收藏 ---
@@ -147,53 +153,64 @@ export default {
         content: `确定删除方剂“${item.name}”吗？`,
         success: ({ confirm }) => {
           if (confirm) {
-            request({ url: '/api/Favorite/Delete', method: 'POST', data: { id: item.id } }).then(() => {
-              this.loadList();
-              uni.showToast({ title: '已删除', icon: 'none' });
+            // 【修改】调用新API，传 item.id (作为 favoriteId)
+            deleteFavorite(item.id).then(res => {
+              if(res.code === 200) {
+                  this.loadList();
+                  uni.showToast({ title: '已删除', icon: 'none' });
+              }
             });
           }
         }
       });
     },
 
-    // --- 加购 ---
+    // --- 加购 (使用收藏) ---
     handleAddToCart(item) {
       uni.showLoading({ title: '正在合并...' });
-      request({ url: '/api/Favorite/AddToCart', method: 'POST', data: { id: item.id } }).then(res => {
+      // 【修改】调用 useFavorite
+      useFavorite(item.id).then(res => {
         uni.hideLoading();
         if (res.code === 200) {
-          uni.showToast({ title: '已加入调剂车', icon: 'success' });
-          // 延迟跳转，让用户看清提示
+          const result = res.result || {};
+          const msg = `已添加${result.addedCount || 0}味药`;
+          
+          uni.showToast({ title: msg, icon: 'success' });
+          // 延迟跳转
           setTimeout(() => {
              uni.switchTab({ url: '/pages/cart/cart' });
           }, 800);
+        } else {
+            uni.showToast({ title: res.message || '添加失败', icon: 'none' });
         }
-      });
+      }).catch(() => uni.hideLoading());
     },
 
-    // --- 编辑功能 (核心修复) ---
+    // --- 编辑功能 ---
     handleEdit(item) {
-      // 深拷贝，防止修改时影响列表显示
+      // 深拷贝
       this.editForm = JSON.parse(JSON.stringify(item));
+      // 确保 items 存在
+      if (!this.editForm.items) this.editForm.items = [];
       this.showEdit = true;
     },
     
     // 修改克数
     updateQty(index, delta) {
-      const item = this.editForm.goodsList[index];
-      let val = parseInt(item.goodsNum) || 0;
+      const item = this.editForm.items[index];
+      let val = parseInt(item.goodsWeight) || 0;
       val += delta;
       if (val < 1) {
           val = 1;
           uni.showToast({ title: '不能少于1g', icon: 'none' });
       }
       // 强制更新视图
-      this.$set(this.editForm.goodsList[index], 'goodsNum', val);
+      this.$set(this.editForm.items[index], 'goodsWeight', val);
     },
 
     // 移除单味药
     removeHerb(index) {
-      this.editForm.goodsList.splice(index, 1);
+      this.editForm.items.splice(index, 1);
     },
 
     // 保存编辑
@@ -201,12 +218,12 @@ export default {
       if (!this.editForm.name) return uni.showToast({ title: '请填写名称', icon: 'none' });
       
       // 如果药被删光了，询问是否直接删除该收藏
-      if (this.editForm.goodsList.length === 0) {
+      if (this.editForm.items.length === 0) {
           uni.showModal({
               title: '提示', content: '方剂内无药品，是否直接删除该收藏？',
               success: ({confirm}) => {
                   if(confirm) {
-                      request({ url: '/api/Favorite/Delete', method: 'POST', data: { id: this.editForm.id } }).then(() => {
+                      deleteFavorite(this.editForm.id).then(() => {
                           this.showEdit = false;
                           this.loadList();
                       });
@@ -216,11 +233,25 @@ export default {
           return;
       }
       
-      request({ url: '/api/Favorite/Update', method: 'POST', data: this.editForm }).then(res => {
+      // 【修改】构造符合文档的参数
+      // 文档要求: { favoriteId, name, items: [...] }
+      const postData = {
+          favoriteId: this.editForm.id,
+          name: this.editForm.name,
+          items: this.editForm.items.map(i => ({
+              goodsId: i.goodsId,
+              goodsSkuId: i.goodsSkuId,
+              goodsWeight: i.goodsWeight
+          }))
+      };
+      
+      updateFavorite(postData).then(res => {
         if (res.code === 200) {
           this.showEdit = false;
           this.loadList();
           uni.showToast({ title: '保存成功', icon: 'success' });
+        } else {
+            uni.showToast({ title: res.message || '保存失败', icon: 'none' });
         }
       });
     }
@@ -229,9 +260,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+/* 保持原有样式不变 */
 .container { min-height: 100vh; background-color: #f5f5f5; padding: 24rpx; }
 
-/* 收藏卡片样式 */
 .fav-card { 
   background: #fff; border-radius: 20rpx; padding: 0 30rpx; margin-bottom: 24rpx; 
   box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04);
@@ -277,18 +308,17 @@ export default {
   }
 }
 
-/* 🌟 手写底部弹窗 (模拟 Bottom Sheet) 🌟 */
 .custom-modal-mask {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 99999; /* 极高层级 */
-  display: flex; flex-direction: column; justify-content: flex-end; /* 底部对齐 */
+  z-index: 99999; 
+  display: flex; flex-direction: column; justify-content: flex-end; 
 }
 
 .custom-modal-content {
   background: #fff;
   border-top-left-radius: 30rpx; border-top-right-radius: 30rpx;
-  height: 75vh; /* 占据屏幕 75% 高度 */
+  height: 75vh; 
   display: flex; flex-direction: column;
   animation: slide-up 0.3s ease-out;
 }
