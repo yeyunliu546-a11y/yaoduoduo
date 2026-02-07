@@ -1,79 +1,77 @@
 // utils/request/request.js
 
-// 1. 引入 Mock 文件 (虽然关闭了 Mock，但为了避免报错，保留引入即可，或者你可以注释掉)
+// 1. 引入 Mock 文件 (保留引入，防止报错)
 import mockGoods from '@/mock/goods.js' 
 
-// 【修改点 1】配置正式后端 API 地址
+// 配置正式后端 API 地址
 const URL_API = 'https://www.yaoduoduo.top'; 
 
-// 合并所有 Mock 数据
-const mockData = {
-    ...mockGoods
-}
-
-// 【修改点 2】关闭 Mock，开启真实请求
+// Mock 开关 (关闭)
 const USE_MOCK = false;
 
+const mockData = { ...mockGoods }
+
+// 定义基础请求函数
 const request = (options) => {
     return new Promise((resolve, reject) => {
-        // --- 2. Mock 拦截逻辑 (USE_MOCK 为 false 时会直接跳过) ---
+        // --- Mock 拦截逻辑 ---
         if (USE_MOCK) {
             const method = (options.method || 'GET').toUpperCase();
-            // 简单拼接 URL key
             const mockKey = `${method} ${options.url}`;
-            
             if (mockData[mockKey]) {
-                console.log(`[Mock拦截成功] ${mockKey}`);
-                setTimeout(() => {
-                    const response = mockData[mockKey](options.data || options.params);
-                    resolve(response);
-                }, 500);
+                console.log(`[Mock] ${mockKey}`);
+                setTimeout(() => resolve(mockData[mockKey](options.data || options.params)), 500);
                 return; 
-            } else {
-                console.log(`[Mock未匹配，放行] ${mockKey}`);
             }
         }
-        // --- Mock 拦截结束 ---
 
-        // 3. 发起真实请求
-        // 拼接完整 URL，例如: https://www.yaoduoduo.top/api/Goods/Load
-        const fullUrl = URL_API + options.url;
+        // --- 真实请求 ---
+        const fullUrl = options.url.startsWith('http') ? options.url : URL_API + options.url;
+        
+        // 获取本地 Token
+        const token = uni.getStorageSync('token');
 
         uni.request({
             url: fullUrl,
             method: options.method || 'GET',
-            data: options.data || options.params, // 兼容 data 和 params 传参
+            data: options.data || options.params, 
             header: {
-                // 携带 Token，登录后如果有 token 会自动带上
-                'Authorization': uni.getStorageSync('token') || '',
-                'content-type': 'application/json'
+                // 【核心修复】必须加上 'Bearer ' 前缀 (注意 Bearer 后面有个空格)
+                'Authorization': token ? `Bearer ${token}` : '', 
+                'content-type': 'application/json',
+                ...options.header
             },
             success: (res) => {
-                // HTTP 状态码 200 表示请求成功到达服务器
+                // 打印请求结果，方便调试
+                console.log(`[Response] ${options.url}`, res.data);
+                
                 if (res.statusCode === 200) {
-                    // 返回后端的数据体 (通常包含 code, message, result)
+                    // 部分后端成功也可能返回 code != 200，这里视情况处理
                     resolve(res.data);
+                } else if (res.statusCode === 401) {
+                    // Token 过期或无效
+                    uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
+                    // 可选：自动跳转登录页
+                    // uni.navigateTo({ url: '/pages/login/index' });
+                    reject(res);
                 } else {
-                    // HTTP 状态码非 200 (如 404, 500)
                     console.error('请求错误:', res);
-                    uni.showToast({
-                        title: `请求错误 ${res.statusCode}`,
-                        icon: 'none'
-                    });
                     reject(res);
                 }
             },
             fail: (err) => {
-                // 网络层面的失败 (如断网, 域名解析失败)
                 console.error('网络错误:', err);
-                uni.showToast({
-                    title: '网络请求失败',
-                    icon: 'none'
-                });
+                uni.showToast({ title: '网络请求失败', icon: 'none' });
                 reject(err);
             }
         });
     });
 }
+
+// 挂载方法
+request.get = (url, params, header = {}) => request({ url, method: 'GET', params, header });
+request.post = (url, data, header = {}) => request({ url, method: 'POST', data, header });
+request.put = (url, data, header = {}) => request({ url, method: 'PUT', data, header });
+request.delete = (url, data, header = {}) => request({ url, method: 'DELETE', data, header });
 
 export default request;
