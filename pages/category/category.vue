@@ -154,8 +154,9 @@
 </template>
 
 <script>
+	// 引入 API
 	import * as GoodsApi from '@/api/goods/goods.js';
-	import { addCart, addPrescriptionCart } from '@/api/goods/cart.js'; // 【修改】引入两个加购接口
+	import { addCart, addPrescriptionCart } from '@/api/goods/cart.js';
 
 	export default {
 		data() {
@@ -172,6 +173,8 @@
 				goodsList: [],
 				page: 1, limit: 10,
 				isLoading: false, loadStatus: 'loadmore',
+				
+				submiting: false // 防抖开关
 			}
 		},
 		onLoad() {
@@ -218,28 +221,29 @@
                     sortType = 60; 
                 }
 
-                // 【关键修改】根据 businessType 映射 goodsType 参数
-                // 采购药品(procurement) -> 1
-                // 调剂药品(dispensing)  -> 2
+                // 根据 businessType 映射 goodsType 参数
                 const goodsType = this.businessType === 'dispensing' ? 2 : 1;
 
                 const params = {
                     page: this.page, 
                     limit: this.limit, 
                     key: this.keyword,
-                    goodsType: goodsType, // 【恢复】传递 goodsType 以区分数据源
+                    goodsType: goodsType, 
                     manufacturer: this.selectedFilter.manufacturer,
                     packageType: this.selectedFilter.packageType,
                     standard: this.selectedFilter.standard,
                     sortType: sortType 
                 };
 
-				GoodsApi.getGoodsListByWhere(params).then(res => {
+				// 【核心修复】这里必须调用 getGoodsList，而不是 getGoodsListByWhere
+				// 因为我们在 api/goods/goods.js 里已经把名字改成了 getGoodsList
+				GoodsApi.getGoodsList(params).then(res => {
 					const list = res.result || res.data?.list || [];
 					this.goodsList = [...this.goodsList, ...list];
 					this.isLoading = false;
                     this.loadStatus = list.length < this.limit ? 'nomore' : 'loadmore';
 				}).catch(err => {
+                    console.error(err);
                     this.isLoading = false; this.loadStatus = 'nomore';
                 });
 			},
@@ -284,44 +288,84 @@
 			},
 			goToDetail(id) { uni.navigateTo({ url: `/pages/good/detail?id=${id}` }); },
             
-            // 【核心修改】加入购物车逻辑分流
+            // 智能加入购物车
             addToCart(item) {
-                uni.showLoading({ title: '加入中' });
-                
-                if (this.businessType === 'dispensing') {
-                    // --- 处方调剂业务 (GoodsType = 2) ---
-                    // 文档 5.1.1 接口参数: { goodsSkuId, goodsWeight }
-                    // 暂时默认加入 10g (因为列表页直接点击+号无法输入重量，实际业务可能需要弹窗)
-                    const params = {
-                        goodsSkuId: item.id, // 假设 item.id 为 SKU ID
-                        goodsWeight: 10      // 默认加 10g，后续可在购物车修改
-                    };
-                    addPrescriptionCart(params).then(res => {
-                        uni.hideLoading();
-                        if(res.code === 200) uni.showToast({ title: '已加10g', icon: 'success' });
-                        else uni.showToast({ title: res.message || '失败', icon: 'none' });
-                    });
-
-                } else {
-                    // --- 药品采购业务 (GoodsType = 1) ---
-                    // 文档: /api/Cart/AddCart, 参数: { goodsSkuId, goodsNum }
-                    const params = {
-                        goodsSkuId: item.id,
-                        goodsNum: 1
-                    };
-                    addCart(params).then(res => {
-                        uni.hideLoading();
-                        if(res.code === 200) uni.showToast({ title: '已加入', icon: 'success' });
-                        else uni.showToast({ title: res.message || '失败', icon: 'none' });
-                    });
-                }
+				if (this.submiting) return;
+				this.submiting = true;
+				
+                uni.showLoading({ title: '处理中...', mask: true });
+				
+				// 调用详情接口获取 SKU
+				GoodsApi.getGoodsDetail(item.id).then(res => {
+					this.submiting = false;
+					
+					if (res.code === 200 && res.result) {
+						const detail = res.result;
+						
+						// 检查 SKU 是否存在
+						if (detail.listSku && detail.listSku.length > 0) {
+							
+							// 【分支判断】采购 vs 调剂
+							if (this.businessType === 'dispensing') {
+								// --- 调剂业务 ---
+								// 单规格直接默认加 10g，多规格跳详情
+								if (detail.listSku.length === 1) {
+									const skuId = detail.listSku[0].id;
+									addPrescriptionCart({
+										goodsSkuId: skuId,
+										goodsWeight: 10
+									}).then(addRes => {
+										uni.hideLoading();
+										if(addRes.code === 200) uni.showToast({ title: '已加10g', icon: 'success' });
+										else uni.showToast({ title: addRes.message || '失败', icon: 'none' });
+									});
+								} else {
+									uni.hideLoading();
+									uni.navigateTo({ url: `/pages/good/detail?id=${item.id}` });
+								}
+								
+							} else {
+								// --- 采购业务 ---
+								if (detail.listSku.length === 1) {
+									// 单规格 -> 自动取 SkuId -> 提交
+									const skuId = detail.listSku[0].id;
+									addCart({
+										goodsSkuId: skuId,
+										goodsNum: 1
+									}).then(addRes => {
+										uni.hideLoading();
+										if(addRes.code === 200) uni.showToast({ title: '已加入', icon: 'success' });
+										else uni.showToast({ title: addRes.message || '失败', icon: 'none' });
+									});
+								} else {
+									// 多规格 -> 跳转详情页让用户选
+									uni.hideLoading();
+									uni.showToast({ title: '请选择规格', icon: 'none' });
+									setTimeout(() => {
+										uni.navigateTo({ url: `/pages/good/detail?id=${item.id}` });
+									}, 800);
+								}
+							}
+						} else {
+							uni.hideLoading();
+							uni.showToast({ title: '暂无规格信息', icon: 'none' });
+						}
+					} else {
+						uni.hideLoading();
+						uni.showToast({ title: '获取商品信息失败', icon: 'none' });
+					}
+				}).catch(err => {
+					this.submiting = false;
+					uni.hideLoading();
+					console.error(err);
+					uni.showToast({ title: '网络繁忙', icon: 'none' });
+				});
             }
 		}
 	}
 </script>
 
 <style lang="scss" scoped>
-    /* 样式部分保持不变，省略以节省空间 */
 	page { height: 100vh; overflow: hidden; background-color: #f8f8f8; }
 	.u-wrap { height: calc(100vh - var(--window-top)); display: flex; flex-direction: column; overflow: hidden; }
 
@@ -366,7 +410,6 @@
 	.class-item { display: flex; margin-bottom: 30rpx; background-color: #fff; padding: 20rpx; border-radius: 12rpx; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03); border-bottom: 1px solid #f8f8f8; .item-img { width: 140rpx; height: 140rpx; border-radius: 8rpx; overflow: hidden; border: 1px solid #f0f0f0; margin-right: 20rpx; flex-shrink: 0; } .item-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4; .type-tag { display: inline-block; font-size: 20rpx; color: #fff; background: #ff9900; padding: 0 6rpx; border-radius: 4rpx; margin-right: 8rpx; vertical-align: middle; } } .item-desc { font-size: 22rpx; color: #999; margin-top: 6rpx; .ml-10 { margin-left: 10rpx; } } .item-tags { margin-top: 8rpx; .mr-10 { margin-right: 10rpx; } } .item-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx; .price-box { display: flex; align-items: baseline; .price-symbol { color: #ff3b30; font-size: 24rpx; } .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; } .unit-text { font-size: 22rpx; color: #999; margin-left: 2rpx; } .vip-tag { font-size: 18rpx; color: #bfa170; border: 1px solid #bfa170; padding: 0 6rpx; border-radius: 4rpx; margin-left: 10rpx; transform: scale(0.9); } } .cart-box { display: flex; align-items: center; .sales { font-size: 20rpx; color: #ccc; } .add-btn-circle { width: 50rpx; height: 50rpx; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 12rpx; box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3); color: #fff; font-size: 40rpx; font-weight: bold; line-height: 1; padding-bottom: 4rpx; &.dispensing-btn { background: #ff9900; box-shadow: 0 2rpx 6rpx rgba(255, 153, 0, 0.3); } } } } } }
 	.loading-center { padding: 50rpx; display: flex; justify-content: center; }
 
-	/* --- 手写抽屉样式 --- */
 	.custom-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
 	.custom-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 80%; background-color: #fff; z-index: 999; transform: translateX(100%); transition: transform 0.3s ease; 
 		&.show { transform: translateX(0); }

@@ -11,8 +11,8 @@ export function getFilterOptions(params) {
 }
 
 // 2. 获取商品列表 (分页/搜索)
-// 【修改】URL 从 /api/Goods/ListByWhere 改为 /api/Goods/Load
-export function getGoodsListByWhere(params) {
+// 【修改点】将 export function getGoodsListByWhere 改为 getGoodsList
+export function getGoodsList(params) {
   return request({
     url: '/api/Goods/Load',
     method: 'get',
