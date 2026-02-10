@@ -1,169 +1,171 @@
 <template>
 	<view class="container">
-		<view class="page-title">收货地址</view>
+		<view class="page-title">新增收货地址</view>
 		
 		<view class="form-wrapper">
 			<u-form :model="form" ref="uForm" label-width="140rpx">
-				<u-form-item label="姓名" prop="name">
-					<u-input v-model="form.name" placeholder="请输入收货人姓名" />
+				<u-form-item label="姓名" prop="Name">
+					<u-input v-model="form.Name" placeholder="请输入收货人姓名" />
 				</u-form-item>
-				<u-form-item label="电话" prop="phone">
-					<u-input v-model="form.phone" placeholder="请输入收货人手机号" />
+				
+				<u-form-item label="电话" prop="Phone">
+					<u-input v-model="form.Phone" placeholder="请输入收货人手机号" type="number" />
 				</u-form-item>
-				<u-form-item label="地区" prop="listRegion">
-					<select-region ref="sRegion" v-model="form.listRegion" />
+				
+				<u-form-item label="地区" prop="RegionDisplay">
+					<u-input 
+						v-model="form.RegionDisplay" 
+						placeholder="请选择省市区" 
+						disabled 
+						@click="showPicker = true" 
+					/>
+					<u-icon slot="right" name="arrow-right" color="#ccc" size="28" @click="showPicker = true" />
 				</u-form-item>
-				<u-form-item label="详细地址" prop="detail" :border-bottom="false">
-					<u-input v-model="form.detail" placeholder="街道门牌、楼层等信息" />
+				
+				<u-form-item label="详细地址" prop="Detail" :border-bottom="false">
+					<u-input v-model="form.Detail" placeholder="街道门牌、楼层等信息" />
 				</u-form-item>
 			</u-form>
 		</view>
 		
+		<u-picker
+			v-model="showPicker"
+			mode="region"
+			@confirm="handleRegionConfirm"
+		></u-picker>
+		
 		<view class="footer">
 			<view class="btn-wrapper">
-				<view class="btn-item btn-item-main" :class="{ disabled }" @click="handleSubmit()">保存</view>
+				<u-button 
+					type="error" 
+					shape="circle" 
+					:loading="loading" 
+					:disabled="loading"
+					@click="handleSubmit"
+				>保存收货地址</u-button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script>
-	import SelectRegion from '@/components/select-region/select-region'
-	
-	// 【关键修复 1】手动引入 uView 核心组件，防止组件不显示
-	import uForm from '@/uview-ui/components/u-form/u-form.vue';
-	import uFormItem from '@/uview-ui/components/u-form-item/u-form-item.vue';
-	import uInput from '@/uview-ui/components/u-input/u-input.vue';
+	/**
+	 * 收货地址新增页面
+	 * 对接文档：收货地址管理API对接文档.md
+	 */
+	import * as AddressApi from '@/api/user/userAddress.js'
 
 	export default {
-		components: {
-			SelectRegion,
-			// 【关键修复 2】注册组件
-			uForm,
-			uFormItem,
-			uInput
-		},
 		data() {
 			return {
+				showPicker: false,
+				loading: false,
+				// 表单模型：遵循 API 文档 PascalCase 规范
 				form: {
-					name: '',
-					phone: '',
-					listRegion: [],
-					detail: ''
+					Name: '',
+					Phone: '',
+					Detail: '',
+					ListRegion: [],    // 接口要求的 [{Value, Label}] 结构
+					RegionDisplay: ''  // 用于前端页面回显
 				},
 				rules: {
-					name: [{
-						required: true,
-						message: '请输入姓名',
-						trigger: ['blur', 'change']
-					}],
-					phone: [{
-						required: true,
-						message: '请输入手机号',
-						trigger: ['blur', 'change']
-					}],
-					listRegion: [{
-						required: true,
-						message: '请选择省市区',
-						trigger: ['change'],
-						type: 'array'
-					}],
-					detail: [{
-						required: true,
-						message: '请输入详细地址',
-						trigger: ['blur', 'change']
-					}],
-				},
-				disabled: false
+					Name: [{ required: true, message: '请输入收货人姓名', trigger: ['blur', 'change'] }],
+					Phone: [
+						{ required: true, message: '请输入联系电话', trigger: ['blur', 'change'] },
+						{ 
+							validator: (rule, value) => this.$u.test.mobile(value), 
+							message: '手机号格式不正确', 
+							trigger: ['blur', 'change'] 
+						}
+					],
+					RegionDisplay: [{ required: true, message: '请选择地区', trigger: ['change'] }],
+					Detail: [{ required: true, message: '请输入详细地址', trigger: ['blur', 'change'] }]
+				}
 			}
 		},
-
 		onReady() {
-			this.$nextTick(() => {
-				// 此时组件已手动注册，refs 应该能找到了
-				if (this.$refs.uForm) {
-					this.$refs.uForm.setRules(this.rules)
-				} else {
-					console.error('错误：依然找不到 uForm 组件');
-				}
-			})
+			// 设置校验规则
+			if (this.$refs.uForm) {
+				this.$refs.uForm.setRules(this.rules);
+			}
 		},
-
 		methods: {
-			// 表单提交
+			/**
+			 * 地区选择确定回调
+			 */
+			handleRegionConfirm(e) {
+				console.log('Picker 选择原始数据:', e);
+				
+				const pName = e.province.label || e.province.name || '';
+				const cName = e.city.label || e.city.name || '';
+				const aName = e.area.label || e.area.name || '';
+				
+				const pValue = e.province.value || e.province.id || '';
+				const cValue = e.city.value || e.city.id || '';
+				const aValue = e.area.value || e.area.id || '';
+
+				this.form.RegionDisplay = `${pName} ${cName} ${aName}`;
+				this.form.ListRegion = [
+					{ Value: pValue, Label: pName },
+					{ Value: cValue, Label: cName },
+					{ Value: aValue, Label: aName }
+				];
+			},
+
+			/**
+			 * 提交表单 - 修复逻辑核心点
+			 */
 			handleSubmit() {
-				const _this = this;
-				if (_this.disabled) {
-					return false;
-				}
+				this.$refs.uForm.validate(async (valid) => {
+					if (!valid) return;
 
-				if (!_this.$refs.uForm) {
-					uni.showToast({ title: '表单加载中，请稍后', icon: 'none' });
-					return;
-				}
+					this.loading = true;
+					uni.showLoading({ title: '正在保存...', mask: true });
 
-				_this.$refs.uForm.validate(valid => {
-					if (valid) {
-						_this.disabled = true;
-						uni.showLoading({ title: '保存中' });
+					try {
+						const postData = {
+							Name: this.form.Name,
+							Phone: this.form.Phone,
+							Detail: this.form.Detail,
+							ListRegion: this.form.ListRegion
+						};
 
-						setTimeout(() => {
-							// 1. 获取现有数据
-							let localList = uni.getStorageSync('mock_address_list') || [];
+						// 调用后端 API
+						const res = await AddressApi.addOrUpdate(postData);
+						
+						// 1. 调试日志：确认数据类型
+						console.log('保存接口返回:', res, 'Code类型:', typeof res.Code || typeof res.code);
 
-							// 2. 构造新数据
-							let province = '', city = '', region = '';
-							let provinceId = 0, cityId = 0, regionId = 0;
-							
-							if (_this.form.listRegion && _this.form.listRegion.length >= 3) {
-								province = _this.form.listRegion[0].label;
-								city = _this.form.listRegion[1].label;
-								region = _this.form.listRegion[2].label;
-								provinceId = _this.form.listRegion[0].value;
-								cityId = _this.form.listRegion[1].value;
-								regionId = _this.form.listRegion[2].value;
-							}
-
-							const newItem = {
-								addressId: new Date().getTime(),
-								name: _this.form.name,
-								phone: _this.form.phone,
-								province: province,
-								city: city,
-								region: region,
-								detail: _this.form.detail,
-								provinceId: provinceId,
-								cityId: cityId,
-								regionId: regionId,
-								isDefault: 0 
-							};
-
-							// 3. 如果是第一条数据，强制设为默认
-							if (localList.length === 0) {
-								newItem.isDefault = 1;
-							}
-
-							// 4. 存入
-							localList.push(newItem);
-							uni.setStorageSync('mock_address_list', localList);
-
-							uni.hideLoading();
-							uni.showToast({
-								title: '添加成功',
-								icon: 'none'
-							});
-
-							// 5. 返回上一页
+						// 2. 弱类型判断与大小写兼容
+						const responseCode = res.Code !== undefined ? res.Code : res.code;
+						
+						if (responseCode == 200) {
+							uni.showToast({ title: '添加成功', icon: 'success' });
+							// 成功后跳转
 							setTimeout(() => {
 								uni.navigateBack();
-								_this.disabled = false;
-							}, 800);
-
-						}, 500);
+							}, 1200);
+						} else {
+							// 业务逻辑错误，手动弹出后端返回的 Message
+							uni.showToast({ 
+								title: res.Message || res.message || '操作失败', 
+								icon: 'none' 
+							});
+						}
+					} catch (err) {
+						// 3. 异常处理：弹出具体错误
+						console.error('请求发生异常:', err);
+						uni.showToast({ 
+							title: err.Message || err.errMsg || '请求异常', 
+							icon: 'none' 
+						});
+					} finally {
+						// 4. Loading 保护：统一在最后关闭，避免重复调用 hideLoading
+						this.loading = false;
+						uni.hideLoading();
 					}
-				})
+				});
 			}
-
 		}
 	}
 </script>
@@ -174,49 +176,21 @@
 	}
 
 	.page-title {
-		width: 94%;
-		margin: 0 auto;
-		padding-top: 40rpx;
+		padding: 40rpx 30rpx 20rpx;
 		font-size: 28rpx;
-		color: rgba(69, 90, 100, 0.6);
+		color: #909399;
 	}
 
 	.form-wrapper {
-		margin: 20rpx auto 20rpx auto;
-		padding: 0 40rpx;
-		width: 94%;
-		box-shadow: 0 1rpx 5rpx 0px rgba(0, 0, 0, 0.05);
-		border-radius: 16rpx;
+		margin: 0 30rpx;
+		padding: 0 30rpx;
 		background: #fff;
+		border-radius: 16rpx;
+		box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
 	}
 
 	.footer {
 		margin-top: 80rpx;
-
-		.btn-wrapper {
-			height: 100%;
-			padding: 0 20rpx;
-		}
-
-		.btn-item {
-			flex: 1;
-			font-size: 28rpx;
-			height: 86rpx;
-			color: #fff;
-			border-radius: 50rpx;
-			display: flex;
-			justify-content: center;
-			align-items: center;
-		}
-
-		.btn-item-main {
-			background: linear-gradient(to right, #f9211c, #ff6335);
-			color: #fff;
-
-			&.disabled {
-				opacity: 0.6;
-			}
-		}
-
+		padding: 0 60rpx;
 	}
 </style>
