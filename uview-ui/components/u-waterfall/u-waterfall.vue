@@ -1,7 +1,9 @@
 <template>
 	<view class="u-waterfall">
 		<view id="u-left-column" class="u-column"><slot name="left" :leftList="leftList"></slot></view>
-		<view id="u-right-column" class="u-column"><slot name="right" :rightList="rightList"></slot></view>
+		<view id="u-right-column" class="u-column">
+			<slot name="right" :rightList="rightList"></slot>
+		</view>
 	</view>
 </template>
 
@@ -16,11 +18,18 @@
  */
 export default {
 	name: "u-waterfall",
+	emits: ["update:modelValue", "input"],
 	props: {
 		value: {
 			// 瀑布流数据
 			type: Array,
-			required: true,
+			default: function() {
+				return [];
+			}
+		},
+		modelValue: {
+			// 瀑布流数据
+			type: Array,
 			default: function() {
 				return [];
 			}
@@ -35,7 +44,7 @@ export default {
 		// 那么该把idKey设置为idx
 		idKey: {
 			type: String,
-			default: 'id'
+			default: "id"
 		}
 	},
 	data() {
@@ -44,7 +53,7 @@ export default {
 			rightList: [],
 			tempList: [],
 			children: []
-		}
+		};
 	},
 	watch: {
 		copyFlowList(nVal, oVal) {
@@ -60,21 +69,30 @@ export default {
 		this.splitData();
 	},
 	computed: {
+		valueCom() {
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
 		// 破坏flowList变量的引用，否则watch的结果新旧值是一样的
 		copyFlowList() {
-			return this.cloneData(this.value);
+			return this.cloneData(this.valueCom);
 		}
 	},
 	methods: {
 		async splitData() {
 			if (!this.tempList.length) return;
-			let leftRect = await this.$uGetRect('#u-left-column');
-			let rightRect = await this.$uGetRect('#u-right-column');
+			let leftRect = await this.$uGetRect("#u-left-column");
+			let rightRect = await this.$uGetRect("#u-right-column");
 			// 如果左边小于或等于右边，就添加到左边，否则添加到右边
 			let item = this.tempList[0];
 			// 解决多次快速上拉后，可能数据会乱的问题，因为经过上面的两个await节点查询阻塞一定时间，加上后面的定时器干扰
 			// 数组可能变成[]，导致此item值可能为undefined
-			if(!item) return ;
+			if (!item) return;
 			if (leftRect.height < rightRect.height) {
 				this.leftList.push(item);
 			} else if (leftRect.height > rightRect.height) {
@@ -94,7 +112,7 @@ export default {
 			if (this.tempList.length) {
 				setTimeout(() => {
 					this.splitData();
-				}, this.addTime)
+				}, this.addTime);
 			}
 		},
 		// 复制而不是引用对象和数组
@@ -106,7 +124,8 @@ export default {
 			this.leftList = [];
 			this.rightList = [];
 			// 同时清除父组件列表中的数据
-			this.$emit('input', []);
+			this.$emit("input", []);
+			this.$emit("update:modelValue", []);
 			this.tempList = [];
 		},
 		// 清除某一条指定的数据，根据id实现
@@ -114,44 +133,48 @@ export default {
 			// 如果findIndex找不到合适的条件，就会返回-1
 			let index = -1;
 			index = this.leftList.findIndex(val => val[this.idKey] == id);
-			if(index != -1) {
+			if (index != -1) {
 				// 如果index不等于-1，说明已经找到了要找的id，根据index索引删除这一条数据
 				this.leftList.splice(index, 1);
 			} else {
 				// 同理于上方面的方法
 				index = this.rightList.findIndex(val => val[this.idKey] == id);
-				if(index != -1) this.rightList.splice(index, 1);
+				if (index != -1) this.rightList.splice(index, 1);
 			}
 			// 同时清除父组件的数据中的对应id的条目
 			index = this.value.findIndex(val => val[this.idKey] == id);
-			if(index != -1) this.$emit('input', this.value.splice(index, 1));
+			if (index != -1) {
+				this.$emit("input", this.valueCom.splice(index, 1));
+				this.$emit("update:modelValue", this.valueCom.splice(index, 1));
+			}
 		},
 		// 修改某条数据的某个属性
 		modify(id, key, value) {
 			// 如果findIndex找不到合适的条件，就会返回-1
 			let index = -1;
 			index = this.leftList.findIndex(val => val[this.idKey] == id);
-			if(index != -1) {
+			if (index != -1) {
 				// 如果index不等于-1，说明已经找到了要找的id，修改对应key的值
 				this.leftList[index][key] = value;
 			} else {
 				// 同理于上方面的方法
 				index = this.rightList.findIndex(val => val[this.idKey] == id);
-				if(index != -1) this.rightList[index][key] = value;
+				if (index != -1) this.rightList[index][key] = value;
 			}
 			// 修改父组件的数据中的对应id的条目
-			index = this.value.findIndex(val => val[this.idKey] == id);
-			if(index != -1) {
+			index = this.valueCom.findIndex(val => val[this.idKey] == id);
+			if (index != -1) {
 				// 首先复制一份value的数据
-				let data = this.cloneData(this.value);
+				let data = this.cloneData(this.valueCom);
 				// 修改对应索引的key属性的值为value
 				data[index][key] = value;
 				// 修改父组件通过v-model绑定的变量的值
-				this.$emit('input', data);
+				this.$emit("input", data);
+				this.$emit("update:modelValue", data);
 			}
 		}
 	}
-}
+};
 </script>
 
 <style lang="scss" scoped>

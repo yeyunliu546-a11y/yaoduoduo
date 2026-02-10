@@ -15,6 +15,7 @@
  */
 export default {
 	name: 'u-grid',
+  emits: ["click"],
 	props: {
 		// 分成几列
 		col: {

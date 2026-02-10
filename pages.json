@@ -1,7 +1,11 @@
 {
 	"easycom": {
-		"^u-(.*)": "@/uview-ui/components/u-$1/u-$1.vue"
-	},
+	        "autoscan": true,
+	        "custom": {
+	            // 这里指向我们偷梁换柱后的 uview-ui 目录
+	            "^u-(.*)": "@/uview-ui/components/u-$1/u-$1.vue"
+	        }
+	    },
 	"pages": [
 		// =========================================================
 		// 1. 底部 TabBar 页面

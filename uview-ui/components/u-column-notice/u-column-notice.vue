@@ -33,6 +33,7 @@
 
 <script>
 export default {
+  emits: ["close", "getMore", "end"],
 	props: {
 		// 显示的内容，数组
 		list: {

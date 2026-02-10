@@ -1,6 +1,4 @@
-// 位于 uview-ui/libs/mixin/mixin.js
-
-export default { // 【核心修改点：将 module.exports = 改为 export default】
+export default {
 	data() {
 		return {}
 	},
@@ -39,37 +37,50 @@ export default { // 【核心修改点：将 module.exports = 改为 export defa
 				Object.keys(this.parentData).map(key => {
 					this.parentData[key] = this.parent[key];
 				});
+				// #ifdef VUE3
+				this.parentData.value = this.parent.modelValue;
+				// #endif
 			}
 		},
-		// Vue 2 Emitter Mixin 的核心方法
-        dispatch(componentName, eventName, params) {
-            let parent = this.$parent;
-            // 循环向上查找父组件
-            while (parent && (!parent.$options.name || parent.$options.name !== componentName)) {
-                parent = parent.$parent;
-            }
-            if (parent) {
-                // 改为调用我们 polyfill 后的 $on 对应的 $emit
-                parent.$emit.apply(parent, [eventName].concat(params));
-            }
-        },
-        broadcast(componentName, eventName, params) {
-            this.$children.forEach(child => {
-                const name = child.$options.name;
-
-                if (name === componentName) {
-                    // 改为调用我们 polyfill 后的 $on 对应的 $emit
-                    child.$emit.apply(child, [eventName].concat(params));
-                } else {
-                    // 递归向下寻找
-                    // eslint-disable-next-line
-                    if (child.$children) {
-                        this.broadcast.apply(child, [componentName, eventName, params]);
-                    }
-                }
-            });
-        },
 		// 阻止事件冒泡
-		stopEvent() {}
-	}
+		preventEvent(e) {
+			e && e.stopPropagation && e.stopPropagation()
+		}
+	},
+	onReachBottom() {
+		uni.$emit('uOnReachBottom')
+	},
+	// #ifdef VUE2
+	beforeDestroy() {
+		// 判断当前页面是否存在parent和chldren，一般在checkbox和checkbox-group父子联动的场景会有此情况
+		// 组件销毁时，移除子组件在父组件children数组中的实例，释放资源，避免数据混乱
+		if(this.parent && uni.$u.test.array(this.parent.children)) {
+			// 组件销毁时，移除父组件中的children数组中对应的实例
+			const childrenList = this.parent.children
+			childrenList.map((child, index) => {
+				// 如果相等，则移除
+				if(child === this) {
+					childrenList.splice(index, 1)
+				}
+			})
+		}
+	},
+	// #endif
+	
+	// #ifdef VUE3
+	beforeUnmount() {
+		// 判断当前页面是否存在parent和chldren，一般在checkbox和checkbox-group父子联动的场景会有此情况
+		// 组件销毁时，移除子组件在父组件children数组中的实例，释放资源，避免数据混乱
+		if(this.parent && uni.$u.test.array(this.parent.children)) {
+			// 组件销毁时，移除父组件中的children数组中对应的实例
+			const childrenList = this.parent.children
+			childrenList.map((child, index) => {
+				// 如果相等，则移除
+				if(child === this) {
+					childrenList.splice(index, 1)
+				}
+			})
+		}
+	},
+	// #endif
 }

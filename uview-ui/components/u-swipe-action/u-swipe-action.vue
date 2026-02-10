@@ -35,7 +35,7 @@
  * @property {String} bg-color 整个组件背景颜色（默认#ffffff）
  * @property {Array} options 数组形式，可以配置背景颜色和文字
  * @property {String Number} index 标识符，点击时候用于区分点击了哪一个，用v-for循环时的index即可
- * @property {String Number} btn-width 按钮宽度，单位rpx（默认180）
+ * @property {String Number} btn-width 按钮宽度，单位px（默认90）
  * @property {Boolean} disabled 是否禁止某个swipeAction滑动（默认false）
  * @property {Boolean} show 打开或者关闭某个组件（默认false）
  * @event {Function} click 点击组件时触发
@@ -46,16 +46,17 @@
  */
 export default {
 	name: 'u-swipe-action',
+  emits: ["click", "content-click", "open", "close"],
 	props: {
 		// index值，用于得知点击删除的是哪个按钮
 		index: {
 			type: [Number, String],
 			default: ''
 		},
-		// 滑动按钮的宽度，单位为rpx
+		// 滑动按钮的宽度，单位为px
 		btnWidth: {
 			type: [String, Number],
-			default: 180
+			default: 90
 		},
 		// 是否禁止某个action滑动
 		disabled: {
@@ -112,15 +113,15 @@ export default {
 			return this.movableAreaWidth + this.allBtnWidth + 'px';
 		},
 		innerBtnWidth() {
-			return uni.upx2px(this.btnWidth);
+			return this.btnWidth;
 		},
 		allBtnWidth() {
-			return uni.upx2px(this.btnWidth) * this.options.length;
+			return this.btnWidth * this.options.length;
 		},
 		btnStyle() {
 			return style => {
 				let css = {};
-				style.width = this.btnWidth + 'rpx';
+				style.width = this.btnWidth + 'px';
 				return style;
 			};
 		}
@@ -221,7 +222,7 @@ export default {
 
 <style scoped lang="scss">
 @import "../../libs/css/style.components.scss";
-	
+
 .u-swipe-action {
 	width: auto;
 	height: initial;
@@ -242,7 +243,7 @@ export default {
 
 .u-swipe-del {
 	position: relative;
-	font-size: 30rpx;
+	font-size: 15px;
 	color: #ffffff;
 }
 

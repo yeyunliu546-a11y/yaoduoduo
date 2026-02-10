@@ -36,6 +36,7 @@
 	 */
 	export default {
 		name: 'u-tag',
+    emits: ["click", "close"],
 		// 是否禁用这个标签，禁用的话，会屏蔽点击事件
 		props: {
 			// 标签类型info、primary、success、warning、error

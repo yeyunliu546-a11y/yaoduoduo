@@ -9,11 +9,11 @@
 					<u-icon size="32" :custom-style="iconStyle" :name="icon" :color="iconColor" class="u-icon"></u-icon>
 				</view>
 				<slot name="icon"></slot>
-				<text class="u-label-text" :class="[this.$slots.icon || icon ? 'u-label-left-gap' : '']">{{ label }}</text>
+				<text class="u-label-text" :class="[$slots.icon || icon ? 'u-label-left-gap' : '']">{{ label }}</text>
 			</view>
 			<view class="fild-body">
 				<view class="u-flex-1 u-flex" :style="[inputWrapStyle]">
-					<textarea v-if="type == 'textarea'" class="u-flex-1 u-textarea-class" :style="[fieldStyle]" :value="value"
+					<textarea v-if="type == 'textarea'" class="u-flex-1 u-textarea-class" :style="[fieldStyle]" :value="valueCom"
 					 :placeholder="placeholder" :placeholderStyle="placeholderStyle" :disabled="disabled" :maxlength="inputMaxlength"
 					 :focus="focus" :autoHeight="autoHeight" :fixed="fixed" @input="onInput" @blur="onBlur" @focus="onFocus" @confirm="onConfirm"
 					 @tap="fieldClick" />
@@ -22,8 +22,8 @@
 						:style="[fieldStyle]"
 						:type="type"
 						class="u-flex-1 u-field__input-wrap"
-						:value="value"
-						:password="password || this.type === 'password'"
+						:value="valueCom"
+						:password="password || type === 'password'"
 						:placeholder="placeholder"
 						:placeholderStyle="placeholderStyle"
 						:disabled="disabled"
@@ -37,7 +37,7 @@
 						@tap="fieldClick"
 					/>
 				</view>
-				<u-icon :size="clearSize" v-if="clearable && value != '' && focused" name="close-circle-fill" color="#c0c4cc" class="u-clear-icon" @click="onClear"/>
+				<u-icon :size="clearSize" v-if="clearable && valueCom != '' && focused" name="close-circle-fill" color="#c0c4cc" class="u-clear-icon" @click="onClear"/>
 				<view class="u-button-wrap"><slot name="right" /></view>
 				<u-icon v-if="rightIcon" @click="rightIconClick" :name="rightIcon" color="#c0c4cc" :style="[rightIconStyle]" size="26" class="u-arror-right" />
 			</view>
@@ -88,13 +88,16 @@
  */
 export default {
 	name:"u-field",
+  emits: ["update:modelValue", "input", "focus", "blur", "confirm", "right-icon-click", "click"],
 	props: {
+    value: [Number, String],
+    modelValue: [Number, String],
 		icon: String,
 		rightIcon: String,
-		// arrowDirection: {
-		// 	type: String,
-		// 	default: 'right'
-		// },
+		arrowDirection: {
+			type: String,
+			default: 'right'
+		},
 		required: Boolean,
 		label: String,
 		password: Boolean,
@@ -132,7 +135,6 @@ export default {
 		placeholderStyle: String,
 		focus: Boolean,
 		fixed: Boolean,
-		value: [Number, String],
 		type: {
 			type: String,
 			default: 'text'
@@ -196,6 +198,15 @@ export default {
 		};
 	},
 	computed: {
+		valueCom() {
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+		
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
 		inputWrapStyle() {
 			let style = {};
 			style.textAlign = this.inputAlign;
@@ -210,9 +221,14 @@ export default {
 		},
 		rightIconStyle() {
 			let style = {};
-			if (this.arrowDirection == 'top') style.transform = 'roate(-90deg)';
-			if (this.arrowDirection == 'bottom') style.transform = 'roate(90deg)';
-			else style.transform = 'roate(0deg)';
+			let arrowDirectionObj = {
+				"top": "-90deg",
+				"bottom": "90deg",
+				"left": "180deg",
+				"right": "0deg",
+			};
+			let deg = arrowDirectionObj[this.arrowDirection] || "0deg";
+			style.transform = 'rotate('+deg+')';
 			return style;
 		},
 		labelStyle() {
@@ -250,6 +266,7 @@ export default {
 			// 判断是否去除空格
 			if(this.trim) value = this.$u.trim(value);
 			this.$emit('input', value);
+      this.$emit("update:modelValue", value);
 		},
 		onFocus(event) {
 			this.focused = true;
@@ -268,6 +285,7 @@ export default {
 		},
 		onClear(event) {
 			this.$emit('input', '');
+      this.$emit("update:modelValue", '');
 		},
 		rightIconClick() {
 			this.$emit('right-icon-click');

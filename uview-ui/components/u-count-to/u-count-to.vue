@@ -2,12 +2,12 @@
 	<view
 		class="u-count-num"
 		:style="{
-			fontSize: fontSize + 'rpx',
+			fontSize: $u.addUnit(fontSize),
 			fontWeight: bold ? 'bold' : 'normal',
 			color: color
 		}"
 	>
-		{{ displayValue }}
+		{{ displayValueCom }}
 	</view>
 </template>
 
@@ -16,6 +16,7 @@
  * countTo 数字滚动
  * @description 该组件一般用于需要滚动数字到某一个值的场景，目标要求是一个递增的值。
  * @tutorial https://www.uviewui.com/components/countTo.html
+ * @property {String Number} nullVal 空值或NaN时显示的值，默认 -
  * @property {String Number} start-val 开始值
  * @property {String Number} end-val 结束值
  * @property {String Number} duration 滚动过程所需的时间，单位ms（默认2000）
@@ -30,8 +31,14 @@
  * @example <u-count-to ref="uCountTo" :end-val="endVal" :autoplay="autoplay"></u-count-to>
  */
 export default {
-	name: 'u-count-to',
+	name: "u-count-to",
+	emits: ["end"],
 	props: {
+		// 没有值时显示
+		nullVal: {
+			type: [Number, String],
+			default: "-"
+		},
 		// 开始的数值，默认从0增长到某一个数
 		startVal: {
 			type: [Number, String],
@@ -66,12 +73,12 @@ export default {
 		// 十进制分割
 		decimal: {
 			type: [Number, String],
-			default: '.'
+			default: "."
 		},
 		// 字体颜色
 		color: {
 			type: String,
-			default: '#303133'
+			default: "#303133"
 		},
 		// 字体大小
 		fontSize: {
@@ -86,7 +93,7 @@ export default {
 		// 千位分隔符，类似金额的分割(￥23,321.05中的",")
 		separator: {
 			type: String,
-			default: ''
+			default: ""
 		}
 	},
 	data() {
@@ -106,6 +113,16 @@ export default {
 	computed: {
 		countDown() {
 			return this.startVal > this.endVal;
+		},
+		displayValueCom() {
+			let str;
+			let { displayValue, nullVal, endVal } = this;
+			if (isNaN(endVal)) {
+				str = nullVal;
+			} else {
+				str = displayValue;
+			}
+			return str;
 		}
 	},
 	watch: {
@@ -199,7 +216,7 @@ export default {
 			if (progress < this.localDuration) {
 				this.rAF = this.requestAnimationFrame(this.count);
 			} else {
-				this.$emit('end');
+				this.$emit("end");
 			}
 		},
 		// 判断是否数字
@@ -210,21 +227,29 @@ export default {
 			// 将num转为Number类型，因为其值可能为字符串数值，调用toFixed会报错
 			num = Number(num);
 			num = num.toFixed(Number(this.decimals));
-			num += '';
-			const x = num.split('.');
+			num += "";
+			const x = num.split(".");
 			let x1 = x[0];
-			const x2 = x.length > 1 ? this.decimal + x[1] : '';
+			const x2 = x.length > 1 ? this.decimal + x[1] : "";
 			const rgx = /(\d+)(\d{3})/;
 			if (this.separator && !this.isNumber(this.separator)) {
 				while (rgx.test(x1)) {
-					x1 = x1.replace(rgx, '$1' + this.separator + '$2');
+					x1 = x1.replace(rgx, "$1" + this.separator + "$2");
 				}
 			}
 			return x1 + x2;
 		},
+		// #ifdef VUE2
 		destroyed() {
 			this.cancelAnimationFrame(this.rAF);
+		},
+		// #endif
+
+		// #ifdef VUE3
+		unmounted() {
+			this.cancelAnimationFrame(this.rAF);
 		}
+		// #endif
 	}
 };
 </script>
@@ -234,7 +259,7 @@ export default {
 
 .u-count-num {
 	/* #ifndef APP-NVUE */
-	display: inline-flex;		
+	display: inline-flex;
 	/* #endif */
 	text-align: center;
 }

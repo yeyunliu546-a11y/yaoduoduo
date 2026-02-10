@@ -1,5 +1,5 @@
 <template>
-	<view class="u-mask" hover-stop-propagation :style="[maskStyle, zoomStyle]" @tap="click" @touchmove.stop.prevent="() => {}" :class="{
+	<view class="u-mask" hover-stop-propagation :style="[maskStyle, zoomStyle, filterStyle]" @tap="click" @touchmove.stop.prevent="() => {}" :class="{
 		'u-mask-zoom': zoom,
 		'u-mask-show': show
 	}">
@@ -23,6 +23,7 @@
 	 */
 	export default {
 		name: "u-mask",
+		emits: ["click"],
 		props: {
 			// 是否显示遮罩
 			show: {
@@ -55,7 +56,12 @@
 			maskClickAble: {
 				type: Boolean,
 				default: true
-			}
+			},
+			// 遮罩的模糊度
+			blur: {
+				type: [Number, String],
+				default: 0
+			},
 		},
 		data() {
 			return {
@@ -88,6 +94,14 @@
 					...style,
 					...this.customStyle
 				};
+				return style;
+			},
+			filterStyle() {
+				let { blur } = this;
+				let style = {};
+				if (blur) {
+					style.backdropFilter = `blur(${blur}rpx)`;
+				}
 				return style;
 			}
 		},

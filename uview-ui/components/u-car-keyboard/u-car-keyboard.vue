@@ -1,23 +1,21 @@
 <template>
 	<view class="u-keyboard" @touchmove.stop.prevent="() => {}">
 		<view class="u-keyboard-grids">
-			<block>
-				<view class="u-keyboard-grids-item" v-for="(group, i) in abc ? EngKeyBoardList : areaList" :key="i">
-					<view :hover-stay-time="100" @tap="carInputClick(i, j)" hover-class="u-carinput-hover" class="u-keyboard-grids-btn"
-					 v-for="(item, j) in group" :key="j">
-						{{ item }}
-					</view>
-				</view>
-				<view @touchstart="backspaceClick" @touchend="clearTimer" :hover-stay-time="100" class="u-keyboard-back"
-				 hover-class="u-hover-class">
-					<u-icon :size="38" name="backspace" :bold="true"></u-icon>
-				</view>
-				<view :hover-stay-time="100" class="u-keyboard-change" hover-class="u-carinput-hover" @tap="changeCarInputMode">
-					<text class="zh" :class="[!abc ? 'active' : 'inactive']">中</text>
-					/
-					<text class="en" :class="[abc ? 'active' : 'inactive']">英</text>
-				</view>
-			</block>
+      <view class="u-keyboard-grids-item" v-for="(group, i) in abc ? EngKeyBoardList : areaList" :key="i">
+        <view :hover-stay-time="100" @touchstart="carInputClick(i, j)" hover-class="u-carinput-hover" class="u-keyboard-grids-btn"
+         v-for="(item, j) in group" :key="j">
+          {{ item }}
+        </view>
+      </view>
+      <view @touchstart="backspaceClick" @touchend="clearTimer" :hover-stay-time="100" class="u-keyboard-back"
+       hover-class="u-hover-class">
+        <u-icon :size="38" name="backspace" :bold="true"></u-icon>
+      </view>
+      <view :hover-stay-time="100" class="u-keyboard-change" hover-class="u-carinput-hover" @click="changeCarInputMode">
+        <text class="zh" :class="[!abc ? 'active' : 'inactive']">中</text>
+        /
+        <text class="en" :class="[abc ? 'active' : 'inactive']">英</text>
+      </view>
 		</view>
 	</view>
 </template>
@@ -25,6 +23,7 @@
 <script>
 	export default {
 		name: "u-keyboard",
+    emits: ["change", "backspace"],
 		props: {
 			// 是否打乱键盘按键的顺序
 			random: {
@@ -139,24 +138,35 @@
 		methods: {
 			// 点击键盘按钮
 			carInputClick(i, j) {
-				let value = '';
-				// 不同模式，获取不同数组的值
-				if (this.abc) value = this.EngKeyBoardList[i][j];
-				else value = this.areaList[i][j];
-				this.$emit('change', value);
+        let value = '';
+        // 不同模式，获取不同数组的值
+        if (this.abc) value = this.EngKeyBoardList[i][j];
+        else value = this.areaList[i][j];
+        if(!this.abc) this.abc = true;
+        this.$emit('change', value);
+        if(this.vibrate) uni.vibrateShort();
 			},
 			// 修改汽车牌键盘的输入模式，中文|英文
 			changeCarInputMode() {
 				this.abc = !this.abc;
 			},
+			// 修改汽车牌键盘的输入模式，中文|英文
+			updateCarInputMode(abc) {
+				this.abc = abc;
+			},
 			// 点击退格键
 			backspaceClick() {
-				this.$emit('backspace');
+				let count = 1;
+				this.backspaceFn(count);
 				clearInterval(this.timer); //再次清空定时器，防止重复注册定时器
 				this.timer = null;
 				this.timer = setInterval(() => {
-					this.$emit('backspace');
+					count++;
+					this.backspaceFn(count);
 				}, 250);
+			},
+			backspaceFn(count){
+				this.$emit('backspace',count);
 			},
 			clearTimer() {
 				clearInterval(this.timer);

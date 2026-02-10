@@ -3,6 +3,7 @@
 		<view class="u-item u-line-1" :style="[itemStyle(index)]" @tap="click(index)" :class="[noBorderRight(index), 'u-item-' + index]"
 		 v-for="(item, index) in listInfo" :key="index">
 			<view :style="[textStyle(index)]" class="u-item-text u-line-1">{{ item.name }}</view>
+			<u-badge v-if="item.num > 0" :count="item.num" :offset="offset" size="mini"></u-badge>
 		</view>
 		<view class="u-item-bg" :style="[itemBarStyle]"></view>
 	</view>
@@ -29,6 +30,7 @@
 	 */
 	export default {
 		name: "u-subsection",
+		emits: ["change","update:modelValue", "input"],
 		props: {
 			// tab的数据
 			list: {
@@ -36,6 +38,14 @@
 				default () {
 					return [];
 				}
+			},
+			value: {
+				type: [String, Number],
+				default: 0
+			},
+			modelValue: {
+				type: [String, Number],
+				default: 0
 			},
 			// 当前活动的tab的index
 			current: {
@@ -91,11 +101,16 @@
 			vibrateShort: {
 				type: Boolean,
 				default: false
-			}
+			},
+			offset: {
+				type: Array,
+				default: function(){
+					return [0,0]
+				}
+			},
 		},
 		data() {
 			return {
-				listInfo: [],
 				itemBgStyle: {
 					width: 0,
 					left: 0,
@@ -106,35 +121,48 @@
 				currentIndex: this.current,
 				buttonPadding: 3, // mode = button 时，组件的内边距
 				borderRadius: 5, // 圆角值
-				firstTimeVibrateShort: true // 组件初始化时，会触发current变化，此时不应震动
+				firstTimeVibrateShort: true ,// 组件初始化时，会触发current变化，此时不应震动
+				listInfo:[]
 			};
 		},
 		watch: {
-			current: {
+			valueCom: {
 				immediate: true,
 				handler(nVal) {
+					if (!nVal) nVal = 0;
 					this.currentIndex = nVal;
 					this.changeSectionStatus(nVal);
 				}
-			}
-		},
-		created() {
-			// 将list的数据，传入listInfo数组，因为不能修改props传递的list值
-			// 可以接受直接数组形式，或者数组元素为对象的形式，如：['简介', '评论'],或者[{name: '简介'}, {name: '评论'}]
-			this.listInfo = this.list.map((val, index) => {
-				if (typeof val != 'object') {
-					let obj = {
-						width: 0,
-						name: val
-					};
-					return obj;
-				} else {
-					val.width = 0;
-					return val;
+			},
+			current: {
+				immediate: true,
+				handler(nVal) {
+					if (!nVal) nVal = this.valueCom || 0;
+					this.currentIndex = nVal;
+					this.changeSectionStatus(nVal);
 				}
-			});
+			},
+			list: {
+				deep:true,
+				handler(nVal=[]) {
+					this.listInfoFn();
+					setTimeout(() => {
+						this.getTabsInfo();
+					}, 10);
+				}
+			},
+			
 		},
 		computed: {
+			valueCom() {
+				// #ifdef VUE2
+				return this.value;
+				// #endif
+			
+				// #ifdef VUE3
+				return this.modelValue;
+				// #endif
+			},
 			// 设置mode=subsection时，滑块特有的样式
 			noBorderRight() {
 				return index => {
@@ -213,11 +241,27 @@
 			}
 		},
 		mounted() {
+			this.listInfoFn();
 			setTimeout(() => {
 				this.getTabsInfo();
 			}, 10);
 		},
 		methods: {
+			listInfoFn(){
+				let { list =[] } = this;
+				this.listInfo = this.list.map((val, index) => {
+					if (typeof val != 'object') {
+						let obj = {
+							width: 0,
+							name: val,
+						};
+						return obj;
+					} else {
+						return val;
+					}
+				});
+				return this.listInfo;
+			},
 			// 改变滑块的样式
 			changeSectionStatus(nVal) {
 				if (this.mode == 'subsection') {
@@ -251,6 +295,8 @@
 				this.currentIndex = index;
 				this.changeSectionStatus(index);
 				this.$emit('change', Number(index));
+				this.$emit("input", Number(index));
+				this.$emit("update:modelValue", Number(index));
 			},
 			// 获取各个tab的节点信息
 			getTabsInfo() {
@@ -304,7 +350,7 @@
 
 <style lang="scss" scoped>
 	@import "../../libs/css/style.components.scss";
-	
+
 	.u-subsection {
 		@include vue-flex;
 		align-items: center;
@@ -322,6 +368,7 @@
 		justify-content: center;
 		color: $u-main-color;
 		padding: 0 6rpx;
+		position: relative;
 	}
 
 	.u-item-bg {

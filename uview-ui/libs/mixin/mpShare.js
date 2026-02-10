@@ -1,4 +1,3 @@
-// 【关键修改】将 module.exports 改为 export default
 export default {
 	onLoad() {
 		// 设置默认的转发参数

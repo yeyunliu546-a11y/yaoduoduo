@@ -1,5 +1,5 @@
 <template>
-	<view class="u-keyboard" @touchmove.stop.prevent="() => {}">
+	<view class="u-keyboard" @touchmove.stop.prevent>
 		<view class="u-keyboard-grids">
 			<view
 			    class="u-keyboard-grids-item"
@@ -9,7 +9,8 @@
 			    :key="index"
 			    :hover-class="hoverClass(index)"
 			    :hover-stay-time="100"
-			    @tap="keyboardClick(item)">
+					@touchstart.stop="keyboardClick(item)"
+			    >
 				<view class="u-keyboard-grids-btn">{{ item }}</view>
 			</view>
 			<view class="u-keyboard-grids-item u-bg-gray" hover-class="u-hover-class" :hover-stay-time="100" @touchstart.stop="backspaceClick"
@@ -24,6 +25,8 @@
 
 <script>
 	export default {
+    name: "u-number-keyboard",
+    emits: ["change", "backspace"],
 		props: {
 			// 键盘的类型，number-数字键盘，card-身份证键盘
 			mode: {
@@ -39,7 +42,12 @@
 			random: {
 				type: Boolean,
 				default: false
-			}
+			},
+			// 是否开启震动
+			vibrate: {
+				type: Boolean,
+				default: false
+			},
 		},
 		data() {
 			return {
@@ -98,12 +106,15 @@
 		methods: {
 			// 点击退格键
 			backspaceClick() {
-				this.$emit('backspace');
+				let count = 1;
+				this.$emit('backspace', count);
 				clearInterval(this.timer); //再次清空定时器，防止重复注册定时器
 				this.timer = null;
 				this.timer = setInterval(() => {
-					this.$emit('backspace');
+					count++;
+					this.$emit('backspace', count);
 				}, 250);
+				if(this.vibrate) uni.vibrateShort();
 			},
 			clearTimer() {
 				clearInterval(this.timer);
@@ -114,6 +125,7 @@
 				// 允许键盘显示点模式和触发非点按键时，将内容转为数字类型
 				if (this.dotEnabled && val != this.dot && val != this.cardX) val = Number(val);
 				this.$emit('change', val);
+				if(this.vibrate) uni.vibrateShort();
 			}
 		}
 	};
@@ -128,7 +140,7 @@
 	}
 
 	.u-keyboard-grids {
-		@include vue-flex;
+		display: flex;
 		flex-wrap: wrap;
 	}
 
@@ -137,7 +149,7 @@
 		text-align: center;
 		font-size: 50rpx;
 		color: #333;
-		@include vue-flex;
+		display: flex;
 		align-items: center;
 		justify-content: center;
 		height: 110rpx;
@@ -145,7 +157,7 @@
 	}
 
 	.u-bg-gray {
-		background-color: $u-border-color;
+		background-color: #e7e6eb;
 	}
 
 	.u-keyboard-back {

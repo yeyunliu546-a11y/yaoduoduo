@@ -17,7 +17,7 @@
 			<input
 				confirm-type="search"
 				@blur="blur"
-				:value="value"
+				:value="valueCom"
 				@confirm="search"
 				@input="inputChange"
 				:disabled="disabled"
@@ -38,9 +38,12 @@
 			<view class="u-close-wrap" v-if="keyword && clearabled && focused" @tap="clear">
 				<u-icon class="u-clear-icon" name="close-circle-fill" size="34" color="#c0c4cc"></u-icon>
 			</view>
+			<view class="u-close-wrap" v-else>
+
+			</view>
 		</view>
-		<view :style="[actionStyle]" class="u-action" 
-			:class="[showActionBtn || show ? 'u-action-active' : '']" 
+		<view :style="[actionStyle]" class="u-action"
+			:class="[showActionBtn || show ? 'u-action-active' : '']"
 			@tap.stop.prevent="custom"
 		>{{ actionText }}</view>
 	</view>
@@ -81,7 +84,17 @@
  */
 export default {
 	name: "u-search",
+  emits: ["update:modelValue", "input", "change", "search", "custom", "clear", "focus", "blur"],
 	props: {
+    // 输入框的初始化内容
+    value: {
+    	type: String,
+    	default: ''
+    },
+    modelValue: {
+      type: String,
+      default: ''
+    },
 		// 搜索框形状，round-圆形，square-方形
 		shape: {
 			type: String,
@@ -144,11 +157,6 @@ export default {
 			type: String,
 			default: 'none'
 		},
-		// 输入框的初始化内容
-		value: {
-			type: String,
-			default: ''
-		},
 		// 搜索框高度，单位rpx
 		height: {
 			type: [Number, String],
@@ -164,7 +172,7 @@ export default {
 		// 输入框最大能输入的长度，-1为不限制长度(来自uniapp文档)
 		maxlength: {
 			type: [Number, String],
-			default: '-1'
+			default: 1000
 		},
 		// 搜索图标的颜色，默认同输入框字体颜色
 		searchIconColor: {
@@ -207,10 +215,11 @@ export default {
 		keyword(nVal) {
 			// 双向绑定值，让v-model绑定的值双向变化
 			this.$emit('input', nVal);
+      this.$emit("update:modelValue", nVal);
 			// 触发change事件，事件效果和v-model双向绑定的效果一样，让用户多一个选择
 			this.$emit('change', nVal);
 		},
-		value: {
+		valueCom: {
 			immediate: true,
 			handler(nVal) {
 				this.keyword = nVal;
@@ -218,6 +227,15 @@ export default {
 		}
 	},
 	computed: {
+		valueCom() {
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
 		showActionBtn() {
 			if (!this.animation && this.showAction) return true;
 			else return false;

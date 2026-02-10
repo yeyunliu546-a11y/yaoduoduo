@@ -39,6 +39,7 @@
 
 export default {
 	name: 'u-rate',
+  emits: ["update:modelValue", "input", "change"],
 	props: {
 		// 用于v-model双向绑定选中的星星数量
 		// 1.4.5版新增
@@ -46,6 +47,10 @@ export default {
 			type: [Number, String],
 			default: -1
 		},
+    modelValue: {
+      type: [Number, String],
+      default: -1
+    },
 		// 要显示的星星数量
 		count: {
 			type: [Number, String],
@@ -127,20 +132,32 @@ export default {
 			elClass: this.$u.guid(),
 			starBoxLeft: 0, // 评分盒子左边到屏幕左边的距离，用于滑动选择时计算距离
 			// 当前激活的星星的index，如果存在value，优先使用value，因为它可以双向绑定(1.4.5新增)
-			activeIndex: this.value != -1 ? this.value : this.current,
+			activeIndex: 0,
 			starWidth: 0, // 每个星星的宽度
 			starWidthArr: [] //每个星星最右边到组件盒子最左边的距离
 		}
+	},
+	created() {
+		this.activeIndex = this.valueCom != -1 ? this.valueCom : this.current;
 	},
 	watch: {
 		current(val) {
 			this.activeIndex = val
 		},
-		value(val) {
+		valueCom(val) {
 			this.activeIndex = val
 		}
 	},
 	computed: {
+		valueCom() {
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+		
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
 		decimal() {
 			if (this.disabled) {
 				return this.activeIndex * 100 % 100
@@ -178,14 +195,14 @@ export default {
 		// 获取评分组件盒子的布局信息
 		getElRectById() {
 			// uView封装的获取节点的方法，详见文档
-			this.$u.getRect('#' + this.elId).then(res => {
+			this.$uGetRect('#' + this.elId).then(res => {
 				this.starBoxLeft = res.left
 			})
 		},
 		// 获取单个星星的尺寸
 		getElRectByClass() {
 			// uView封装的获取节点的方法，详见文档
-			this.$u.getRect('.' + this.elClass).then(res => {
+			this.$uGetRect('.' + this.elClass).then(res => {
 				this.starWidth = res.width
 				// 把每个星星右边到组件盒子左边的距离放入数组中
 				for (let i = 0; i < this.count; i++) {
@@ -243,8 +260,9 @@ export default {
 			// 发出change事件
 			this.$emit('change', this.activeIndex)
 			// 同时修改双向绑定的value的值
-			if (this.value != -1) {
+			if (this.valueCom != -1) {
 				this.$emit('input', this.activeIndex)
+        this.$emit("update:modelValue", this.activeIndex);
 			}
 		},
 		showDecimalIcon(index) {

@@ -1,5 +1,5 @@
 <template>
-	<view class="u-form-item" :class="{'u-border-bottom': elBorderBottom, 'u-form-item__border-bottom--error': validateState === 'error' && showError('border-bottom')}">
+	<view class="u-form-item" :class="{'u-border-bottom': elBorderBottom, 'u-form-item__border-bottom--error': validateState === 'error' && showError('border-bottom')}" @click="onClick">
 		<view class="u-form-item__body" :style="{
 			flexDirection: elLabelPosition == 'left' ? 'row' : 'column'
 		}">
@@ -13,22 +13,22 @@
 				<view class="u-form-item--left__content" v-if="required || leftIcon || label">
 					<!-- nvue不支持伪元素before -->
 					<text v-if="required" class="u-form-item--left__content--required">*</text>
-					<view class="u-form-item--left__content__icon" v-if="leftIcon">
+					<view class="u-form-item--left__content__icon" v-if="leftIcon" @click.stop="onLeftClick">
 						<u-icon :name="leftIcon" :custom-style="leftIconStyle"></u-icon>
 					</view>
 					<view class="u-form-item--left__content__label" :style="[elLabelStyle, {
 						'justify-content': elLabelAlign == 'left' ? 'flex-start' : elLabelAlign == 'center' ? 'center' : 'flex-end'
-					}]">
+					}]" @click="onLabelClick">
 						{{label}}
 					</view>
 				</view>
 			</view>
 			<view class="u-form-item--right u-flex">
 				<view class="u-form-item--right__content">
-					<view class="u-form-item--right__content__slot ">
+					<view class="u-form-item--right__content__slot" :style="elLabelPosition == 'left' && elInputAlign == 'right' ? 'text-align:right;display: inline-block;line-height:initial;' : ''">
 						<slot />
 					</view>
-					<view class="u-form-item--right__content__icon u-flex" v-if="$slots.right || rightIcon">
+					<view class="u-form-item--right__content__icon u-flex" v-if="$slots.right || rightIcon" @click.stop="onRightClick">
 						<u-icon :custom-style="rightIconStyle" v-if="rightIcon" :name="rightIcon"></u-icon>
 						<slot name="right" />
 					</view>
@@ -37,6 +37,7 @@
 		</view>
 		<view class="u-form-item__message" v-if="validateState === 'error' && showError('message')" :style="{
 			paddingLeft: elLabelPosition == 'left' ? $u.addUnit(elLabelWidth) : '0',
+			textAlign: elInputAlign == 'right' ? 'right' : 'left'
 		}">{{validateMessage}}</view>
 	</view>
 </template>
@@ -50,11 +51,13 @@
 	/**
 	 * form-item 表单item
 	 * @description 此组件一般用于表单场景，可以配置Input输入框，Select弹出框，进行表单验证等。
-	 * @tutorial http://uviewui.com/components/form.html
+	 * @tutorial https://vkuviewdoc.fsq.pub/components/form.html
 	 * @property {String} label 左侧提示文字
 	 * @property {Object} prop 表单域model对象的属性名，在使用 validate、resetFields 方法的情况下，该属性是必填的
 	 * @property {Boolean} border-bottom 是否显示表单域的下划线边框
 	 * @property {String} label-position 表单域提示文字的位置，left-左侧，top-上方
+	 * 	@value left				左侧
+	 * 	@value top 				上方
 	 * @property {String Number} label-width 提示文字的宽度，单位rpx（默认90）
 	 * @property {Object} label-style lable的样式，对象形式
 	 * @property {String} label-align lable的对齐方式
@@ -68,6 +71,7 @@
 
 	export default {
 		name: 'u-form-item',
+		emits: ['click','labelClick','rightClick','leftClick'],
 		mixins: [Emitter],
 		inject: {
 			uForm: {
@@ -142,7 +146,11 @@
 			required: {
 				type: Boolean,
 				default: false
-			}
+			},
+			inputAlign:{
+				type: String,
+				default: ''
+			},
 		},
 		data() {
 			return {
@@ -160,6 +168,7 @@
 					labelPosition: 'left',
 					labelStyle: {},
 					labelAlign: 'left',
+					inputAlign: 'left',
 				}
 			};
 		},
@@ -212,14 +221,33 @@
 			// label的下划线
 			elBorderBottom() {
 				// 子组件的borderBottom默认为空字符串，如果不等于空字符串，意味着子组件设置了值，优先使用子组件的值
-				return this.borderBottom !== '' ? this.borderBottom : this.parentData.borderBottom ? this.parentData.borderBottom :
+				return this.borderBottom !== '' ? this.borderBottom : typeof this.parentData.borderBottom === "boolean" ? this.parentData.borderBottom :
 					true;
-			}
+			},
+			elInputAlign() {
+				return this.inputAlign ? this.inputAlign : (this.parentData.inputAlign ? this.parentData.inputAlign : 'left');
+			},
 		},
 		methods: {
+			// 点击事件
+			onClick(){
+				this.$emit('click');
+			},
+			// label点击事件
+			onLabelClick(){
+				this.$emit('labelClick');
+			},
+			// 右侧图标点击事件
+			onRightClick(){
+				this.$emit('rightClick');
+			},
+			// 左侧图标点击事件
+			onLeftClick(){
+				this.$emit('leftClick');
+			},
 			broadcastInputError() {
 				// 子组件发出事件，第三个参数为true或者false，true代表有错误
-				this.broadcast('u-input', 'on-form-item-error', this.validateState === 'error' && this.showError('border'));
+				this.broadcast('u-input', 'onFormItemError', this.validateState === 'error' && this.showError('border'));
 			},
 			// 判断是否需要required校验
 			setRules() {
@@ -233,11 +261,19 @@
 				// 		return rule.required;
 				// 	});
 				// }
-
+				// #ifdef VUE2
 				// blur事件
-				this.$on('on-form-blur', that.onFieldBlur);
+				this.$on('onFieldBlur', that.onFieldBlur);
 				// change事件
-				this.$on('on-form-change', that.onFieldChange);
+				this.$on('onFieldChange', that.onFieldChange);
+				// #endif
+
+				// #ifdef VUE3
+				// blur事件
+				uni.$on('onFieldBlur', that.onFieldBlur);
+				// change事件
+				uni.$on('onFieldChange', that.onFieldChange);
+				// #endif
 			},
 
 			// 从u-form的rules属性中，取出当前u-form-item的校验规则
@@ -270,10 +306,59 @@
 				return rules.filter(res => res.trigger && res.trigger.indexOf(triggerType) !== -1);
 			},
 
+			getData(dataObj, name, defaultValue) {
+				let newDataObj;
+				if (dataObj) {
+					newDataObj = JSON.parse(JSON.stringify(dataObj));
+					let k = "",
+						d = ".",
+						l = "[",
+						r = "]";
+					name = name.replace(/\s+/g, k) + d;
+					let tstr = k;
+					for (let i = 0; i < name.length; i++) {
+						let theChar = name.charAt(i);
+						if (theChar != d && theChar != l && theChar != r) {
+							tstr += theChar;
+						} else if (newDataObj) {
+							if (tstr != k) newDataObj = newDataObj[tstr];
+							tstr = k;
+						}
+					}
+				}
+				if (typeof newDataObj === "undefined" && typeof defaultValue !== "undefined") newDataObj = defaultValue;
+				return newDataObj;
+			},
+
+			setData(dataObj, name, value) {
+				// 通过正则表达式  查找路径数据
+				let dataValue;
+				if (typeof value === "object") {
+					dataValue = JSON.parse(JSON.stringify(value));
+				} else {
+					dataValue = value;
+				}
+				let regExp = new RegExp("([\\w$]+)|\\[(:\\d)\\]", "g");
+				const patten = name.match(regExp);
+				// 遍历路径  逐级查找  最后一级用于直接赋值
+				for (let i = 0; i < patten.length - 1; i++) {
+					let keyName = patten[i];
+					if (typeof dataObj[keyName] !== "object") dataObj[keyName] = {};
+					dataObj = dataObj[keyName];
+				}
+				// 最后一级
+				dataObj[patten[patten.length - 1]] = dataValue;
+			},
+
 			// 校验数据
 			validation(trigger, callback = () => {}) {
 				// 检验之间，先获取需要校验的值
-				this.fieldValue = this.parent.model[this.prop];
+				//this.fieldValue = this.parent.model[this.prop];
+				// 修改支持a.b
+				if (!this.parent || !this.parent.model) {
+					return callback('');
+				}
+				this.fieldValue = this.getData(this.parent.model,this.prop);
 				// blur和change是否有当前方式的校验规则
 				let rules = this.getFilteredRule(trigger);
 				// 判断是否有验证规则，如果没有规则，也调用回调方法，否则父组件u-form会因为
@@ -295,14 +380,20 @@
 					// 记录状态和报错信息
 					this.validateState = !errors ? 'success' : 'error';
 					this.validateMessage = errors ? errors[0].message : '';
+					let field = errors ? errors[0].field : '';
 					// 调用回调方法
-					callback(this.validateMessage);
+					callback(this.validateMessage, {
+						state: this.validateState,
+						key: field,
+						msg: this.validateMessage
+					});
 				});
 			},
 
 			// 清空当前的u-form-item
 			resetField() {
-				this.parent.model[this.prop] = this.initialValue;
+				//this.parent.model[this.prop] = this.initialValue;
+				this.setData(this.parent.model,this.prop,this.initialValue);
 				// 设置为`success`状态，只是为了清空错误标记
 				this.validateState = 'success';
 			}
@@ -332,7 +423,7 @@
 				}
 			}
 		},
-
+		// #ifdef VUE2
 		// 组件销毁前，将实例从u-form的缓存中移除
 		beforeDestroy() {
 			// 如果当前没有prop的话表示当前不要进行删除（因为没有注入）
@@ -342,6 +433,19 @@
 				})
 			}
 		},
+		// #endif
+
+		// #ifdef VUE3
+		beforeUnmount() {
+			// 如果当前没有prop的话表示当前不要进行删除（因为没有注入）
+			if (this.parent && this.prop) {
+				this.parent.fields.map((item, index) => {
+					if (item === this) this.parent.fields.splice(index, 1);
+				})
+			}
+		},
+		// #endif
+
 	};
 </script>
 

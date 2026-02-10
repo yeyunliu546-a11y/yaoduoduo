@@ -36,6 +36,7 @@
 </template>
 <script>
 export default {
+  emits: ["close", "getMore"],
 	props: {
 		// 显示的内容，数组
 		list: {

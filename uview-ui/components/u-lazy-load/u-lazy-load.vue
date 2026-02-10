@@ -38,6 +38,7 @@
 	 */
 	export default {
 		name: 'u-lazy-load',
+    emits: ["click", "load", "error"],
 		props: {
 			index: {
 				type: [Number, String]
@@ -189,10 +190,19 @@
 				observer && observer.disconnect();
 			},
 		},
-		beforeDestroy() {
-			// 销毁页面时，可能还没触发某张很底部的懒加载图片，所以把这个事件给去掉
-			//observer.disconnect();
-		},
+    // #ifdef VUE2
+    // 组件销毁前，将实例从u-form的缓存中移除
+    beforeDestroy() {
+      // 销毁页面时，可能还没触发某张很底部的懒加载图片，所以把这个事件给去掉
+      //observer.disconnect();
+    },
+    // #endif
+    
+    // #ifdef VUE3
+    beforeUnmount() {
+      
+    },
+    // #endif
 		mounted() {
 			// 此uOnReachBottom事件由mixin.js发出，目的是让页面到底时，保证所有图片都进行加载，做到绝对稳定且可靠
 			this.$nextTick(() => {

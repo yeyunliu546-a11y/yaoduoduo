@@ -34,6 +34,7 @@
 	 */
 	export default {
 		name: "u-sticky",
+    emits: ["fixed", "unfixed"],
 		props: {
 			// 吸顶容器到顶部某个距离的时候，进行吸顶，在H5平台，NavigationBar为44px
 			offsetTop: {
@@ -119,7 +120,7 @@
 			},
 			observeContent() {
 				this.disconnectObserver('contentObserver');
-				const contentObserver = this.createIntersectionObserver({
+				const contentObserver = uni.createIntersectionObserver(this,{
 					thresholds: [0.95, 0.98, 1]
 				});
 				contentObserver.relativeToViewport({
@@ -142,9 +143,17 @@
 				observer && observer.disconnect();
 			},
 		},
+		// #ifdef VUE2
 		beforeDestroy() {
 			this.disconnectObserver('contentObserver');
-		}
+		},
+		// #endif
+		
+		// #ifdef VUE3
+		beforeUnmount() {
+			this.disconnectObserver('contentObserver');
+		},
+		// #endif
 	};
 </script>
 

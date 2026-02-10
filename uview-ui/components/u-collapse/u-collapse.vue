@@ -20,6 +20,7 @@
 	 */
 	export default {
 		name:"u-collapse",
+    emits: ["change"],
 		props: {
 			// 是否手风琴模式
 			accordion: {

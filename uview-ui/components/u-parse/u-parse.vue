@@ -1,5 +1,5 @@
 <template>
-	<view>
+	<view class="u-parse">
 		<slot v-if="!nodes.length" />
 		<!--#ifdef APP-PLUS-NVUE-->
 		<web-view id="_top" ref="web" :style="'margin-top:-2px;height:'+height+'px'" @onPostMessage="_message" />
@@ -7,10 +7,10 @@
 		<!--#ifndef APP-PLUS-NVUE-->
 		<view id="_top" :style="showAm+(selectable?';user-select:text;-webkit-user-select:text':'')">
 			<!--#ifdef H5 || MP-360-->
-			<div :id="'rtf'+uid"></div>
+			<div :id="uid"></div>
 			<!--#endif-->
 			<!--#ifndef H5 || MP-360-->
-			<trees :nodes="nodes" :lazyLoad="lazyLoad" :loading="loadingImg" />
+			<u-trees :nodes="nodes" :lazyLoad="lazyLoad" :loading="loadingImg" :preview="preview"/>
 			<!--#endif-->
 		</view>
 		<!--#endif-->
@@ -20,12 +20,11 @@
 <script>
 	var search;
 	// #ifndef H5 || APP-PLUS-NVUE || MP-360
-	import trees from './libs/trees';
-	var cache = {},
+  import Parser from '../u-trees/MpHtmlParser.js'
+	var cache = {};
 		// #ifdef MP-WEIXIN || MP-TOUTIAO
-		fs = uni.getFileSystemManager ? uni.getFileSystemManager() : null,
+	var	fs = uni.getFileSystemManager ? uni.getFileSystemManager() : null;
 		// #endif
-		Parser = require('./libs/MpHtmlParser.js');
 	var dom;
 	// 计算 cache 的 key
 	function hash(str) {
@@ -35,11 +34,12 @@
 	}
 	// #endif
 	// #ifdef H5 || APP-PLUS-NVUE || MP-360
+  import cfg from '../u-trees/config.js'
+	import getSystemInfoSync from '../../libs/function/getSystemInfoSync.js'
 	var {
 		windowWidth,
 		platform
-	} = uni.getSystemInfoSync(),
-		cfg = require('./libs/config.js');
+	} = getSystemInfoSync()
 	// #endif
 	// #ifdef APP-PLUS-NVUE
 	var weexDom = weex.requireModule('dom');
@@ -60,6 +60,7 @@
 	 * @property {Boolean} showWithAnimation 是否使用渐显动画
 	 * @property {Boolean} useAnchor 是否使用锚点
 	 * @property {Boolean} useCache 是否缓存解析结果
+	 * @property {Boolean} preview 点击图片是否自动预览
 	 * @event {Function} parse 解析完成事件
 	 * @event {Function} load dom 加载完成事件
 	 * @event {Function} ready 所有图片加载完毕事件
@@ -72,11 +73,9 @@
 	 */
 	export default {
 		name: 'parser',
+    emits: ["parse", "load", "ready", "error", "imgtap", "linkpress"],
 		data() {
 			return {
-				// #ifdef H5 || MP-360
-				uid: this._uid,
-				// #endif
 				// #ifdef APP-PLUS-NVUE
 				height: 1,
 				// #endif
@@ -86,14 +85,13 @@
 				nodes: []
 			}
 		},
-		// #ifndef H5 || APP-PLUS-NVUE || MP-360
-		components: {
-			trees
-		},
-		// #endif
 		props: {
 			html: String,
 			autopause: {
+				type: Boolean,
+				default: true
+			},
+      preview: {
 				type: Boolean,
 				default: true
 			},
@@ -118,6 +116,13 @@
 			html(html) {
 				this.setContent(html);
 			}
+		},
+		computed: {
+			// #ifdef H5 || MP-360
+			uid(){
+				return "rtf" + Math.floor(Math.random() * Math.pow(2, 32))
+			},
+			// #endif
 		},
 		created() {
 			// 图片数组
@@ -169,7 +174,7 @@
 		},
 		mounted() {
 			// #ifdef H5 || MP-360
-			this.document = document.getElementById('rtf' + this._uid);
+			this.document = document.getElementById(this.uid);
 			// #endif
 			// #ifndef H5 || APP-PLUS-NVUE || MP-360
 			if (dom) this.document = new dom(this);
@@ -184,27 +189,53 @@
 			}, 30)
 			// #endif
 		},
-		beforeDestroy() {
-			// #ifdef H5 || MP-360
-			if (this._observer) this._observer.disconnect();
-			// #endif
-			this.imgList.each(src => {
-				// #ifdef APP-PLUS
-				if (src && src.includes('_doc')) {
-					plus.io.resolveLocalFileSystemURL(src, entry => {
-						entry.remove();
-					});
-				}
-				// #endif
-				// #ifdef MP-WEIXIN || MP-TOUTIAO
-				if (src && src.includes(uni.env.USER_DATA_PATH))
-					fs && fs.unlink({
-						filePath: src
-					})
-				// #endif
-			})
-			clearInterval(this._timer);
-		},
+    // #ifdef VUE2
+    beforeDestroy() {
+    	// #ifdef H5 || MP-360
+    	if (this._observer) this._observer.disconnect();
+    	// #endif
+    	this.imgList.each(src => {
+    		// #ifdef APP-PLUS
+    		if (src && src.includes('_doc')) {
+    			plus.io.resolveLocalFileSystemURL(src, entry => {
+    				entry.remove();
+    			});
+    		}
+    		// #endif
+    		// #ifdef MP-WEIXIN || MP-TOUTIAO
+    		if (src && src.includes(uni.env.USER_DATA_PATH))
+    			fs && fs.unlink({
+    				filePath: src
+    			})
+    		// #endif
+    	})
+    	clearInterval(this._timer);
+    },
+    // #endif
+    
+    // #ifdef VUE3
+    beforeUnmount() {
+      // #ifdef H5 || MP-360
+      if (this._observer) this._observer.disconnect();
+      // #endif
+      this.imgList.each(src => {
+      	// #ifdef APP-PLUS
+      	if (src && src.includes('_doc')) {
+      		plus.io.resolveLocalFileSystemURL(src, entry => {
+      			entry.remove();
+      		});
+      	}
+      	// #endif
+      	// #ifdef MP-WEIXIN || MP-TOUTIAO
+      	if (src && src.includes(uni.env.USER_DATA_PATH))
+      		fs && fs.unlink({
+      			filePath: src
+      		})
+      	// #endif
+      })
+      clearInterval(this._timer);
+    },
+    // #endif
 		methods: {
 			// 设置富文本内容
 			setContent(html, append) {
@@ -250,7 +281,7 @@
 				}
 				div.innerHTML = this._handleHtml(html, append);
 				for (var styles = this.rtf.getElementsByTagName('style'), i = 0, style; style = styles[i++];) {
-					style.innerHTML = style.innerHTML.replace(/body/g, '#rtf' + this._uid);
+					style.innerHTML = style.innerHTML.replace(/body/g, this.uid);
 					style.setAttribute('scoped', 'true');
 				}
 				// 懒加载
@@ -297,7 +328,7 @@
 						_ts.imgList.push(img.getAttribute('original-src') || img.src || img.getAttribute('data-src'));
 						img.onclick = function(e) {
 							e.stopPropagation();
-							var preview = true;
+							var preview = _ts.preview;
 							this.ignore = () => preview = false;
 							_ts.$emit('imgtap', this);
 							if (preview) {
@@ -530,13 +561,14 @@
 			},
 			// #ifdef H5 || APP-PLUS-NVUE || MP-360
 			_handleHtml(html, append) {
+				const classPrefix = ".u-parse ";
 				if (!append) {
 					// 处理 tag-style 和 userAgentStyles
-					var style = '<style>@keyframes _show{0%{opacity:0}100%{opacity:1}}img{max-width:100%}';
+					var style = `<style>@keyframes _show{0%{opacity:0}100%{opacity:1}}${classPrefix}img{max-width:100%}`;
 					for (var item in cfg.userAgentStyles)
-						style += `${item}{${cfg.userAgentStyles[item]}}`;
+						style += `${classPrefix}${item}{${cfg.userAgentStyles[item]}}`;
 					for (item in this.tagStyle)
-						style += `${item}{${this.tagStyle[item]}}`;
+						style += `${classPrefix}${item}{${this.tagStyle[item]}}`;
 					style += '</style>';
 					html = style + html;
 				}
@@ -548,6 +580,7 @@
 			// #endif
 			// #ifdef APP-PLUS-NVUE
 			_message(e) {
+				var _ts = this;
 				// 接收 web-view 消息
 				var d = e.detail.data[0];
 				switch (d.action) {
@@ -568,7 +601,7 @@
 							this.imgList.setItem(i, d.imgList[i]);
 						break;
 					case 'preview':
-						var preview = true;
+						var preview = _ts.preview;
 						d.img.ignore = () => preview = false;
 						this.$emit('imgtap', d.img);
 						if (preview)
@@ -623,7 +656,7 @@
 	}
 </script>
 
-<style>
+<style lang="scss" scoped>
 	@keyframes _show {
 		0% {
 			opacity: 0;

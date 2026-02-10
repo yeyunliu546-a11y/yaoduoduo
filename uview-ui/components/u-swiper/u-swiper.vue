@@ -72,6 +72,7 @@
 	 */
 	export default {
 		name: "u-swiper",
+    emits: ["click", "change"],
 		props: {
 			// 轮播图的数据,格式如：[{image: 'xxxx', title: 'xxxx'}，{image: 'yyyy', title: 'yyyy'}]，其中title字段可选
 			list: {

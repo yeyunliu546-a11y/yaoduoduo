@@ -27,7 +27,7 @@
 			<!--链接-->
 			<view v-else-if="n.name=='a'" :id="n.attrs.id" :class="'_a '+(n.attrs.class||'')" hover-class="_hover" :style="n.attrs.style"
 			 :data-attrs="n.attrs" @tap.stop="linkpress">
-				<trees class="_span" c="_span" :nodes="n.children" />
+				<u-trees class="_span" c="_span" :nodes="n.children" :preview="preview" />
 			</view>
 			<!--广告-->
 			<!--<ad v-else-if="n.name=='ad'" :class="n.attrs.class" :style="n.attrs.style" :unit-id="n.attrs['unit-id']" :appid="n.attrs.appid" :apid="n.attrs.apid" :type="n.attrs.type" :adpid="n.attrs.adpid" data-source="ad" @error="error" />-->
@@ -39,19 +39,19 @@
 					<view v-else-if="n.floor%3==2" class="_ul-p2" />
 					<view v-else class="_ul-p1" style="border-radius:50%">█</view>
 				</view>
-				<trees class="_li" c="_li" :nodes="n.children" :lazyLoad="lazyLoad" :loading="loading" />
+				<u-trees class="_li" c="_li" :nodes="n.children" :lazyLoad="lazyLoad" :loading="loading" :preview="preview" />
 			</view>
 			<!--表格-->
 			<view v-else-if="n.name=='table'&&n.c&&n.flag" :id="n.attrs.id" :class="n.attrs.class" :style="(n.attrs.style||'')+';display:grid'">
-				<trees v-for="(cell,n) in n.children" v-bind:key="n" :class="cell.attrs.class" :c="cell.attrs.class" :style="cell.attrs.style"
-				 :s="cell.attrs.style" :nodes="cell.children" />
+				<u-trees v-for="(cell,n) in n.children" v-bind:key="n" :class="cell.attrs.class" :c="cell.attrs.class" :style="cell.attrs.style"
+				 :s="cell.attrs.style" :nodes="cell.children" :preview="preview" />
 			</view>
 			<view v-else-if="n.name=='table'&&n.c" :id="n.attrs.id" :class="n.attrs.class" :style="(n.attrs.style||'')+';display:table'">
 				<view v-for="(tbody, o) in n.children" v-bind:key="o" :class="tbody.attrs.class" :style="(tbody.attrs.style||'')+(tbody.name[0]=='t'?';display:table-'+(tbody.name=='tr'?'row':'row-group'):'')">
 					<view v-for="(tr, p) in tbody.children" v-bind:key="p" :class="tr.attrs.class" :style="(tr.attrs.style||'')+(tr.name[0]=='t'?';display:table-'+(tr.name=='tr'?'row':'cell'):'')">
-						<trees v-if="tr.name=='td'" :nodes="tr.children" />
-						<trees v-else v-for="(td, q) in tr.children" v-bind:key="q" :class="td.attrs.class" :c="td.attrs.class" :style="(td.attrs.style||'')+(td.name[0]=='t'?';display:table-'+(td.name=='tr'?'row':'cell'):'')"
-						 :s="(td.attrs.style||'')+(td.name[0]=='t'?';display:table-'+(td.name=='tr'?'row':'cell'):'')" :nodes="td.children" />
+						<u-trees v-if="tr.name=='td'" :nodes="tr.children" :preview="preview" />
+						<u-trees v-else v-for="(td, q) in tr.children" v-bind:key="q" :class="td.attrs.class" :c="td.attrs.class" :style="(td.attrs.style||'')+(td.name[0]=='t'?';display:table-'+(td.name=='tr'?'row':'cell'):'')"
+						 :s="(td.attrs.style||'')+(td.name[0]=='t'?';display:table-'+(td.name=='tr'?'row':'cell'):'')" :nodes="td.children" :preview="preview" />
 					</view>
 				</view>
 			</view>
@@ -62,26 +62,40 @@
 			<!--#endif-->
 			<!--富文本-->
 			<!--#ifdef MP-WEIXIN || MP-QQ || APP-PLUS-->
-			<rich-text v-else-if="handler.use(n)" :id="n.attrs.id" :class="'_p __'+n.name" :nodes="[n]" />
+			<rich-text v-else-if="use(n)" :id="n.attrs.id" :class="'_p __'+n.name" :nodes="[n]" />
 			<!--#endif-->
 			<!--#ifndef MP-WEIXIN || MP-QQ || APP-PLUS-->
 			<rich-text v-else-if="!n.c" :id="n.attrs.id" :nodes="[n]" style="display:inline" />
 			<!--#endif-->
-			<trees v-else :class="(n.attrs.id||'')+' _'+n.name+' '+(n.attrs.class||'')" :c="(n.attrs.id||'')+' _'+n.name+' '+(n.attrs.class||'')"
-			 :style="n.attrs.style" :s="n.attrs.style" :nodes="n.children" :lazyLoad="lazyLoad" :loading="loading" />
+			<u-trees v-else :class="(n.attrs.id||'')+' _'+n.name+' '+(n.attrs.class||'')" :c="(n.attrs.id||'')+' _'+n.name+' '+(n.attrs.class||'')"
+			 :style="n.attrs.style" :s="n.attrs.style" :nodes="n.children" :lazyLoad="lazyLoad" :loading="loading" :preview="preview" />
 		</block>
 	</view>
 </template>
-<script module="handler" lang="wxs" src="./handler.wxs"></script>
 <script>
-	global.Parser = {};
-	import trees from './trees'
-	const errorImg = require('../libs/config.js').errorImg;
+	var inline = {
+		abbr: 1,
+		b: 1,
+		big: 1,
+		code: 1,
+		del: 1,
+		em: 1,
+		i: 1,
+		ins: 1,
+		label: 1,
+		q: 1,
+		small: 1,
+		span: 1,
+		strong: 1,
+		sub: 1,
+		sup: 1
+	}
+	let globalData = {};
+	globalData.Parser = {};
+	import cfg from './config.js'
+	const errorImg = cfg.errorImg;
 	export default {
-		components: {
-			trees
-		},
-		name: 'trees',
+		name: 'u-trees',
 		data() {
 			return {
 				ctrl: [],
@@ -98,6 +112,7 @@
 			nodes: Array,
 			lazyLoad: Boolean,
 			loading: String,
+			preview: Boolean,
 			// #ifdef MP-ALIPAY
 			c: String,
 			s: String
@@ -108,9 +123,20 @@
 			this.init();
 		},
 		// #ifdef APP-PLUS
+
+		// #ifdef VUE2
+		// 组件销毁前，将实例从u-form的缓存中移除
 		beforeDestroy() {
 			this.observer && this.observer.disconnect();
 		},
+		// #endif
+
+		// #ifdef VUE3
+		beforeUnmount() {
+			this.observer && this.observer.disconnect();
+		},
+		// #endif
+
 		// #endif
 		methods: {
 			init() {
@@ -168,13 +194,13 @@
 			imgtap(e) {
 				var attrs = e.currentTarget.dataset.attrs;
 				if (!attrs.ignore) {
-					var preview = true,
+					var preview = this.preview,
 						data = {
 							id: e.target.id,
 							src: attrs.src,
 							ignore: () => preview = false
 						};
-					global.Parser.onImgtap && global.Parser.onImgtap(data);
+					globalData.Parser.onImgtap && globalData.Parser.onImgtap(data);
 					this.top.$emit('imgtap', data);
 					if (preview) {
 						var urls = this.top.imgList,
@@ -214,7 +240,7 @@
 				var jump = true,
 					attrs = e.currentTarget.dataset.attrs;
 				attrs.ignore = () => jump = false;
-				global.Parser.onLinkpress && global.Parser.onLinkpress(attrs);
+				globalData.Parser.onLinkpress && globalData.Parser.onLinkpress(attrs);
 				this.top.$emit('linkpress', attrs);
 				if (jump) {
 					// #ifdef MP
@@ -279,6 +305,9 @@
 			},
 			_loadVideo(e) {
 				this.$set(this.ctrl, e.target.dataset.i, 0);
+			},
+			use(item) {
+				return !item.c && !inline[item.name] && (item.attrs && item.attrs.style || '').indexOf('display:inline') == -1
 			}
 		}
 	}

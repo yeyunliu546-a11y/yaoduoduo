@@ -21,7 +21,7 @@
 					></view>
 					<view v-if="mode === 'middleLine' && charArrLength <= index" :class="[breathe && charArrLength == index ? 'u-breathe' : '', charArrLength === index ? 'u-middle-line-active' : '']"
 					 class="u-middle-line" :style="{height: bold ? '4px' : '2px', background: charArrLength === index ? activeColor : inactiveColor}"></view>
-					<view v-if="mode === 'bottomLine'" :class="[breathe && charArrLength == index ? 'u-breathe' : '', charArrLength === index ? 'u-buttom-line-active' : '']"
+					<view v-if="mode === 'bottomLine'" :class="[breathe && charArrLength == index ? 'u-breathe' : '', charArrLength === index ? 'u-bottom-line-active' : '']"
 					 class="u-bottom-line" :style="{height: bold ? '4px' : '2px', background: charArrLength === index ? activeColor : inactiveColor}"></view>
 					<block v-if="!dotFill"> {{ charArr[index] ? charArr[index] : ''}}</block>
 					<block v-else>
@@ -56,7 +56,17 @@
 	 */
 	export default {
 		name: "u-message-input",
+    emits: ["update:modelValue", "input","change", "finish"],
 		props: {
+      // 预置值
+      value: {
+      	type: [String, Number],
+      	default: ''
+      },
+			modelValue: {
+				type: [String, Number],
+				default: ''
+			},
 			// 最大输入长度
 			maxlength: {
 				type: [Number, String],
@@ -71,11 +81,6 @@
 			mode: {
 				type: String,
 				default: "box"
-			},
-			// 预置值
-			value: {
-				type: [String, Number],
-				default: ''
 			},
 			// 当前激活输入item，是否带有呼吸效果
 			breathe: {
@@ -125,14 +130,14 @@
 			// 	handler(val) {
 			// 		this.maxlength = Number(val);
 			// 	}
-			// }, 
-			value: {
+			// },
+			valueCom: {
 				immediate: true,
 				handler(val) {
 					// 转为字符串
 					val = String(val);
 					// 超出部分截掉
-					this.valueModel = val.substring(0, this.maxlength);
+					this.valueModel = val.substring(0, Number(this.maxlength));
 				}
 			},
 		},
@@ -142,6 +147,15 @@
 			}
 		},
 		computed: {
+			valueCom(){
+				// #ifdef VUE2
+				return this.value;
+				// #endif
+
+				// #ifdef VUE3
+				return this.modelValue;
+				// #endif
+			},
 			// 是否显示呼吸灯效果
 			animationClass() {
 				return (index) => {
@@ -158,7 +172,7 @@
 			},
 			// 根据长度，循环输入框的个数，因为头条小程序数值不能用于v-for
 			loopCharArr() {
-				return new Array(this.maxlength);
+				return new Array(Number(this.maxlength));
 			}
 		},
 		methods: {
@@ -168,10 +182,12 @@
 				} = e.detail
 				this.valueModel = value;
 				// 判断长度是否超出了maxlength值，理论上不会发生，因为input组件设置了maxlength属性值
-				if (String(value).length > this.maxlength) return;
+				if (String(value).length > Number(this.maxlength)) return;
 				// 未达到maxlength之前，发送change事件，达到后发送finish事件
 				this.$emit('change', value);
-				if (String(value).length == this.maxlength) {
+				this.$emit("input", value);
+				this.$emit("update:modelValue", value);
+				if (String(value).length == Number(this.maxlength)) {
 					this.$emit('finish', value);
 				}
 			}
@@ -294,7 +310,7 @@
 		transform: translate(-50%, -50%);
 	}
 
-	.u-buttom-line-active {
+	.u-bottom-line-active {
 		background: $u-type-primary;
 	}
 

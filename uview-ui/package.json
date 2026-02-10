@@ -1,39 +1,102 @@
 {
-	"name": "uview-ui",
-	"version": "1.8.3",
-	"description": "uView UI，是uni-app生态优秀的UI框架，全面的组件和便捷的工具会让您信手拈来，如鱼得水",
-	"main": "index.js",
-	"keywords": [
-		"uview",
-		"uView",
-		"uni-app",
-		"uni-app ui",
-		"uniapp",
-		"uviewui",
-		"uview ui",
-		"uviewUI",
-		"uViewui",
-		"uViewUI",
-		"uView UI",
-		"uni ui",
-		"uni UI",
-		"uniapp ui",
-		"ui",
-		"UI框架",
-		"uniapp ui框架",
-		"uniapp UI"
-	],
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
-	},
-	"repository": {
-		"type": "git",
-		"url": ""
-	},
-	"devDependencies": {
-		"node-sass": "^4.14.0",
-		"sass-loader": "^8.0.2"
-	},
-	"author": "uView",
-	"license": "MIT"
+  "id": "vk-uview-ui",
+  "name": "vk-uview-ui",
+  "displayName": "【开箱即用】uView Vue3 横空出世，继承uView1意志，再战江湖，风云再起！插件大赛二等奖",
+  "version": "1.6.9",
+  "description": "同时支持 Vue3.0 和 Vue2.0，你没看错，现在 uView 支持 Vue3.0 了！（不支持nvue，此版本为uView1.0的分支）",
+  "keywords": [
+    "vk-uview-ui",
+    "vk云开发",
+    "vue3.0",
+    "鸿蒙",
+    "uview"
+],
+  "repository": "https://gitee.com/vk-uni/vk-uview-ui.git",
+  "engines": {
+    "HBuilderX": "^3.1.0",
+    "uni-app": "^4.36",
+    "uni-app-x": ""
+  },
+  "dcloudext": {
+    "sale": {
+      "regular": {
+        "price": "0.00"
+      },
+      "sourcecode": {
+        "price": "0.00"
+      }
+    },
+    "contact": {
+      "qq": "370725567"
+    },
+    "declaration": {
+      "ads": "无",
+      "data": "插件不采集任何数据",
+      "permissions": "无"
+    },
+    "npmurl": "https://vkuviewdoc.fsq.pub",
+    "type": "component-vue",
+    "darkmode": "x",
+    "i18n": "√",
+    "widescreen": "x"
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "cloud": {
+        "tcb": "√",
+        "aliyun": "√",
+        "alipay": "√"
+      },
+      "client": {
+        "uni-app": {
+          "vue": {
+            "vue2": "√",
+            "vue3": "√"
+          },
+          "web": {
+            "safari": "√",
+            "chrome": "√"
+          },
+          "app": {
+            "vue": "√",
+            "nvue": "x",
+            "android": "√",
+            "ios": "√",
+            "harmony": "√"
+          },
+          "mp": {
+            "weixin": "√",
+            "alipay": "√",
+            "toutiao": "√",
+            "baidu": "√",
+            "kuaishou": "-",
+            "jd": "-",
+            "harmony": "√",
+            "qq": "√",
+            "lark": "-"
+          },
+          "quickapp": {
+            "huawei": "√",
+            "union": "√"
+          }
+        },
+        "uni-app-x": {
+          "web": {
+            "safari": "-",
+            "chrome": "-"
+          },
+          "app": {
+            "android": "-",
+            "ios": "-",
+            "harmony": "-"
+          },
+          "mp": {
+            "weixin": "-"
+          }
+        }
+      }
+    }
+  }
 }

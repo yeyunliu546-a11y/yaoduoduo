@@ -17,7 +17,7 @@
 			class="u-cell_title"
 			:style="[
 				{
-					width: titleWidth ? titleWidth + 'rpx' : 'auto'
+					width: titleWidth ? titleWidth + 'px' : 'auto'
 				},
 				titleStyle
 			]"
@@ -31,7 +31,7 @@
 			</view>
 		</view>
 
-		<view class="u-cell__value" :style="[valueStyle]">
+		<view class="u-cell__value" :style="[valueStyle || {}]">
 			<block class="u-cell__value" v-if="value !== ''">{{ value }}</block>
 			<slot v-else></slot>
 		</view>
@@ -65,11 +65,12 @@
  * @property {Object} label-style 标题下方描述信息的样式，对象形式
  * @property {String} bg-color 背景颜色（默认transparent）
  * @property {String Number} index 用于在click事件回调中返回，标识当前是第几个Item
- * @property {String Number} title-width 标题的宽度，单位rpx
+ * @property {String Number} title-width 标题的宽度，单位px
  * @example <u-cell-item icon="integral-fill" title="会员等级" value="新版本"></u-cell-item>
  */
 export default {
 	name: 'u-cell-item',
+	emits: ["click"],
 	props: {
 		// 左侧图标名称(只能uView内置图标)，或者图标src
 		icon: {
@@ -127,7 +128,7 @@ export default {
 			type: Boolean,
 			default: false
 		},
-		// 标题的宽度，单位rpx
+		// 标题的宽度，单位px
 		titleWidth: {
 			type: [Number, String],
 			default: ''
@@ -146,7 +147,7 @@ export default {
 		},
 		// 右侧显示内容的样式
 		valueStyle: {
-			type: Object,
+			type: [Object, null],
 			default() {
 				return {};
 			}
@@ -173,10 +174,10 @@ export default {
 			type: Boolean,
 			default: false
 		},
-		// 左边图标的大小，单位rpx，只对传入icon字段时有效
+		// 左边图标的大小，单位px，只对传入icon字段时有效
 		iconSize: {
 			type: [Number, String],
-			default: 34
+			default: 17
 		},
 		// 左边图标的样式，对象形式
 		iconStyle: {
@@ -218,38 +219,38 @@ export default {
 	box-sizing: border-box;
 	/* #endif */
 	width: 100%;
-	padding: 26rpx 32rpx;
-	font-size: 28rpx;
-	line-height: 54rpx;
+	padding: 13px 16px;
+	font-size: 14px;
+	line-height: 27px;
 	color: $u-content-color;
 	background-color: #fff;
 	text-align: left;
 }
 
 .u-cell_title {
-	font-size: 28rpx;
+	font-size: 14px;
 }
 
 .u-cell__left-icon-wrap {
-	margin-right: 10rpx;
-	font-size: 32rpx;
+	margin-right: 5px;
+	font-size: 16px;
 }
 
 .u-cell__right-icon-wrap {
-	margin-left: 10rpx;
+	margin-left: 5px;
 	color: #969799;
-	font-size: 28rpx;
+	font-size: 14px;
 }
 
 .u-cell__left-icon-wrap,
 .u-cell__right-icon-wrap {
 	@include vue-flex;
 	align-items: center;
-	height: 48rpx;
+	height: 24px;
 }
 
 .u-cell-border:after {
-	position: absolute; 
+	position: absolute;
 	/* #ifndef APP-NVUE */
 	box-sizing: border-box;
 	content: ' ';
@@ -267,9 +268,9 @@ export default {
 }
 
 .u-cell__label {
-	margin-top: 6rpx;
-	font-size: 26rpx;
-	line-height: 36rpx;
+	margin-top: 3px;
+	font-size: 13px;
+	line-height: 18px;
 	color: $u-tips-color;
 	/* #ifndef APP-NVUE */
 	word-wrap: break-word;
@@ -283,7 +284,7 @@ export default {
 	vertical-align: middle;
 	/* #endif */
 	color: $u-tips-color;
-	font-size: 26rpx;
+	font-size: 13px;
 }
 
 .u-cell__title,
@@ -305,7 +306,7 @@ export default {
 	content: '*';
 	/* #endif */
 	left: 8px;
-	margin-top: 4rpx;
+	margin-top: 2px;
 	font-size: 14px;
 	color: $u-type-error;
 }

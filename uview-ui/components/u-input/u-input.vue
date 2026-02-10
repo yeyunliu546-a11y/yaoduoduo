@@ -6,11 +6,18 @@
 			'u-input--error': validateState
 		}"
 		:style="{
-			padding: `0 ${border ? 20 : 0}rpx`,
+			padding: padding ? padding : `0 ${border ? 20 : 0}rpx`,
 			borderColor: borderColor,
-			textAlign: inputAlign
+			textAlign: inputAlignCom,
+			backgroundColor: backgroundColor,
 		}"
+		
+		<!-- #ifndef MP-HARMONY -->
 		@tap.stop="inputClick"
+		<!-- #endif -->
+		<!-- #ifdef MP-HARMONY -->
+		@tap="inputClick"
+		<!-- #endif -->
 	>
 		<textarea
 			v-if="type == 'textarea'"
@@ -20,14 +27,15 @@
 			:placeholder="placeholder"
 			:placeholderStyle="placeholderStyle"
 			:disabled="disabled"
-			:maxlength="inputMaxlength"
 			:fixed="fixed"
 			:focus="focus"
+			:maxlength="-1"
 			:autoHeight="autoHeight"
 			:selection-end="uSelectionEnd"
 			:selection-start="uSelectionStart"
 			:cursor-spacing="getCursorSpacing"
 			:show-confirm-bar="showConfirmbar"
+			:adjust-position="adjustPosition"
 			@input="handleInput"
 			@blur="handleBlur"
 			@focus="onFocus"
@@ -36,35 +44,54 @@
 		<input
 			v-else
 			class="u-input__input"
+			:class="'u-input__' + type"
 			:type="type == 'password' ? 'text' : type"
 			:style="[getStyle]"
 			:value="defaultValue"
+			:maxlength="10000"
 			:password="type == 'password' && !showPassword"
 			:placeholder="placeholder"
 			:placeholderStyle="placeholderStyle"
-			:disabled="disabled || type === 'select'"
-			:maxlength="inputMaxlength"
+			:disabled="disabled || (type === 'select' && !showCover)"
 			:focus="focus"
 			:confirmType="confirmType"
 			:cursor-spacing="getCursorSpacing"
 			:selection-end="uSelectionEnd"
 			:selection-start="uSelectionStart"
 			:show-confirm-bar="showConfirmbar"
+			:adjust-position="adjustPosition"
 			@focus="onFocus"
 			@blur="handleBlur"
 			@input="handleInput"
 			@confirm="onConfirm"
 		/>
+		<view v-if="type === 'select' && showCover" class="cover-input" @tap.stop="inputClick"></view>
 		<view class="u-input__right-icon u-flex">
-			<view class="u-input__right-icon__clear u-input__right-icon__item" @tap="onClear" v-if="clearable && value != '' && focused">
-				<u-icon size="32" name="close-circle-fill" color="#c0c4cc"/>
+			<view
+				class="u-input__right-icon__clear u-input__right-icon__item"
+				@tap="onClear"
+				v-if="clearableCom && valueCom != '' && focused"
+			>
+				<u-icon size="32" name="close-circle-fill" color="#c0c4cc" />
 			</view>
-			<view class="u-input__right-icon__clear u-input__right-icon__item" v-if="passwordIcon && type == 'password'">
-				<u-icon size="32" :name="!showPassword ? 'eye' : 'eye-fill'" color="#c0c4cc" @click="showPassword = !showPassword"/>
+			<view
+				class="u-input__right-icon__clear u-input__right-icon__item"
+				v-if="passwordIcon && type == 'password'"
+			>
+				<u-icon
+					size="32"
+					:name="!showPassword ? 'eye' : 'eye-fill'"
+					color="#c0c4cc"
+					@click="showPassword = !showPassword"
+				/>
 			</view>
-			<view class="u-input__right-icon--select u-input__right-icon__item" v-if="type == 'select'" :class="{
-				'u-input__right-icon--select--reverse': selectOpen
-			}">
+			<view
+				class="u-input__right-icon--select u-input__right-icon__item"
+				v-if="type == 'select'"
+				:class="{
+					'u-input__right-icon--select--reverse': selectOpen
+				}"
+			>
 				<u-icon name="arrow-down-fill" size="26" color="#c0c4cc"></u-icon>
 			</view>
 		</view>
@@ -72,13 +99,18 @@
 </template>
 
 <script>
-import Emitter from '../../libs/util/emitter.js';
+import Emitter from "../../libs/util/emitter.js";
 
 /**
  * input 输入框
  * @description 此组件为一个输入框，默认没有边框和样式，是专门为配合表单组件u-form而设计的，利用它可以快速实现表单验证，输入内容，下拉选择等功能。
- * @tutorial http://uviewui.com/components/input.html
+ * @tutorial https://vkuviewdoc.fsq.pub/components/input.html
  * @property {String} type 模式选择，见官网说明
+ * 	@value text						文本输入键盘
+ * 	@value number 				数字输入键盘
+ * 	@value idcard 				身份证输入键盘
+ * 	@value digit					带小数点的数字键盘
+ * 	@value password				密码输入键盘
  * @property {Boolean} clearable 是否显示右侧的清除图标(默认true)
  * @property {} v-model 用于双向绑定输入框的值
  * @property {String} input-align 输入框文字的对齐方式(默认left)
@@ -101,25 +133,30 @@ import Emitter from '../../libs/util/emitter.js';
  * @example <u-input v-model="value" :type="type" :border="border" />
  */
 export default {
-	name: 'u-input',
+	name: "u-input",
+	emits: ["update:modelValue", "input", "change", "confirm", "clear", "blur", "focus", "click", "touchstart"],
 	mixins: [Emitter],
 	props: {
 		value: {
 			type: [String, Number],
-			default: ''
+			default: ""
+		},
+		modelValue: {
+			type: [String, Number],
+			default: ""
 		},
 		// 输入框的类型，textarea，text，number
 		type: {
 			type: String,
-			default: 'text'
+			default: "text"
 		},
 		inputAlign: {
 			type: String,
-			default: 'left'
+			default: ""
 		},
 		placeholder: {
 			type: String,
-			default: '请输入内容'
+			default: "请输入内容"
 		},
 		disabled: {
 			type: Boolean,
@@ -131,11 +168,11 @@ export default {
 		},
 		placeholderStyle: {
 			type: String,
-			default: 'color: #c0c4cc;'
+			default: "color: #c0c4cc;"
 		},
 		confirmType: {
 			type: String,
-			default: 'done'
+			default: "done"
 		},
 		// 输入框的自定义样式
 		customStyle: {
@@ -167,7 +204,7 @@ export default {
 		// 输入框的边框颜色
 		borderColor: {
 			type: String,
-			default: '#dcdfe6'
+			default: "#dcdfe6"
 		},
 		autoHeight: {
 			type: Boolean,
@@ -182,12 +219,11 @@ export default {
 		// 高度，单位rpx
 		height: {
 			type: [Number, String],
-			default: ''
+			default: ""
 		},
 		// 是否可清空
 		clearable: {
-			type: Boolean,
-			default: true
+			type: [Boolean, String],
 		},
 		// 指定光标与键盘的距离，单位 px
 		cursorSpacing: {
@@ -210,34 +246,83 @@ export default {
 			default: true
 		},
 		// 是否显示键盘上方带有”完成“按钮那一栏
-		showConfirmbar:{
-			type:Boolean,
-			default:true
-		}
+		showConfirmbar: {
+			type: Boolean,
+			default: true
+		},
+		// 弹出键盘时是否自动调节高度，uni-app默认值是true
+		adjustPosition: {
+			type: Boolean,
+			default: true
+		},
+		// input的背景色
+		backgroundColor: {
+			type: String,
+		},
+		// input的padding
+		padding: {
+			type: String,
+		},
 	},
 	data() {
 		return {
-			defaultValue: this.value,
+			defaultValue: "",
 			inputHeight: 70, // input的高度
 			textareaHeight: 100, // textarea的高度
 			validateState: false, // 当前input的验证状态，用于错误时，边框是否改为红色
 			focused: false, // 当前是否处于获得焦点的状态
 			showPassword: false, // 是否预览密码
-			lastValue: '', // 用于头条小程序，判断@input中，前后的值是否发生了变化，因为头条中文下，按下键没有输入内容，也会触发@input时间
+			lastValue: "" ,// 用于头条小程序，判断@input中，前后的值是否发生了变化，因为头条中文下，按下键没有输入内容，也会触发@input时间
+			uForm:{
+				inputAlign: "",
+				clearable: ""
+			},
+			showCover: false
 		};
 	},
 	watch: {
-		value(nVal, oVal) {
+		valueCom(nVal, oVal) {
 			this.defaultValue = nVal;
 			// 当值发生变化，且为select类型时(此时input被设置为disabled，不会触发@input事件)，模拟触发@input事件
-			if(nVal != oVal && this.type == 'select') this.handleInput({
-				detail: {
-					value: nVal
-				}
-			})
+			if (nVal != oVal && this.type == "select")
+				this.handleInput({
+					detail: {
+						value: nVal
+					}
+				});
 		},
+		defaultValue(nVal, oVal) {
+			// 如果有最大长度限制，且当前值的长度大于最大长度，则截取
+			if (nVal && nVal.length > this.maxlength) {
+				setTimeout(() => {
+					nVal = nVal.substring(0, this.maxlength);
+					this.handleInput({
+						detail: {
+							value: nVal
+						}
+					});
+				}, 0);
+			}
+		}
 	},
 	computed: {
+		valueCom() {
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
+		inputAlignCom(){
+			return this.inputAlign || this.uForm.inputAlign || "left";
+		},
+		clearableCom(){
+			if (typeof this.clearable == "boolean") return this.clearable;
+			if (typeof this.uForm.clearable == "boolean") return this.uForm.clearable;
+			return true;
+		},
 		// 因为uniapp的input组件的maxlength组件必须要数值，这里转为数值，给用户可以传入字符串数值
 		inputMaxlength() {
 			return Number(this.maxlength);
@@ -245,8 +330,11 @@ export default {
 		getStyle() {
 			let style = {};
 			// 如果没有自定义高度，就根据type为input还是textare来分配一个默认的高度
-			style.minHeight = this.height ? this.height + 'rpx' : this.type == 'textarea' ?
-				this.textareaHeight + 'rpx' : this.inputHeight + 'rpx';
+			style.minHeight = this.height
+				? this.height + "rpx"
+				: this.type == "textarea"
+				? this.textareaHeight + "rpx"
+				: this.inputHeight + "rpx";
 			style = Object.assign(style, this.customStyle);
 			return style;
 		},
@@ -265,7 +353,23 @@ export default {
 	},
 	created() {
 		// 监听u-form-item发出的错误事件，将输入框边框变红色
-		this.$on('on-form-item-error', this.onFormItemError);
+		// #ifdef VUE2
+		this.$on("onFormItemError", this.onFormItemError);
+		// #endif
+		this.defaultValue = this.valueCom;
+	},
+	mounted() {
+		let parent = this.$u.$parent.call(this, 'u-form');
+		if (parent) {
+			Object.keys(this.uForm).map(key => {
+				this.uForm[key] = parent[key];
+			});
+		}
+		// #ifdef MP-ALIPAY || MP-HARMONY
+		if (this.type === 'select') {
+			this.showCover = true;
+		}
+		// #endif
 	},
 	methods: {
 		/**
@@ -275,9 +379,10 @@ export default {
 		handleInput(event) {
 			let value = event.detail.value;
 			// 判断是否去除空格
-			if(this.trim) value = this.$u.trim(value);
+			if (this.trim) value = this.$u.trim(value);
 			// vue 原生的方法 return 出去
-			this.$emit('input', value);
+			this.$emit("input", value);
+			this.$emit("update:modelValue", value);
 			// 当前model 赋值
 			this.defaultValue = value;
 			// 过一个生命周期再发送事件给u-form-item，否则this.$emit('input')更新了父组件的值，但是微信小程序上
@@ -286,12 +391,12 @@ export default {
 			setTimeout(() => {
 				// 头条小程序由于自身bug，导致中文下，每按下一个键(尚未完成输入)，都会触发一次@input，导致错误，这里进行判断处理
 				// #ifdef MP-TOUTIAO
-				if(this.$u.trim(value) == this.lastValue) return ;
+				if (this.$u.trim(value) == this.lastValue) return;
 				this.lastValue = value;
 				// #endif
 				// 将当前的值发送到 u-form-item 进行校验
-				this.dispatch('u-form-item', 'on-form-change', value);
-			}, 40)
+				this.dispatch("u-form-item", "onFieldChange", value);
+			}, 40);
 		},
 		/**
 		 * blur 事件
@@ -302,34 +407,37 @@ export default {
 			// 这里改为监听点击事件，手点击清除图标时，同时也发生了@blur事件，导致图标消失而无法点击，这里做一个延时
 			setTimeout(() => {
 				this.focused = false;
-			}, 100)
+			}, 100);
+			let value = event.detail.value;
 			// vue 原生的方法 return 出去
-			this.$emit('blur', event.detail.value);
+			this.$emit("blur", value);
 			setTimeout(() => {
 				// 头条小程序由于自身bug，导致中文下，每按下一个键(尚未完成输入)，都会触发一次@input，导致错误，这里进行判断处理
 				// #ifdef MP-TOUTIAO
-				if(this.$u.trim(value) == this.lastValue) return ;
+				if (this.$u.trim(value) == this.lastValue) return;
 				this.lastValue = value;
 				// #endif
 				// 将当前的值发送到 u-form-item 进行校验
-				this.dispatch('u-form-item', 'on-form-blur', event.detail.value);
-			}, 40)
+				this.dispatch("u-form-item", "onFieldBlur", value);
+			}, 40);
 		},
 		onFormItemError(status) {
 			this.validateState = status;
 		},
 		onFocus(event) {
 			this.focused = true;
-			this.$emit('focus');
+			this.$emit("focus");
 		},
 		onConfirm(e) {
-			this.$emit('confirm', e.detail.value);
+			this.$emit("confirm", e.detail.value);
 		},
 		onClear(event) {
-			this.$emit('input', '');
+			this.$emit("input", "");
+			this.$emit("update:modelValue", "");
+			this.$emit("clear");
 		},
 		inputClick() {
-			this.$emit('click');
+			this.$emit("click");
 		}
 	}
 };
@@ -342,13 +450,18 @@ export default {
 	position: relative;
 	flex: 1;
 	@include vue-flex;
-
+	
 	&__input {
 		//height: $u-form-item-height;
 		font-size: 28rpx;
 		color: $u-main-color;
 		flex: 1;
 	}
+	/* #ifdef H5 */
+	&__select {
+		pointer-events: none;
+	}
+	/* #endif */
 
 	&__textarea {
 		width: auto;
@@ -366,22 +479,30 @@ export default {
 	}
 
 	&--error {
-		border-color: $u-type-error!important;
+		border-color: $u-type-error !important;
 	}
 
 	&__right-icon {
-
 		&__item {
 			margin-left: 10rpx;
+			display: flex;
 		}
 
 		&--select {
-			transition: transform .4s;
+			transition: transform 0.4s;
 
 			&--reverse {
 				transform: rotate(-180deg);
 			}
 		}
+	}
+	
+	.cover-input {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
 	}
 }
 </style>

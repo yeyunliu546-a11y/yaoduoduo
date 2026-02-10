@@ -6,7 +6,7 @@
 	/**
 	 * form 表单
 	 * @description 此组件一般用于表单场景，可以配置Input输入框，Select弹出框，进行表单验证等。
-	 * @tutorial http://uviewui.com/components/form.html
+	 * @tutorial https://vkuviewdoc.fsq.pub/components/form.html
 	 * @property {Object} model 表单数据对象
 	 * @property {Boolean} border-bottom 是否显示表单域的下划线边框
 	 * @property {String} label-position 表单域提示文字的位置，left-左侧，top-上方
@@ -70,6 +70,16 @@ export default {
 				return {}
 			}
 		},
+		// 表单内所有input的inputAlign属性的值
+		inputAlign: {
+			type: String,
+			default: 'left'
+		},
+		// 表单内所有input的clearable属性的值
+		clearable:{
+			type: Boolean,
+			default: true
+		}
 	},
 	provide() {
 		return {
@@ -103,23 +113,27 @@ export default {
 				let valid = true; // 默认通过
 				let count = 0; // 用于标记是否检查完毕
 				let errorArr = []; // 存放错误信息
+				let errorObjArr = []; // 存放错误信息对象
 				this.fields.map(field => {
 					// 调用每一个u-form-item实例的validation的校验方法
-					field.validation('', error => {
+					field.validation('', (errorMsg, errObj) => {
 						// 如果任意一个u-form-item校验不通过，就意味着整个表单不通过
-						if (error) {
+						if (errorMsg) {
 							valid = false;
-							errorArr.push(error);
+							errorArr.push(errorMsg);
+							errorObjArr.push(errObj)
 						}
+
 						// 当历遍了所有的u-form-item时，调用promise的then方法
 						if (++count === this.fields.length) {
-							resolve(valid); // 进入promise的then方法
+
+							resolve(valid, errorObjArr[0]); // 进入promise的then方法
 							// 判断是否设置了toast的提示方式，只提示最前面的表单域的第一个错误信息
 							if(this.errorType.indexOf('none') === -1 && this.errorType.indexOf('toast') >= 0 && errorArr.length) {
 								this.$u.toast(errorArr[0]);
 							}
 							// 调用回调方法
-							if (typeof callback == 'function') callback(valid);
+							if (typeof callback == 'function') callback(valid, errorObjArr[0]);
 						}
 					});
 				});

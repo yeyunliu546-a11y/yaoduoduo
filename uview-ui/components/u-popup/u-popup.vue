@@ -1,8 +1,11 @@
 <template>
 	<view v-if="visibleSync" :style="[customStyle, {
-		zIndex: uZindex - 1
+		zIndex: uZindex - 1,
+		'--bgcolor': backgroundColor,
+		'--keyboard-height': keyboardHeight
 	}]" class="u-drawer" hover-stop-propagation>
-		<u-mask :duration="duration" :custom-style="maskCustomStyle" :maskClickAble="maskCloseAble" :z-index="uZindex - 2" :show="showDrawer && mask" @click="maskClick"></u-mask>
+		<u-mask :blur="blur" :duration="duration" :custom-style="maskCustomStyle" :maskClickAble="maskCloseAble" :z-index="uZindex - 2" :show="showDrawer && mask" @click="maskClick"></u-mask>
+		<!-- 移除	@tap.stop.prevent -->
 		<view
 			class="u-drawer-content"
 			@tap="modeCenterClose(mode)"
@@ -13,7 +16,6 @@
 				zoom && mode == 'center' ? 'u-animation-zoom' : ''
 			]"
 			@touchmove.stop.prevent
-			@tap.stop.prevent
 			:style="[style]"
 		>
 			<view class="u-mode-center-box" @tap.stop.prevent @touchmove.stop.prevent v-if="mode == 'center'" :style="[centerStyle]">
@@ -24,21 +26,21 @@
 					:class="['u-close--' + closeIconPos]"
 					:name="closeIcon"
 					:color="closeIconColor"
-					:size="closeIconSize"
+					:size="closeIconSize + 'px'"
 				></u-icon>
 				<scroll-view class="u-drawer__scroll-view" scroll-y="true">
-					<slot />
+					<slot></slot>
 				</scroll-view>
 			</view>
 			<scroll-view class="u-drawer__scroll-view" scroll-y="true" v-else>
-				<slot />
+				<slot></slot>
 			</scroll-view>
 			<view @tap="close" class="u-close" :class="['u-close--' + closeIconPos]">
 				<u-icon
 					v-if="mode != 'center' && closeable"
 					:name="closeIcon"
 					:color="closeIconColor"
-					:size="closeIconSize"
+					:size="closeIconSize + 'px'"
 				></u-icon>
 			</view>
 		</view>
@@ -51,6 +53,11 @@
  * @description 弹出层容器，用于展示弹窗、信息提示等内容，支持上、下、左、右和中部弹出。组件只提供容器，内部内容由用户自定义
  * @tutorial https://www.uviewui.com/components/popup.html
  * @property {String} mode 弹出方向（默认left）
+ * 	@value left       左侧弹出
+ *  @value top        顶部弹出
+ * 	@value right      右侧弹出
+ * 	@value bottom     底部弹出
+ * 	@value center     中间弹出
  * @property {Boolean} mask 是否显示遮罩（默认true）
  * @property {Stringr | Number} length mode=left | 见官网说明（默认auto）
  * @property {Boolean} zoom 是否开启缩放动画，只在mode为center时有效（默认true）
@@ -64,14 +71,23 @@
  * @property {String} close-icon 关闭图标的名称，只能uView的内置图标
  * @property {String} close-icon-pos 自定义关闭图标位置（默认top-right）
  * @property {String} close-icon-color 关闭图标的颜色（默认#909399）
- * @property {Number | String} close-icon-size 关闭图标的大小，单位rpx（默认30）
+ * @property {Number | String} close-icon-size 关闭图标的大小，单位px（默认15）
  * @event {Function} open 弹出层打开
  * @event {Function} close 弹出层收起
  * @example <u-popup v-model="show"><view>出淤泥而不染，濯清涟而不妖</view></u-popup>
  */
 export default {
 	name: 'u-popup',
+	emits: ["update:modelValue", "input", "open", "close"],
 	props: {
+		value: {
+			type: Boolean,
+			default: false
+		},
+		modelValue: {
+			type: Boolean,
+			default: false
+		},
 		/**
 		 * 显示状态
 		 */
@@ -121,17 +137,13 @@ export default {
 				return {};
 			}
 		},
-		value: {
-			type: Boolean,
-			default: false
-		},
 		// 此为内部参数，不在文档对外使用，为了解决Picker和keyboard等融合了弹窗的组件
 		// 对v-model双向绑定多层调用造成报错不能修改props值的问题
 		popup: {
 			type: Boolean,
 			default: true
 		},
-		// 显示显示弹窗的圆角，单位rpx
+		// 显示显示弹窗的圆角，单位px
 		borderRadius: {
 			type: [Number, String],
 			default: 0
@@ -160,10 +172,10 @@ export default {
 			type: String,
 			default: '#909399'
 		},
-		// 关闭图标的大小，单位rpx
+		// 关闭图标的大小，单位px
 		closeIconSize: {
 			type: [String, Number],
-			default: '30'
+			default: '15'
 		},
 		// 宽度，只对左，右，中部弹出时起作用，单位rpx，或者"auto"
 		// 或者百分比"50%"，表示由内容撑开高度或者宽度，优先级高于length参数
@@ -193,6 +205,20 @@ export default {
 		duration: {
 			type: [String, Number],
 			default: 250
+		},
+		// 遮罩的模糊度
+		blur: {
+			type: [String, Number],
+			default: 0
+		},
+		backgroundColor: {
+			type: String,
+			default: '#ffffff'
+		},
+		// 是否需要监听键盘高度
+		needKeyboardHeight: {
+			type: Boolean,
+			default: true
 		}
 	},
 	data() {
@@ -201,9 +227,21 @@ export default {
 			showDrawer: false,
 			timer: null,
 			closeFromInner: false, // value的值改变，是发生在内部还是外部
+			keyboardHeight: "0", // 键盘高度
+			keyboardHeightMode: ["bottom", "center"], // 哪些模式需要监听键盘高度
+			platform: ""
 		};
 	},
 	computed: {
+		valueCom(){
+			// #ifdef VUE2
+			return this.value;
+			// #endif
+
+			// #ifdef VUE3
+			return this.modelValue;
+			// #endif
+		},
 		// 根据mode的位置，设定其弹窗的宽度(mode = left|right)，或者高度(mode = top|bottom)
 		style() {
 			let style = {};
@@ -226,16 +264,16 @@ export default {
 			if (this.borderRadius) {
 				switch (this.mode) {
 					case 'left':
-						style.borderRadius = `0 ${this.borderRadius}rpx ${this.borderRadius}rpx 0`;
+						style.borderRadius = `0 ${this.borderRadius}px ${this.borderRadius}px 0`;
 						break;
 					case 'top':
-						style.borderRadius = `0 0 ${this.borderRadius}rpx ${this.borderRadius}rpx`;
+						style.borderRadius = `0 0 ${this.borderRadius}px ${this.borderRadius}px`;
 						break;
 					case 'right':
-						style.borderRadius = `${this.borderRadius}rpx 0 0 ${this.borderRadius}rpx`;
+						style.borderRadius = `${this.borderRadius}px 0 0 ${this.borderRadius}px`;
 						break;
 					case 'bottom':
-						style.borderRadius = `${this.borderRadius}rpx ${this.borderRadius}rpx 0 0`;
+						style.borderRadius = `${this.borderRadius}px ${this.borderRadius}px 0 0`;
 						break;
 					default:
 				}
@@ -254,7 +292,7 @@ export default {
 			style.zIndex = this.uZindex;
 			style.marginTop = `-${this.$u.addUnit(this.negativeTop)}`;
 			if (this.borderRadius) {
-				style.borderRadius = `${this.borderRadius}rpx`;
+				style.borderRadius = `${this.borderRadius}px`;
 				// 不加可能圆角无效
 				style.overflow = 'hidden';
 			}
@@ -266,20 +304,46 @@ export default {
 		}
 	},
 	watch: {
-		value(val) {
-			if (val) {
-				this.open();
-			} else if(!this.closeFromInner) {
-				this.close();
+		valueCom:{
+			handler(val){
+				if (val) {
+					this.open();
+				} else if(!this.closeFromInner) {
+					this.close();
+				}
+				this.closeFromInner = false;
 			}
-			this.closeFromInner = false;
 		}
 	},
 	mounted() {
 		// 组件渲染完成时，检查value是否为true，如果是，弹出popup
-		this.value && this.open();
+		if (this.valueCom) {
+			this.open();
+		}
+		// #ifdef APP
+		try {
+			this.platform = uni.getDeviceInfo().platform.toLowerCase();
+		} catch (err) {}
+		if (this.needKeyboardHeight && this.platform !== "ios" && this.keyboardHeightMode.indexOf(this.mode) > -1) {
+			uni.onKeyboardHeightChange(this.keyboardHeightChange);
+		}
+		// #endif
 	},
-    methods: {
+	destroyed() {
+		// #ifdef APP
+		if (this.needKeyboardHeight && this.platform !== "ios" && this.keyboardHeightMode.indexOf(this.mode) > -1) {
+			uni.offKeyboardHeightChange(this.keyboardHeightChange);
+		}
+		// #endif
+	},
+	methods: {
+		keyboardHeightChange(res){
+			if (res.height > 0) {
+				this.keyboardHeight = Math.round(res.height) + "px"
+			} else {
+				this.keyboardHeight = 0
+			}
+		},
 		// 判断传入的值，是否带有单位，如果没有，就默认用rpx单位
 		getUnitValue(val) {
 			if(/(%|px|rpx|auto)$/.test(val)) return val;
@@ -310,6 +374,7 @@ export default {
 			// 如果this.popup为false，意味着为picker，actionsheet等组件调用了popup组件
 			if (this.popup == true) {
 				this.$emit('input', status);
+				this.$emit("update:modelValue", status);
 			}
 			this[param1] = status;
 			if(status) {
@@ -358,6 +423,7 @@ export default {
 	position: absolute;
 	z-index: 1003;
 	transition: all 0.25s linear;
+	padding-bottom: var(--keyboard-height);
 }
 
 .u-drawer__scroll-view {
@@ -369,28 +435,28 @@ export default {
 	top: 0;
 	bottom: 0;
 	left: 0;
-	background-color: #ffffff;
+	background-color: var(--bgcolor, #ffffff);
 }
 
 .u-drawer-right {
 	right: 0;
 	top: 0;
 	bottom: 0;
-	background-color: #ffffff;
+	background-color: var(--bgcolor, #ffffff);
 }
 
 .u-drawer-top {
 	top: 0;
 	left: 0;
 	right: 0;
-	background-color: #ffffff;
+	background-color: var(--bgcolor, #ffffff);
 }
 
 .u-drawer-bottom {
 	bottom: 0;
 	left: 0;
 	right: 0;
-	background-color: #ffffff;
+	background-color: var(--bgcolor, #ffffff);
 }
 
 .u-drawer-center {
@@ -407,13 +473,13 @@ export default {
 }
 
 .u-mode-center-box {
-	min-width: 100rpx;
-	min-height: 100rpx;
+	min-width: 50px;
+	min-height: 50px;
 	/* #ifndef APP-NVUE */
 	display: block;
 	/* #endif */
 	position: relative;
-	background-color: #ffffff;
+	background-color: var(--bgcolor, #ffffff);
 }
 
 .u-drawer-content-visible.u-drawer-center {
@@ -435,22 +501,22 @@ export default {
 }
 
 .u-close--top-left {
-	top: 30rpx;
-	left: 30rpx;
+	top: 15px;
+	left: 15px;
 }
 
 .u-close--top-right {
-	top: 30rpx;
-	right: 30rpx;
+	top: 15px;
+	right: 15px;
 }
 
 .u-close--bottom-left {
-	bottom: 30rpx;
-	left: 30rpx;
+	bottom: 15px;
+	left: 15px;
 }
 
 .u-close--bottom-right {
-	right: 30rpx;
-	bottom: 30rpx;
+	right: 15px;
+	bottom: 15px;
 }
 </style>

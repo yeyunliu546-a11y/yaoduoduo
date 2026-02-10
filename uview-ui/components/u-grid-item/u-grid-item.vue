@@ -23,6 +23,7 @@
 	 */
 	export default {
 		name: "u-grid-item",
+    emits: ["click"],
 		props: {
 			// 背景颜色
 			bgColor: {
@@ -57,7 +58,9 @@
 			// 父组件的实例
 			this.updateParentData();
 			// this.parent在updateParentData()中定义
-			this.parent.children.push(this);
+			if (this.parent && this.parent.children) {
+				this.parent.children.push(this);
+			}
 		},
 		computed: {
 			// 每个grid-item的宽度
@@ -81,7 +84,7 @@
 
 <style scoped lang="scss">
 	@import "../../libs/css/style.components.scss";
-	
+
 	.u-grid-item {
 		box-sizing: border-box;
 		background: #fff;
@@ -90,7 +93,7 @@
 		justify-content: center;
 		position: relative;
 		flex-direction: column;
-		
+
 		/* #ifdef MP */
 		position: relative;
 		float: left;
@@ -104,7 +107,7 @@
 	.u-grid-marker-box {
 		position: absolute;
 		/* #ifndef APP-NVUE */
-		display: inline-flex;		
+		display: inline-flex;
 		/* #endif */
 		line-height: 0;
 	}
