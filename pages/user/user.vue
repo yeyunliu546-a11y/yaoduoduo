@@ -92,8 +92,8 @@
 import AvatarImage from '@/components/avatar-image/avatar-image.vue'
 import Recommend from '@/pages/good/components/Recommend'
 import request from '@/utils/request/request.js'
-// 【修改点1】引入 API 方法
-import { getDetail, assets } from '@/api/user/user.js'
+// 【修改点1】移除 assets 引用，仅保留 getDetail
+import { getDetail } from '@/api/user/user.js'
 
 const orderNavbar = [{
 	id: 'all', name: '全部订单', bigOrderStatus: 0, icon: 'quanbudingdan'
@@ -157,7 +157,7 @@ export default {
                 return;
             }
             
-            // 1. 获取用户信息
+            // 1. 获取用户信息 (合并了原 assets 接口的资产数据)
             getDetail().then(res => {
                 if(res.code === 200 && res.result) {
                     const info = res.result;
@@ -167,19 +167,17 @@ export default {
                     this.userInfo.grade_id = info.grade_id || 0;
                     this.userInfo.grade = info.grade || null;
                     this.userInfo.phone = info.mobile || info.phone || '';
+					
+					// 【修改点4】直接从个人信息接口中映射资产数据
+					// 兼容常见的后端命名 (camelCase 或 PascalCase)
+					this.userInfo.balance = info.balance || info.Balance || '0.00';
+					this.userInfo.points = info.points || info.Points || 0;
+					// 优惠券数量兼容
+					this.userInfo.countCoupon = info.coupon || info.countCoupon || info.CouponCount || info.coupon_num || 0;
                 }
             });
 
-            // 2. 获取资产信息 (余额、积分、优惠券)
-            assets().then(res => {
-                if(res.code === 200 && res.result) {
-                    const asset = res.result;
-                    this.userInfo.balance = asset.balance || '0.00';
-                    this.userInfo.points = asset.points || 0;
-                    // 后端可能返回 coupon 或 countCoupon 或 coupon_num
-                    this.userInfo.countCoupon = asset.coupon || asset.countCoupon || asset.coupon_num || 0;
-                }
-            });
+            // 【已移除】原 assets() 调用已删除，避免 404 错误
 
             // 3. 获取订单数量
             this.loadOrderCounts();

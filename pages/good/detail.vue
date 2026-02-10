@@ -13,6 +13,7 @@
             <view class="main-price">
               <text class="symbol">¥</text>
               <text class="num">{{ currentSku.salePrice || goodsInfo.salePrice || '0.00' }}</text>
+              <text v-if="isPrescription" class="unit-text">/g (调剂药品)</text>
             </view>
             <view class="sub-info" v-if="(currentSku.linePrice || goodsInfo.linePrice) > (currentSku.salePrice || goodsInfo.salePrice)">
               <text class="line-price">¥{{ currentSku.linePrice || goodsInfo.linePrice }}</text>
@@ -25,6 +26,9 @@
             <text class="tag manufacturer" v-if="goodsInfo.manufacturer">{{ goodsInfo.manufacturer }}</text>
             <text class="tag standard" v-if="goodsInfo.standard">{{ goodsInfo.standard }}</text>
             <text class="tag package" v-if="goodsInfo.packageType">{{ goodsInfo.packageType }}</text>
+            <text class="tag type" :class="isPrescription ? 'type-prescription' : 'type-normal'">
+              {{ isPrescription ? '处方调剂' : '普通采购' }}
+            </text>
           </view>
 
           <view class="meta-row">
@@ -61,11 +65,11 @@
 
       <view class="action-bar">
         <view class="total-info">
-          <text class="label">总计:</text>
+          <text class="label">价格:</text>
           <text class="price">¥{{ currentSku.salePrice || goodsInfo.salePrice || '0.00' }}</text>
         </view>
         <view class="btn-group">
-          <button class="btn-cart" @click="addToCart">加入购物车</button>
+          <button class="btn-cart" @click="addToCart">加入{{ isPrescription ? '处方车' : '购物车' }}</button>
           <button class="btn-buy" @click="buyNow">立即购买</button>
         </view>
       </view>
@@ -80,17 +84,23 @@
 
 <script>
   import { getGoodsDetail } from '@/api/goods/goods.js';
-  // 引入普通购物车接口
-  import { addCart } from '@/api/goods/cart.js';
+  // 【修复1】引入处方购物车接口
+  import { addCart, addPrescriptionCart } from '@/api/goods/cart.js';
 
   export default {
     data() {
       return {
         goodsId: '',
         goodsInfo: {},    
-        currentSku: {}, // 当前选中的规格对象 (必须包含 id 字段)
+        currentSku: {}, 
         loading: true
       };
+    },
+    computed: {
+      // 判断是否为调剂药品 (GoodsType: 1采购, 2调剂)
+      isPrescription() {
+        return (this.goodsInfo.goodsType || this.goodsInfo.GoodsType) === 2;
+      }
     },
     onLoad(options) {
       if (options.id) {
@@ -102,7 +112,6 @@
       }
     },
     methods: {
-      // 加载商品详情
       loadDetail() {
         uni.showLoading({ title: '加载中' });
         getGoodsDetail(this.goodsId).then(res => {
@@ -111,14 +120,10 @@
             const result = res.result;
             this.goodsInfo = result;
             
-            // 【关键修复】初始化选中第一个 SKU
-            // 后端 AddCart 接口必须传 SkuId，所以必须先选中一个
             if (result.listSku && result.listSku.length > 0) {
               this.currentSku = result.listSku[0]; 
             } else {
-              // 兜底逻辑：如果后端没返回 SKU 列表 (单规格商品可能直接用主信息)
-              // 但为了保险，通常还是建议后端返回至少一个默认 SKU
-              console.warn('注意：商品没有返回 listSku，可能会影响加购');
+              console.warn('注意：商品没有返回 listSku');
               this.currentSku = result; 
             }
             this.loading = false;
@@ -132,7 +137,6 @@
         });
       },
 
-      // 预览图片
       previewImage(current) {
         if (!this.goodsInfo.listImg) return;
         const urls = this.goodsInfo.listImg.map(item => item.filePath);
@@ -142,27 +146,37 @@
         });
       },
 
-      // 加入购物车
       addToCart() {
-        // 1. 安全检查：确保有 SKU ID
-        // 如果 currentSku.id 为空，说明没选中规格或数据异常
         if (!this.currentSku || !this.currentSku.id) {
-          console.error('缺少 SkuId, currentSku:', this.currentSku);
           return uni.showToast({ title: '商品规格无效，无法加入', icon: 'none' });
         }
 
         uni.showLoading({ title: '加入中' });
         
-        // 2. 【关键修复】使用 currentSku.id (规格ID) 传参
-        const params = {
-          goodsSkuId: this.currentSku.id, // ✅ 必须传这个
-          goodsNum: 1
-        };
+        let promise;
+
+        // 【修复2】根据商品类型调用不同的加购接口
+        if (this.isPrescription) {
+          // 调剂药品 -> 处方购物车
+          // 注意：文档要求传入 goodsWeight (克重)。此处默认给 10g，后续在购物车可调整。
+          const params = {
+            goodsSkuId: this.currentSku.id,
+            goodsWeight: 10 
+          };
+          promise = addPrescriptionCart(params);
+        } else {
+          // 普通药品 -> 采购购物车
+          const params = {
+            goodsSkuId: this.currentSku.id,
+            goodsNum: 1
+          };
+          promise = addCart(params);
+        }
         
-        addCart(params).then(res => {
+        promise.then(res => {
           uni.hideLoading();
           if (res.code === 200) {
-            uni.showToast({ title: '已加入购物车', icon: 'success' });
+            uni.showToast({ title: '已加入' + (this.isPrescription ? '处方购物车' : '购物车'), icon: 'success' });
           } else {
             uni.showToast({ title: res.message || '加入失败', icon: 'none' });
           }
@@ -181,6 +195,7 @@
 </script>
 
 <style lang="scss" scoped>
+  /* 保持原有样式，增加 type 标签样式 */
   .container { background-color: #f8f8f8; min-height: 100vh; padding-bottom: 120rpx; }
   .goods-swiper { width: 100%; height: 750rpx; background-color: #fff; }
   .swiper-img { width: 100%; height: 100%; }
@@ -190,6 +205,7 @@
     .main-price { color: #ff4400; font-weight: bold; 
       .symbol { font-size: 28rpx; } 
       .num { font-size: 48rpx; } 
+      .unit-text { font-size: 24rpx; color: #999; margin-left: 10rpx; font-weight: normal; }
     } 
     .line-price { margin-left: 20rpx; font-size: 24rpx; color: #999; text-decoration: line-through; } 
   }
@@ -201,6 +217,8 @@
     .manufacturer { color: #666; background: #f5f5f5; } 
     .standard { color: #007aff; background: #eaf2ff; } 
     .package { color: #ff9900; background: #fff5e6; } 
+    .type-normal { color: #fff; background: #2979ff; }
+    .type-prescription { color: #fff; background: #ffaa00; }
   }
   
   .meta-row { background-color: #fafafa; padding: 20rpx; border-radius: 8rpx; 

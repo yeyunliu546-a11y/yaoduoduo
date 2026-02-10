@@ -7,9 +7,7 @@ const api = {
   // 原 user/get 推测对应后端的 Get 方法
   getDetail: '/api/User/Get',      
   
-  // 2. 资产信息 (余额/积分)
-  // 原 user/assets 推测对应后端的 GetAssets 方法
-  assets: '/api/User/GetAssets',       
+  // 2. (已删除) 资产信息接口 /api/User/GetAssets 因为数据已合并到 User/Get 中
   
   // 3. 绑定手机号
   bindMobile: '/api/User/BindMobile',  
@@ -29,7 +27,7 @@ const api = {
 // 核心业务方法
 // ==========================================
 
-// 1. 获取当前登录的用户信息 (头像、昵称等)
+// 1. 获取当前登录的用户信息 (包含头像、昵称、余额、积分、优惠券等)
 export const getDetail = (param, option) => {
   const options = {
     isPrompt: true, 
@@ -39,10 +37,7 @@ export const getDetail = (param, option) => {
   return request.get(api.getDetail, param, options)
 }
 
-// 2. 获取账户资产 (余额、积分、优惠券数量)
-export const assets = (param, option) => {
-  return request.get(api.assets, param, option)
-}
+// 2. (已删除) 获取账户资产方法 assets
 
 // 3. 绑定手机号
 export const bindMobile = (data, option) => {
