@@ -1,250 +1,233 @@
 <template>
-	<view class="container">
-		<view class="address-list" v-if="addressList.length > 0">
-			<u-swipe-action 
-				v-for="(item, index) in addressList" 
-				:key="item.Id" 
-				:options="swipeOptions" 
-				@click="handleSwipeClick($event, item.Id)"
-			>
-				<view class="address-item">
-					<view class="content" @click="handleEdit(item.Id)">
-						<view class="user-info">
-							<text class="name">{{ item.Name }}</text>
-							<text class="phone">{{ item.Phone }}</text>
-							<u-tag v-if="item.IsDefault" text="默认" type="error" size="mini" mode="dark" class="tag" />
-						</view>
-						<view class="address-text">
-							{{ item.FullAddress || '地址信息缺失' }}
-						</view>
-					</view>
-					<view class="action-bar">
-						<view class="default-toggle" @click.stop="handleSetDefault(item)">
-							<u-icon 
-								:name="item.IsDefault ? 'checkmark-circle-fill' : 'checkmark-circle'" 
-								:color="item.IsDefault ? '#f9211c' : '#ccc'" 
-								size="38" 
-							/>
-							<text :class="{ 'active': item.IsDefault }">默认地址</text>
-						</view>
-						<view class="edit-btn" @click.stop="handleEdit(item.Id)">
-							<u-icon name="edit-pen" size="30" color="#999" />
-							<text>编辑</text>
-						</view>
-					</view>
-				</view>
-			</u-swipe-action>
-		</view>
+  <view class="container">
+    <view class="address-list">
+      <block v-if="list.length > 0">
+        <u-swipe-action
+          v-for="(item, index) in list"
+          :key="item.Id"
+          :show="item.show"
+          :index="index"
+          :options="swipeOptions"
+          @click="(btnIndex) => handleSwipeClick(btnIndex, item)"
+          @open="openSwipe(index)"
+        >
+          <view class="address-item" @click="onItemClick(item)">
+            <view class="left-action" @click.stop="handleSetDefault(item)">
+              <view class="radio-box" :class="{ 'checked': item.IsDefault }">
+                <u-icon v-if="item.IsDefault" name="checkmark" color="#fff" size="24"></u-icon>
+              </view>
+            </view>
 
-		<u-empty v-else mode="address" margin-top="200" text="暂无收货地址" />
+            <view class="item-content">
+              <view class="user-info">
+                <text class="name">{{ item.Name }}</text>
+                <text class="phone">{{ item.Phone }}</text>
+                <text class="tag" v-if="item.IsDefault">默认</text>
+              </view>
+              <view class="address-text">
+                {{ item.Province }} {{ item.City }} {{ item.Region }} {{ item.Detail }}
+              </view>
+            </view>
 
-		<view class="footer">
-			<view class="btn-wrap">
-				<u-button type="error" shape="circle" @click="handleCreate">
-					<u-icon name="plus" color="#fff" size="30" />
-					<text>新增收货地址</text>
-				</u-button>
-			</view>
-		</view>
-	</view>
+            <view class="item-edit" @click.stop="handleEdit(item)">
+              <u-icon name="edit-pen" size="40" color="#999"></u-icon>
+            </view>
+          </view>
+        </u-swipe-action>
+      </block>
+      
+      <view v-else class="empty-box">
+        <u-empty text="暂无收货地址" mode="address" margin-top="100"></u-empty>
+      </view>
+    </view>
+
+    <view class="footer-fixed">
+      <button class="add-btn" @click="handleAdd">+ 新建收货地址</button>
+    </view>
+  </view>
 </template>
 
 <script>
-	/**
-	 * 收货地址列表页面
-	 * 对接文档：收货地址管理API对接文档.md
-	 */
-	import * as AddressApi from '@/api/user/userAddress.js'
+import { listByWhere, setDefault, deleteAddress } from '@/api/user/userAddress.js';
 
-	export default {
-		data() {
-			return {
-				addressList: [],
-				swipeOptions: [
-					{
-						text: '删除',
-						style: { backgroundColor: '#dd524d' }
-					}
-				],
-				query: {
-					Page: 1,
-					Limit: 50,
-					OnlyMy: true
-				}
-			}
-		},
-		onShow() {
-			// 每次页面显示都刷新列表（包含从新增页返回时）
-			this.getList();
-		},
-		methods: {
-			/**
-			 * 获取地址列表
-			 */
-			async getList() {
-				uni.showLoading({ title: '加载中...', mask: true });
-				try {
-					const res = await AddressApi.loadList(this.query);
-					
-					// 1. 调试日志：核对字段名和类型
-					console.log('地址列表原始数据:', res, 'Code类型:', typeof (res.Code || res.code));
+export default {
+  data() {
+    return {
+      list: [],
+      source: '', 
+      swipeOptions: [
+        {
+          text: '删除',
+          style: { backgroundColor: '#fa3534' }
+        }
+      ]
+    };
+  },
+  onLoad(options) {
+    this.source = options.source || '';
+  },
+  onShow() {
+    this.loadData();
+  },
+  methods: {
+    loadData() {
+      uni.showLoading({ title: '加载中' });
+      listByWhere({ OnlyMy: true }).then(res => {
+        uni.hideLoading();
+        if (res.Code === 200 || res.code === 200) {
+          const rawList = res.Result || res.result || res.data || [];
+          
+          this.list = rawList.map(item => ({
+            Id: item.Id || item.id,
+            Name: item.Name || item.name,
+            Phone: item.Phone || item.phone || item.mobile,
+            Province: item.Province || item.province,
+            City: item.City || item.city,
+            Region: item.Region || item.region || item.district,
+            Detail: item.Detail || item.detail,
+            IsDefault: !!(item.IsDefault || item.isDefault),
+            show: false // 【关键】初始化 show 属性，否则 Vue 3 可能无法追踪变化
+          }));
+        }
+      }).catch(() => uni.hideLoading());
+    },
 
-					// 2. 兼容性判断：弱等于 200，并兼容大小写 Code
-					const responseCode = res.Code !== undefined ? res.Code : res.code;
-					
-					if (responseCode == 200) {
-						const rawList = res.Result || res.result || [];
-						
-						// 3. 安全映射：防止字段缺失导致渲染报错
-						this.addressList = rawList.map(item => {
-							return {
-								// 兼容处理 ID 和基本信息，增加空值保护
-								Id: item.Id || item.id || '',
-								Name: item.Name || item.name || '未命名',
-								Phone: item.Phone || item.phone || '',
-								IsDefault: !!(item.IsDefault || item.isDefault),
-								FullAddress: item.FullAddress || item.fullAddress || 
-											 `${item.Province || ''}${item.City || ''}${item.Region || ''}${item.Detail || ''}`
-							};
-						});
-					} else {
-						uni.showToast({ title: res.Message || '列表获取失败', icon: 'none' });
-					}
-				} catch (err) {
-					console.error('获取列表异常:', err);
-					uni.showToast({ title: '网络请求异常', icon: 'none' });
-				} finally {
-					// 4. Loading 闭环：确保 hideLoading 总能执行
-					uni.hideLoading();
-				}
-			},
+    onItemClick(item) {
+      if (this.source === 'order') {
+        uni.setStorageSync('selectedAddress', {
+            id: item.Id,
+            name: item.Name,
+            phone: item.Phone,
+            mobile: item.Phone, 
+            province: item.Province,
+            city: item.City,
+            district: item.Region,
+            detail: item.Detail,
+            fullAddress: `${item.Province}${item.City}${item.Region}${item.Detail}`
+        });
+        uni.navigateBack();
+      } else {
+        this.handleEdit(item);
+      }
+    },
 
-			/**
-			 * 设置默认地址
-			 */
-			async handleSetDefault(item) {
-				if (item.IsDefault) return;
-				
-				uni.showLoading({ title: '设置中...', mask: true });
-				try {
-					const res = await AddressApi.setDefault(item.Id);
-					if (res.Code == 200 || res.code == 200) {
-						uni.showToast({ title: '设置成功', icon: 'none' });
-						this.getList(); // 重新加载列表同步状态
-					}
-				} catch (err) {
-					uni.showToast({ title: '操作失败', icon: 'none' });
-				} finally {
-					uni.hideLoading();
-				}
-			},
+    handleSetDefault(item) {
+      if (item.IsDefault) return; 
+      
+      uni.showLoading({ title: '设置中' });
+      setDefault(item.Id).then(res => {
+        uni.hideLoading();
+        if (res.Code === 200 || res.code === 200) {
+          uni.showToast({ title: '设置成功', icon: 'success' });
+          this.loadData(); 
+        } else {
+          uni.showToast({ title: res.Message || '设置失败', icon: 'none' });
+        }
+      });
+    },
 
-			/**
-			 * 滑动删除
-			 */
-			handleSwipeClick(e, id) {
-				uni.showModal({
-					title: '提示',
-					content: '确定要删除该地址吗？',
-					success: async (res) => {
-						if (res.confirm) {
-							uni.showLoading({ title: '删除中...' });
-							try {
-								const delRes = await AddressApi.deleteAddress([id]);
-								if (delRes.Code == 200 || delRes.code == 200) {
-									uni.showToast({ title: '删除成功', icon: 'none' });
-									this.getList();
-								}
-							} finally {
-								uni.hideLoading();
-							}
-						}
-					}
-				});
-			},
+    handleEdit(item) {
+      uni.navigateTo({ url: `/pages/address/update?id=${item.Id}` });
+    },
+    
+    handleAdd() {
+      uni.navigateTo({ url: '/pages/address/create' });
+    },
 
-			handleCreate() {
-				uni.navigateTo({ url: '/pages/address/create' });
-			},
+    // 互斥打开逻辑：打开一个时关闭其他
+    openSwipe(index) {
+      this.list.forEach((item, i) => {
+        item.show = (i === index);
+      });
+    },
 
-			handleEdit(id) {
-				uni.navigateTo({ url: `/pages/address/update?id=${id}` });
-			}
-		}
-	}
+    // 这里的 item 是我们在 template 里显式传过来的
+    handleSwipeClick(btnIndex, item) {
+      if (btnIndex === 0) { 
+        this.execDelete(item.Id);
+      }
+    },
+
+    execDelete(id) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要删除该地址吗？',
+        success: (res) => {
+          if (res.confirm) {
+            uni.showLoading({ title: '删除中' });
+            deleteAddress([id]).then(res => {
+              uni.hideLoading();
+              if (res.Code === 200 || res.code === 200) {
+                uni.showToast({ title: '删除成功', icon: 'success' });
+                this.loadData();
+              } else {
+                uni.showToast({ title: res.Message || '删除失败', icon: 'none' });
+              }
+            });
+          }
+        }
+      });
+    }
+  }
+};
 </script>
 
 <style lang="scss" scoped>
-	page {
-		background-color: #f7f8fa;
-	}
+.container { background-color: #f5f5f5; min-height: 100vh; padding-bottom: 120rpx; }
+.address-list { padding: 20rpx; }
 
-	.container {
-		padding-bottom: 160rpx;
-	}
+.address-item {
+  background: #fff; padding: 30rpx 20rpx;
+  display: flex; align-items: center; 
+  
+  .left-action {
+    padding-right: 20rpx;
+    display: flex; align-items: center;
+    .radio-box {
+      width: 40rpx; height: 40rpx; border-radius: 50%; border: 2rpx solid #ccc;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.3s;
+      &.checked {
+        background-color: #ff3b30; border-color: #ff3b30;
+      }
+    }
+  }
 
-	.address-item {
-		background-color: #fff;
-		margin-bottom: 20rpx;
-		padding: 30rpx;
+  .item-content { flex: 1; margin-right: 20rpx; overflow: hidden; }
+  
+  .user-info {
+    margin-bottom: 12rpx; font-weight: bold; font-size: 30rpx; display: flex; align-items: center;
+    
+    // 修复：使用标准 CSS 替代 mixin
+    .name { 
+        margin-right: 20rpx; 
+        max-width: 160rpx; 
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        white-space: nowrap;
+        display: block; // 确保截断生效
+    }
+    .mobile { font-weight: normal; color: #666; font-size: 28rpx; }
+    .tag { background: #ffeae9; color: #ff3b30; font-size: 20rpx; padding: 2rpx 8rpx; border-radius: 6rpx; margin-left: 16rpx; font-weight: normal; border: 1px solid #ff3b30;}
+  }
+  
+  .address-text { color: #333; font-size: 26rpx; line-height: 1.4; }
+  
+  .item-edit { 
+    padding: 10rpx; border-left: 1rpx solid #eee; padding-left: 20rpx; 
+    height: 60rpx; display: flex; align-items: center;
+  }
+}
 
-		.user-info {
-			display: flex;
-			align-items: center;
-			margin-bottom: 12rpx;
-
-			.name {
-				font-size: 32rpx;
-				font-weight: bold;
-				margin-right: 20rpx;
-			}
-
-			.phone {
-				font-size: 28rpx;
-				color: #666;
-			}
-
-			.tag {
-				margin-left: 16rpx;
-			}
-		}
-
-		.address-text {
-			font-size: 26rpx;
-			color: #333;
-			line-height: 1.4;
-			padding-bottom: 20rpx;
-			border-bottom: 1px solid #f5f5f5;
-		}
-
-		.action-bar {
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-			padding-top: 20rpx;
-
-			.default-toggle, .edit-btn {
-				display: flex;
-				align-items: center;
-				font-size: 26rpx;
-				color: #999;
-
-				text {
-					margin-left: 10rpx;
-					&.active {
-						color: #f9211c;
-					}
-				}
-			}
-		}
-	}
-
-	.footer {
-		position: fixed;
-		bottom: 30rpx;
-		left: 0;
-		right: 0;
-		padding: 0 40rpx;
-		z-index: 100;
-	}
+.footer-fixed {
+  position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 20rpx 30rpx;
+  padding-bottom: constant(safe-area-inset-bottom); padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05);
+  z-index: 99;
+  .add-btn {
+    background: #ff3b30; color: #fff; border-radius: 44rpx; height: 88rpx; line-height: 88rpx; font-size: 32rpx; font-weight: bold;
+    &::after { border: none; }
+    &:active { opacity: 0.9; }
+  }
+}
 </style>

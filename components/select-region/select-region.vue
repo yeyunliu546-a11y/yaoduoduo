@@ -16,10 +16,9 @@
 	import {
 		isEmpty
 	} from '@/utils/util'
-	// import SysArea from '@/common/model/SysArea' // 【已注释/删除】不再需要外部 API
 
 	// ==========================================================
-	// 【新增】模拟地区数据和辅助函数 - 放在 export default 外部
+	// 模拟地区数据
 	// ==========================================================
 	const MOCK_AREA_DATA = [
 		{
@@ -75,29 +74,22 @@
 		}
 	];
 	
-	/**
-	 * 【新增】递归格式化函数：将 id/name/children 转换为 value/label/children
-	 * @param {Array} data 原始地区数据数组
-	 */
+	// 递归格式化函数
 	const formatAreaTree = (data) => {
 		if (!data || data.length === 0) return [];
 		return data.map(item => {
 			const newItem = {
-				value: item.id, // ID 作为 value
-				label: item.name, // 名称 作为 label
+				value: item.id, 
+				label: item.name, 
 			};
-			
-			// 只有当有子节点时才添加 children 字段
 			if (item.children && item.children.length > 0) {
-				newItem.children = formatAreaTree(item.children); // 递归处理子级
+				newItem.children = formatAreaTree(item.children); 
 			}
-			
 			return newItem;
 		});
 	}
 
-	// 根据选中的value集获取索引集keys (保持不变)
-	// 用于设置默认选中
+	// 查找索引
 	const findOptionsKey = (data, searchValue, deep = 1, keys = []) => {
 		const index = data.findIndex(item => item.value === searchValue[deep - 1])
 		if (index > -1) {
@@ -114,19 +106,12 @@
 	export default {
 		name: 'SelectRegion',
 		mixins: [Emitter],
-		model: {
-			prop: 'value',
-			event: 'change'
-		},
 		props: {
-			// v-model 指定选中项
-			value: {
+			// 【修复】Vue 3 中 v-model 默认属性名为 modelValue
+			modelValue: {
 				type: Array,
-				default: () => {
-					return []
-				}
+				default: () => []
 			},
-			// 未选中时的提示文字
 			placeholder: {
 				type: String,
 				default: '请选择省/市/区'
@@ -134,89 +119,79 @@
 		},
 		data() {
 			return {
-				// 正在加载
 				isLoading: true,
-				// 是否显示
 				show: false,
-				// 默认选中的值
 				defaultValue: [],
-				// 选中项内容(文本展示)
 				valueText: '',
-				// 级联选择器数据
 				options: []
 			}
 		},
 		watch: {
-			// 监听v-model (在 options 数据加载完成后，后续的 value 变化会触发这里)
-			value(val) {
-				// 设置默认选中的值
-				this.valueText = val.map(item => item.label).join('/')
-				this.setDefaultValue(val)
-				// 将当前的值发送到 u-form-item 进行校验
-				this.dispatch('u-form-item', 'on-form-change', val)
+			// 【修复】监听 modelValue
+			modelValue: {
+				handler(val) {
+					if(!val || val.length === 0) {
+						this.valueText = '';
+						return;
+					}
+					// 【修复】兼容 label (组件选中的) 和 Label (后端回显的)
+					this.valueText = val.map(item => item.label || item.Label).join('/')
+					this.setDefaultValue(val)
+					this.dispatch('u-form-item', 'on-form-change', val)
+				},
+				immediate: true // 立即执行以处理回显
 			},
 		},
 		created() {
-			// 获取地区数据
 			this.getTreeData()
 		},
 
 		methods: {
-
-			// 打开选择器
 			handleSelect() {
 				this.show = true
 			},
 
-			/**
-			 * 【修改点】获取地区数据，替换为模拟本地数据加载
-			 */
 			getTreeData() {
 				const _this = this
 				_this.isLoading = true
 				
-				// 模拟异步加载
 				setTimeout(() => {
-					
-					// 1. 格式化整个 MOCK_AREA_DATA 树（将 id/name 转换为 value/label）
 					const formattedRegions = formatAreaTree(MOCK_AREA_DATA);
-					
-					// 2. 赋值给 options，供 u-select 使用
 					_this.options = formattedRegions;
 
-					// 3. 处理默认选中值 (解决加载完成后 value 还没有触发 watch 的时序问题)
-					if (_this.value && _this.value.length) {
-						_this.setDefaultValue(_this.value);
-						_this.valueText = _this.value.map(item => item.label).join('/')
+					// 数据加载完成后，再次尝试设置回显（防止 watch 执行时 options 还没加载）
+					if (_this.modelValue && _this.modelValue.length) {
+						_this.setDefaultValue(_this.modelValue);
+						// 兼容大小写
+						_this.valueText = _this.modelValue.map(item => item.label || item.Label).join('/')
 					}
 
 					_this.isLoading = false;
-					
-				}, 300) // 模拟 300ms 加载延迟
+				}, 300) 
 			},
 
-			// 确认选择后的回调
 			onConfirm(value) {
-				// 绑定到v-model执行的值
-				this.$emit('input', value)
+				// value 格式: [{label: 'xx', value: 'xx'}, ...]
+				
+				// 立即更新显示文本，提升体验
+				this.valueText = value.map(item => item.label).join('/')
+				
+				// 【修复】触发 Vue 3 的 v-model 更新事件
+				this.$emit('update:modelValue', value)
+				
+				// 保留 change 事件
 				this.$emit('change', value)
+				this.dispatch('u-form-item', 'on-form-change', value)
 			},
 
-			/**
-			 * 设置默认选中的值
-			 * 该操作是为了每次打开选择器时聚焦到上次选择
-			 * @param {Object} value
-			 */
 			setDefaultValue(value) {
-				const values = value.map(item => item.value)
+				// 【修复】兼容 Value (大写) 和 value (小写)
+				const values = value.map(item => item.value || item.Value)
 				const options = this.options
-				// 只有 options 加载完毕后才能设置 defaultValue
 				if(options && options.length > 0) {
 					this.defaultValue = findOptionsKey(options, values)
 				}
-			},
-			
-			// 【已删除/注释】原有的 getOptions 和 getChildren 方法不再需要
+			}
 		}
 	}
 </script>
@@ -228,6 +203,5 @@
 
 	.loading {
 		padding-left: 10rpx;
-		// text-align: center;
 	}
 </style>

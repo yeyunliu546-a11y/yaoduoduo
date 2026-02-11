@@ -335,40 +335,29 @@ export default {
       }
     },
 
-    // 【核心修复】采购车数量变更 (u-number-box)
+    // 采购车数量变更 (u-number-box)
     handleNumChange(val, item) {
-      // 1. 处理 u-number-box 可能返回对象或字符串的问题
-      // uView/vk-uview 在不同版本中，event 可能是 {value: 3} 也可能是直接的 3
       let rawVal = val;
       if (typeof val === 'object' && val !== null && val.hasOwnProperty('value')) {
           rawVal = val.value;
       }
       
-      // 2. 强制类型转换为 Number 整数，防止 String 传给后端导致 400
       const newNum = parseInt(rawVal);
-      
-      // 校验：如果是 NaN 或小于1，则不处理
       if (isNaN(newNum) || newNum < 1) return;
       
-      // 3. 乐观更新：先更新本地数据，防止 UI 抖动
-      // 注意：v-model 已经双向绑定了 item.goodsNum，但为了保险起见，再次赋值正确类型
       item.goodsNum = newNum;
 
-      // 4. 防抖处理 API 请求
       if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
         
       this.debounceTimers[item.id] = setTimeout(() => {
-          // 5. 构造 API 参数：严格确保 goodsNum 是 Number 类型
           const params = {
-              goodsSkuId: item.goodsSkuId, // 保持原有的 goodsSkuId
-              goodsNum: Number(newNum)     // ✅ 关键修复：强制 Number 类型
+              goodsSkuId: item.goodsSkuId, 
+              goodsNum: Number(newNum)
           };
 
           updateCartNum(params).then(res => {
              if (res.code !== 200) {
-                 // 如果失败，提示并可选择重新加载数据
                  uni.showToast({ title: res.message || '更新失败', icon: 'none' });
-                 // this.loadData(); // 可选：失败后回滚数据
              }
           }).catch(() => { 
              uni.showToast({ title: '网络请求异常', icon: 'none' });
@@ -378,7 +367,6 @@ export default {
 
     // 处方车克重变更
     handleWeightChange(val, item) {
-      // 这里的 val 也需要处理类型
       let rawVal = val;
       if (typeof val === 'object' && val !== null && val.hasOwnProperty('value')) {
           rawVal = val.value;
@@ -393,7 +381,7 @@ export default {
       this.debounceTimers[item.id] = setTimeout(() => {
           updatePrescriptionCart({ 
               id: item.id, 
-              goodsWeight: Number(newWeight) // 同样确保类型安全
+              goodsWeight: Number(newWeight)
           }).catch(() => { this.loadData(); });
       }, 500);
     },
@@ -467,17 +455,57 @@ export default {
         if (this.isAllChecked) this.checkedIds = []; else this.checkedIds = [...this.allProcurementIds];
     },
 
-    // 下单逻辑
+    // 【核心修复】下单/结算逻辑
     handleOrder() {
+        // Tab 0: 普通采购结算
         if (this.currentTab === 0) {
-            if (this.checkedIds.length === 0) return uni.showToast({ title: '请选择商品', icon: 'none' });
-            uni.navigateTo({ url: `/pages/order/create?type=procurement&cartIds=${this.checkedIds.join(',')}` });
-        } else {
-            if (this.dispensingList.length === 0) return uni.showToast({ title: '处方为空', icon: 'none' });
-            const allIds = this.dispensingList.map(item => item.id).join(',');
-            const adviceEncoded = encodeURIComponent(this.doctorAdvice);
+            // 1. 基础非空校验
+            if (!this.checkedIds || this.checkedIds.length === 0) {
+                return uni.showToast({ title: '请先勾选要结算的商品', icon: 'none' });
+            }
+
+            // 2. 【关键修复】将 ID 列表保持为数组，并使用 JSON.stringify 转换为字符串
+            // 后端需要 JSON 数组格式 (["id1", "id2"]) 而不是逗号分隔字符串
+            const cartIds = this.checkedIds; // 保持数组
+            const cartIdsJson = JSON.stringify(cartIds);
+
+            // 3. 调试日志：确保参数是数组格式
+            console.log('【采购结算】请求参数:', { cartIds: cartIds });
+
+            // 4. 跳转时对 JSON 字符串进行编码，防止 URL 解析错误
+            // 下一页 (order/create) 需要解析这个 JSON 字符串回数组
+            uni.navigateTo({ 
+                url: `/pages/order/create?type=procurement&cartIds=${encodeURIComponent(cartIdsJson)}` 
+            });
+        } 
+        // Tab 1: 处方调剂结算
+        else {
+            // 1. 基础非空校验
+            if (!this.dispensingList || this.dispensingList.length === 0) {
+                return uni.showToast({ title: '处方清单不能为空', icon: 'none' });
+            }
+
+            // 2. 构造参数 - 同样使用 JSON 数组
+            const allIds = this.dispensingList.map(item => item.id);
+            const allIdsJson = JSON.stringify(allIds);
+            
+            // 3. 校验是否有有效 ID
+            if(!allIds || allIds.length === 0) {
+                 return uni.showToast({ title: '商品ID异常，无法结算', icon: 'none' });
+            }
+
+            const adviceEncoded = encodeURIComponent(this.doctorAdvice || '');
+            
+            // 4. 调试日志
+            console.log('【调剂结算】请求参数:', { 
+                cartIds: allIds, 
+                days: this.prescriptionDays, 
+                packs: this.prescriptionPacks 
+            });
+
+            // 5. 跳转 - 传递编码后的 JSON 数组
             uni.navigateTo({
-                url: `/pages/order/create?type=dispensing&cartIds=${allIds}&days=${this.prescriptionDays}&packs=${this.prescriptionPacks}&advice=${adviceEncoded}`
+                url: `/pages/order/create?type=dispensing&cartIds=${encodeURIComponent(allIdsJson)}&days=${this.prescriptionDays}&packs=${this.prescriptionPacks}&advice=${adviceEncoded}`
             });
         }
     },
@@ -514,6 +542,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+/* 保持原有样式，本次只修复了 script 逻辑 */
 .container {
   min-height: 100vh;
   padding-bottom: 220rpx;
@@ -697,7 +726,7 @@ export default {
 /* Footer Bar */
 .footer-wrapper {
   position: fixed;
-  bottom: 0; /* 如果有 tabbar，可能需要 adjust bottom: var(--window-bottom); */
+  bottom: 0; 
   bottom: var(--window-bottom);
   left: 0;
   right: 0;
@@ -814,7 +843,7 @@ export default {
   }
 }
 
-/* Prescription Styles (Simple Refinement) */
+/* Prescription Styles */
 .prescription-config-card {
   background: #fff;
   border-radius: 20rpx;
