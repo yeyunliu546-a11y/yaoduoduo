@@ -1,7 +1,7 @@
 <template>
   <view class="container">
     <view class="tabs-box">
-      <u-tabs :list="statusList" :is-scroll="false" :current="currentStatus" @change="changeStatus" active-color="#2979ff"></u-tabs>
+      <u-tabs :list="statusList" :is-scroll="true" :current="currentStatus" @change="changeStatus" active-color="#2979ff"></u-tabs>
     </view>
 
     <view class="order-list">
@@ -12,7 +12,7 @@
              <text class="tag purchase" v-else>采购</text>
              <text class="no">单号：{{ item.orderNo }}</text>
           </view>
-          <text class="status">{{ item.orderStatusName }}</text>
+          <text class="status" :class="{'gray': item.orderStatus === -30}">{{ item.orderStatusName }}</text>
         </view>
         
         <view class="goods-box" v-for="(goods, idx) in item.goodsList" :key="idx">
@@ -33,6 +33,7 @@
         </view>
         
         <view class="action-box">
+          
           <block v-if="item.orderStatus === 10">
              <view class="btn plain" @click.stop="handleCancel(item)">取消订单</view>
              <view class="btn primary" @click.stop="handlePay(item)">立即支付</view>
@@ -45,6 +46,13 @@
           <block v-if="item.orderStatus === 30">
              <view class="btn primary" @click.stop="handleReceive(item)">确认收货</view>
           </block>
+          
+          <block v-if="item.orderStatus === -30 || item.orderStatus === 80">
+             <view class="btn plain icon-btn" @click.stop="handleDelete(item)">
+                 <u-icon name="trash" size="28" color="#666"></u-icon> 删除订单
+             </view>
+          </block>
+          
         </view>
       </view>
       
@@ -61,20 +69,30 @@ import {
     payOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
-    applyCancelOrder 
+    applyCancelOrder,
+    deleteOrder // 【新增】
 } from '@/api/order/order.js';
 
 export default {
   data() {
     return {
-      statusList: [{ name: '全部' }, { name: '待付款' }, { name: '待发货' }, { name: '待收货' }, { name: '已完成' }],
+      // 【新增】增加了"已取消" Tab
+      statusList: [
+          { name: '全部' }, 
+          { name: '待付款' }, 
+          { name: '待发货' }, 
+          { name: '待收货' }, 
+          { name: '已完成' },
+          { name: '已取消' } // 新增
+      ],
       currentStatus: 0,
       orderList: [], 
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      // 标准状态码映射
-      statusMapCode: [0, 10, 20, 30, 80] 
+      // 【关键】状态码映射，增加了 -30
+      // 0:全部, 10:待付款, 20:待发货, 30:待收货, 80:已完成, -30:已取消
+      statusMapCode: [0, 10, 20, 30, 80, -30] 
     };
   },
   onLoad(option) {
@@ -113,6 +131,7 @@ export default {
         limit: 10,
         orderType: 0 
       };
+      // 只有非"全部"状态时，才传 orderStatus
       if (this.currentStatus !== 0) {
           params.orderStatus = this.statusMapCode[this.currentStatus];
       }
@@ -125,10 +144,8 @@ export default {
           const rawList = res.result || res.data?.list || res.data || [];
           
           const list = rawList.map(order => {
-              // 兼容各类商品字段
               let rawGoods = order.OrderSkus || order.listSku || order.goodsList || order.ListGoods || order.list || [];
               
-              // 聚合接口兜底逻辑
               if (rawGoods.length === 0 && order.firstImage) {
                   rawGoods = [{
                       isVirtual: true,
@@ -143,7 +160,6 @@ export default {
               return {
                   id: order.id || order.Id,
                   orderNo: order.orderNo || order.OrderNo,
-                  // 智能识别类型: 2为处方, 1为采购 (CF开头为处方)
                   orderType: order.orderType || (String(order.orderNo || '').startsWith('CF') ? 2 : 1),
                   orderStatus: order.orderStatus || order.OrderStatus,
                   orderStatusName: this.getStatusName(order.orderStatus || order.OrderStatus),
@@ -195,14 +211,12 @@ export default {
         });
     },
     
-    // 【核心修复】确认收货分流
     handleReceive(item) {
         uni.showModal({
             title: '提示', content: '确认已收到货物吗？',
             success: (res) => {
                 if(res.confirm) {
                     let promise;
-                    // 判断订单类型 (CF开头或type=2为处方)
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
                     
                     if (isPrescription) {
@@ -224,7 +238,6 @@ export default {
         })
     },
     
-    // 【核心修复】取消未付款订单分流
     handleCancel(item) {
         uni.showModal({
             title: '提示',
@@ -235,10 +248,8 @@ export default {
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
 
                     if (isPrescription) {
-                        // 处方取消 (orderId 小写)
                         promise = cancelPrescriptionOrder({ orderId: item.id });
                     } else {
-                        // 采购取消 (OrderId 大写)
                         promise = cancelOrder({ OrderId: item.id, Reason: '用户主动取消' });
                     }
 
@@ -255,7 +266,6 @@ export default {
         })
     },
 
-    // 【新增】申请退款 (用于已付款订单)
     handleApplyRefund(item) {
         uni.showModal({
             title: '申请退款',
@@ -273,6 +283,34 @@ export default {
                             uni.showToast({ title: r.message || '申请失败', icon: 'none' });
                         }
                     });
+                }
+            }
+        })
+    },
+
+    // 【新增】删除订单
+    handleDelete(item) {
+        uni.showModal({
+            title: '提示',
+            content: '确定要删除该订单吗？删除后不可恢复。',
+            success: (res) => {
+                if(res.confirm) {
+                    uni.showLoading({ title: '删除中' });
+                    // API 需要传数组格式 ["id"]
+                    deleteOrder([item.id]).then(r => {
+                        uni.hideLoading();
+                        if(r.code === 200) {
+                            uni.showToast({ title: '删除成功' });
+                            // 如果当前就在"已取消"Tab，直接移除该项体验更好
+                            const idx = this.orderList.findIndex(o => o.id === item.id);
+                            if(idx > -1) this.orderList.splice(idx, 1);
+                            
+                            // 或者调用刷新
+                            // this.refreshList();
+                        } else {
+                            uni.showToast({ title: r.message || '删除失败', icon: 'none' });
+                        }
+                    }).catch(() => uni.hideLoading());
                 }
             }
         })
@@ -294,7 +332,9 @@ export default {
        .purchase { background: #fff7e6; color: #ff9900; border: 1px solid #ffe58f; }
        .no { font-weight: 500; color: #333; }
     }
-    .status { color: #2979ff; font-weight: bold; }
+    .status { color: #2979ff; font-weight: bold; 
+      &.gray { color: #999; } /* 已取消状态为灰色 */
+    }
   }
   .goods-box { display: flex; margin-bottom: 20rpx;
     .thumb { width: 140rpx; height: 140rpx; border-radius: 8rpx; background: #f9f9f9; margin-right: 20rpx;}
@@ -314,6 +354,9 @@ export default {
     .btn { width: 160rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; margin-left: 20rpx;
       &.plain { border: 1px solid #ccc; color: #666; }
       &.primary { background: #2979ff; color: #fff; border: 1px solid #2979ff; }
+      
+      // 删除按钮样式
+      &.icon-btn { display: flex; align-items: center; justify-content: center; width: auto; padding: 0 30rpx;}
     }
   }
 }
