@@ -21,7 +21,7 @@
           v-model="clinicInfo.clinicName" 
           placeholder="请输入诊所名称"
           class="input"
-          @input="onInputChange('clinicName', $event)"
+          @input="onInputChange"
         />
       </view>
 
@@ -31,7 +31,7 @@
           v-model="clinicInfo.contactName" 
           placeholder="请输入联系人姓名"
           class="input"
-          @input="onInputChange('contactName', $event)"
+          @input="onInputChange"
         />
       </view>
 
@@ -43,7 +43,7 @@
           maxlength="11"
           placeholder="请输入联系人电话"
           class="input"
-          @input="onInputChange('contactPhone', $event)"
+          @input="onInputChange"
         />
       </view>
 
@@ -55,14 +55,14 @@
           </text>
           <text v-else class="picker-placeholder">请选择所在地区</text>
         </view>
-		<picker 
+        <picker 
 		  v-if="showPicker" 
 		  mode="region" 
 		  :value="[clinicInfo.province, clinicInfo.city, clinicInfo.district]" 
 		  @change="onRegionChange"
 		  @cancel="onRegionCancel"
 		>
-		  <view>选择地区</view>
+		  <view style="display:none">hidden trigger</view>
 		</picker>
       </view>
 
@@ -72,7 +72,7 @@
           v-model="clinicInfo.detailAddress" 
           placeholder="请输入详细地址"
           class="input"
-          @input="onInputChange('detailAddress', $event)"
+          @input="onInputChange"
         />
       </view>
 
@@ -99,7 +99,7 @@
 			</view>
 
 			<text 
-			  v-if="cert.type === 'powerOfAttorney' || cert.type === 'qualityAgreement'" 
+			  v-if="cert.templateDownload" 
 			  class="template-link" 
 			  @tap="downloadTemplate(cert.type)"
 			>
@@ -110,7 +110,13 @@
 		  <view class="cert-image-group">
 		    <view class="image-pair">
 			  <view class="example-wrapper">
-			    <image v-if="cert.exampleImage" :src="cert.exampleImage" class="example-image" mode="aspectFill" @click="previewExample(cert.exampleImage)" />
+			    <image 
+                  v-if="cert.exampleImage" 
+                  :src="cert.exampleImage" 
+                  class="example-image" 
+                  mode="aspectFill" 
+                  @click="previewExample(cert.exampleImage)" 
+                />
 			    <view v-else class="placeholder-text">无示例</view>
 			  </view>
 
@@ -155,7 +161,7 @@
 </template>
 
 <script>
-// 定义新的基础域名
+// 使用新的基础域名
 const BASE_URL = 'https://www.yaoduoduo.top';
 
 export default {
@@ -171,6 +177,7 @@ export default {
         district: '东城区',
         detailAddress: ''
       },
+      // 定义所需资质列表
       requiredCerts: [
         {
           label: '营业执照',
@@ -188,6 +195,24 @@ export default {
           desc: '（复印件盖公章）',
           templateDownload: false
         },
+        // 新增：法人身份证正面
+        {
+          label: '法人身份证正面',
+          type: 'legalPersonIdFront',
+          fileType: 7,
+          exampleImage: '/static/images/legal_id_front_example.png',
+          desc: '（复印件盖红章）',
+          templateDownload: false
+        },
+        // 新增：法人身份证反面
+        {
+          label: '法人身份证反面',
+          type: 'legalPersonIdBack',
+          fileType: 8,
+          exampleImage: '/static/images/legal_id_back_example.png',
+          desc: '（复印件盖红章）',
+          templateDownload: false
+        },
         {
           label: '委托人身份证正面',
           type: 'idCardFront',
@@ -201,22 +226,6 @@ export default {
           type: 'idCardBack',
           fileType: 4,
           exampleImage: '/static/images/id_card_back_example.png',
-          desc: '（复印件盖红章）',
-          templateDownload: false
-        },
-        {
-          label: '法人身份证正面',
-          type: 'legalPersonIdFront',
-          fileType: 7,
-          exampleImage: '/static/images/legal_id_front_example.png',
-          desc: '（复印件盖红章）',
-          templateDownload: false
-        },
-        {
-          label: '法人身份证反面',
-          type: 'legalPersonIdBack',
-          fileType: 8,
-          exampleImage: '/static/images/legal_id_back_example.png',
           desc: '（复印件盖红章）',
           templateDownload: false
         },
@@ -237,16 +246,18 @@ export default {
           templateDownload: true
         }
       ],
+      // 用于本地预览的 Map
       certList: {
         businessLicense: '',
         medicalLicense: '',
-        powerOfAttorney: '',
+        legalPersonIdFront: '', // 新增
+        legalPersonIdBack: '',  // 新增
         idCardFront: '',
         idCardBack: '',
-        legalPersonIdFront: '',
-        legalPersonIdBack: '',
+        powerOfAttorney: '',
         qualityAgreement: ''
       },
+      // 存储上传成功后的文件信息 { type, fileType, fileUrl, fileId }
       fileInfo: [],
       isInfoValid: false,
       isCertValid: false,
@@ -255,122 +266,108 @@ export default {
     }
   },
 
-  onLoad() {
-    // 👇 1. 无条件读取 token（关键！）
-    const token = uni.getStorageSync('token') || ''
+  onLoad(options) {
+    // 1. 获取Token
+    const token = uni.getStorageSync('token');
     if (!token) {
-      uni.showToast({ title: '请先登录', icon: 'none' })
-      setTimeout(() => {
-        uni.redirectTo({ url: '/pages/login/index' })
-      }, 1500)
-      return
+      uni.showToast({ title: '请先登录', icon: 'none' });
+      setTimeout(() => uni.redirectTo({ url: '/pages/login/index' }), 1500);
+      return;
     }
-    this.token = token 
+    this.token = token;
   
-    // 👇 2. 再读取其他缓存（可选）
-    const cachedInfo = uni.getStorageSync('clinicInfo') || {}
-    const cachedCert = uni.getStorageSync('certList') || {}
-    const cachedFileInfo = uni.getStorageSync('fileInfo') || []
+    // 2. 如果是从登录页跳转过来，并且状态是-1(拒绝)，提示用户
+    if (options.status === '-1') {
+        const userInfo = uni.getStorageSync('user_info') || {};
+        if (userInfo.AuditRemark || userInfo.auditRemark) {
+            uni.showModal({
+                title: '审核拒绝原因',
+                content: userInfo.AuditRemark || userInfo.auditRemark,
+                showCancel: false
+            });
+        }
+    }
+
+    // 3. 读取本地缓存草稿
+    const cachedInfo = uni.getStorageSync('clinicInfo') || {};
+    const cachedCert = uni.getStorageSync('certList') || {};
+    const cachedFileInfo = uni.getStorageSync('fileInfo') || [];
   
     if (Object.keys(cachedInfo).length > 0) {
-      this.clinicInfo = cachedInfo
-      this.certList = cachedCert
-      this.fileInfo = cachedFileInfo
+      this.clinicInfo = cachedInfo;
+      // 简单的合并策略，保留已有的图片
+      this.certList = { ...this.certList, ...cachedCert };
+      this.fileInfo = cachedFileInfo;
     }
   
-    this.checkInfoValid()
-    this.checkCertValid()
+    this.checkInfoValid();
+    this.checkCertValid();
   },
 
   methods: {
-    onInputChange(field, event) {
-      this.clinicInfo[field] = event.detail.value
-      this.checkInfoValid()
+    // 监听输入
+    onInputChange() {
+      // 延迟校验
+      this.$nextTick(() => {
+          this.checkInfoValid();
+      });
     },
 
     checkInfoValid() {
-      const { clinicName, contactName, contactPhone, province, city, district, detailAddress } = this.clinicInfo
+      const { clinicName, contactName, contactPhone, province, city, district, detailAddress } = this.clinicInfo;
+      // 简单非空校验 + 手机号长度
       const isValid = !!(
         clinicName && contactName && contactPhone &&
         province && city && district && detailAddress &&
         contactPhone.length === 11
-      )
-      this.isInfoValid = isValid
+      );
+      this.isInfoValid = isValid;
     },
 
     checkCertValid() {
-      const requiredTypes = this.requiredCerts.map(item => item.type)
+      const requiredTypes = this.requiredCerts.map(item => item.type);
+      // 检查 fileInfo 中是否包含了所有 requiredCerts 的 type
       const hasAllRequired = requiredTypes.every(type =>
         this.fileInfo.some(item => item.type === type)
-      )
-      this.isCertValid = hasAllRequired
+      );
+      this.isCertValid = hasAllRequired;
     },
 
     prevPage() {
-      this.currentPage = 1
+      this.currentPage = 1;
     },
 
     nextPage() {
-      uni.setStorageSync('clinicInfo', this.clinicInfo)
-      this.currentPage = 2
+      // 缓存第一步数据
+      uni.setStorageSync('clinicInfo', this.clinicInfo);
+      this.currentPage = 2;
     },
 
     showRegionPicker() {
-      this.showPicker = true  //显示选择器
+      this.showPicker = true;
     },
 
     onRegionChange(e) {
-      const [province, city, district] = e.detail.value
-      this.clinicInfo.province = province
-      this.clinicInfo.city = city
-      this.clinicInfo.district = district
-      this.checkInfoValid();  //更新验证状态
-	  this.showPicker = false   //关闭选择器
+      const [province, city, district] = e.detail.value;
+      this.clinicInfo.province = province;
+      this.clinicInfo.city = city;
+      this.clinicInfo.district = district;
+      this.checkInfoValid();
+      this.showPicker = false;
     },
 
     onRegionCancel() {
-      this.showPicker = false   //取消时关闭
+      this.showPicker = false;
     },
 	
-	async previewExample(imageUrl) {
-	    if (!imageUrl) return;
-	
-	    // 判断是否为本地静态资源
-	    if (imageUrl.startsWith('/static/')) {
-	      try {
-	        const info = await new Promise((resolve, reject) => {
-	          uni.getImageInfo({
-	            src: imageUrl,
-	            success: resolve,
-	            fail: reject
-	          });
-	        });
-	
-	        console.log('getImageInfo 成功', info); // 确认获取到了正确的图片信息
-	
-	        // 使用获取到的本地路径进行预览
-	        uni.previewImage({
-	          urls: [info.path], // 确保这里的路径是有效的本地路径
-	          current: info.path ,// 当前显示的图片路径
-			  success: () => {
-			      console.log('previewImage 成功');
-			    },
-			    fail: (err) => {
-			      console.error('previewImage 失败', err);
-			    }
-	        });
-	      } catch (err) {
-	        console.error('获取图片信息失败', err);
-	        uni.showToast({ title: '图片加载失败', icon: 'none' });
-	      }
-	    } else {
-	      // 如果是网络图或临时文件路径，直接预览
-	      uni.previewImage({
-	        urls: [imageUrl],
-	        current: imageUrl
-	      });
-	    }
-	  },
+	// 预览示例图或本地图
+	previewExample(imageUrl) {
+        if (!imageUrl) return;
+        uni.previewImage({
+            urls: [imageUrl],
+            current: imageUrl
+        });
+	},
 	
 	chooseImage(type, fileType) {
 	  const { token } = this;
@@ -385,12 +382,9 @@ export default {
 			sourceType: sourceType,
 			success: (res) => {
 			  const tempFilePath = res.tempFilePaths[0];
-			  // 先本地预览（提升体验）
-			  this.certList[type] = tempFilePath;
-
+			  
 			  uni.showLoading({ title: '上传中...' });
 
-              // 【修改】使用新的域名 BASE_URL
 			  uni.uploadFile({
 				url: `${BASE_URL}/api/Files/Upload`, 
 				filePath: tempFilePath,
@@ -400,64 +394,46 @@ export default {
 				},
 				success: (uploadRes) => {
 				  uni.hideLoading();
-				  console.log('上传响应原始数据:', uploadRes.data);
-
 				  try {
 					const data = JSON.parse(uploadRes.data);
 
 					if (data.code === 200 && Array.isArray(data.result) && data.result.length > 0) {
-					  const uploadedFile = data.result[0]; // 获取第一个文件对象
+					  const uploadedFile = data.result[0];
 
+                      // 更新 fileInfo 数组
 					  const fileInfo = this.fileInfo.filter(item => item.type !== type);
 					  fileInfo.push({
 						type,
 						fileType,
-						fileTypeName: this.getFileTypeName(fileType),  //展示文件类型名称
-						fileUrl: uploadedFile.filePath,   //使用 filePath
-						fileId: uploadedFile.id || ''          //使用 id
+						fileTypeName: this.getFileTypeName(fileType),
+						fileUrl: uploadedFile.filePath, // 服务端返回的URL
+						fileId: uploadedFile.id
 					  });
 
 					  this.fileInfo = fileInfo;
-					  this.certList[type] = uploadedFile.filePath; // 更新为真实 URL
+					  this.certList[type] = uploadedFile.filePath; // 更新预览图
 
-					  // 持久化存储
+					  // 持久化
 					  uni.setStorageSync('certList', this.certList);
 					  uni.setStorageSync('fileInfo', fileInfo);
 					  this.checkCertValid();
 
 					  uni.showToast({ title: '上传成功', icon: 'success' });
 					} else {
-					  // 业务失败
-					  uni.showToast({ 
-						title: '上传失败：' + (data.message || '未返回有效文件'), 
-						icon: 'none' 
-					  });
-					  this.certList[type] = ''; // 回滚预览图
+					  uni.showToast({ title: '上传失败：' + (data.message || '未知错误'), icon: 'none' });
 					}
 				  } catch (err) {
 					console.error('JSON 解析失败:', err);
-					uni.showToast({ title: '上传失败，服务器返回异常', icon: 'none' });
-					this.certList[type] = '';
+					uni.showToast({ title: '服务器返回异常', icon: 'none' });
 				  }
 				},
 				fail: (err) => {
 				  uni.hideLoading();
-				  console.error('uni.uploadFile 失败:', err);
-				  uni.showToast({ title: '上传失败，请检查网络', icon: 'none' });
-				  this.certList[type] = ''; // 清除预览
+				  uni.showToast({ title: '网络错误', icon: 'none' });
 				}
 			  });
-			},
-			fail: (err) => {
-			  // 用户取消选择图片
-			  if (!err.errMsg.includes('cancel')) {
-				uni.showToast({ title: '选择图片失败', icon: 'none' });
-			  }
 			}
 		  });
-		},
-		fail: () => {
-		  // 用户取消 ActionSheet
 		}
 	  });
 	},
@@ -470,10 +446,10 @@ export default {
         4: '委托人身份证反面',
 		5: '采购委托书',
 		6: '药品质量保证协议照片',
-        7: '法人身份证正面',
-        8: '法人身份证反面',
+        7: '法人身份证正面', // 新增
+        8: '法人身份证反面', // 新增
       }
-      return typeMap[fileType] || ''
+      return typeMap[fileType] || '未知类型'
     },
 
     hasUploaded(type) {
@@ -492,109 +468,74 @@ export default {
     },
 
     deleteImage(type) {
-      const certList = { ...this.certList }
-      certList[type] = ''
-      const fileInfo = this.fileInfo.filter(item => item.type !== type)
+      // 只是清空当前页面的引用和fileInfo，不调用服务端删除（视业务需求而定）
+      this.certList[type] = '';
+      this.fileInfo = this.fileInfo.filter(item => item.type !== type);
       
-      this.certList = certList
-      this.fileInfo = fileInfo
-      this.checkCertValid()
+      uni.setStorageSync('certList', this.certList);
+      uni.setStorageSync('fileInfo', this.fileInfo);
+      
+      this.checkCertValid();
     },
 
-    // 下载模板文件
+    // 下载模板
     downloadTemplate(type) {
       let apiUrl = ''
       let fileName = ''
       
       if (type === 'powerOfAttorney') {
-        // 【修改】使用新的域名 BASE_URL
         apiUrl = `${BASE_URL}/api/Resource/DownloadPurchaseEntrust`
         fileName = '采购委托书模板.pdf'
       } else if (type === 'qualityAgreement') {
         apiUrl = `${BASE_URL}/api/Resource/DownloadDrugQualityAgreement`
         fileName = '药品质量保证协议模板.pdf'
       } else {
-		uni.showToast({ title: '不支持的模板类型', icon: 'none' });
 		return;
 	  }
       
-      console.log('[下载] 开始下载模板:', { type, fileName, url: apiUrl });
+      uni.showLoading({ title: '下载中...' });
 	  
-      uni.showLoading({ title: '下载中...' })
-      
-	  console.log('下载模板 URL:', apiUrl);
 	  uni.downloadFile({
 		url: apiUrl,
-		filePath: uni.env.USER_DATA_PATH + '/' + fileName, // 可选：指定保存路径（仅部分平台支持）
 		success: (res) => {
 		  uni.hideLoading();
-		  console.log('[下载] downloadFile 成功响应:', res);
 		  if (res.statusCode === 200) {
-			// 成功下载，尝试直接打开 PDF
 			uni.openDocument({
-			  filePath: res.tempFilePath || res.filePath,
+			  filePath: res.tempFilePath,
 			  fileType: 'pdf',
 			  success: () => {
-				uni.showToast({ title: '模板已打开', icon: 'success' });
+				uni.showToast({ title: '已打开', icon: 'success' });
 			  },
-			  fail: (err) => {
-				console.error('打开文档失败:', err);
-				// 如果打不开，尝试保存
-				this._saveAndNotify(res.tempFilePath || res.filePath, fileName);
+			  fail: () => {
+                uni.showToast({ title: '打开失败，请重试', icon: 'none' });
 			  }
 			});
 		  } else {
-			uni.showToast({ title: '下载失败：' + res.statusCode, icon: 'none' });
+			uni.showToast({ title: '下载失败', icon: 'none' });
 		  }
 		},
-		fail: (err) => {
+		fail: () => {
 		  uni.hideLoading();
-		  console.error('downloadFile 失败:', err);
-		  uni.showToast({ title: '网络错误，请重试', icon: 'none' });
+		  uni.showToast({ title: '网络错误', icon: 'none' });
 		}
 	  });
     },
-	
-    viewTemplate(type) {
-      this.downloadTemplate(type);
-    },
-    
-    _saveAndNotify(tempFilePath, fileName) {
-      uni.saveFile({
-        tempFilePath,
-        success: (saveRes) => {
-          uni.showToast({
-            title: `已保存到本地：${fileName}`,
-            icon: 'success',
-            duration: 3000
-          });
-          console.log('文件已保存:', saveRes.savedFilePath);
-        },
-        fail: (err) => {
-          console.error('保存失败:', err);
-          uni.showToast({
-            title: '保存失败，请重试',
-            icon: 'none'
-          });
-        }
-      });
-    },
 
-    async submitCert() {
-	  console.log('=== 点击提交时的 token ===');
-	  console.log('storage token:', uni.getStorageSync('token'));
-      
-      const isValid = await this.checkLoginStatus();
-      if (!isValid) {
-        uni.showToast({ title: '请先登录', icon: 'none' });
-        setTimeout(() => {
-          uni.redirectTo({ url: '/pages/login/index' });
-        }, 1500);
-        return;
-      }
-    
+    // 提交所有资质
+    submitCert() {
       const { clinicInfo, fileInfo } = this;
+      
       const token = uni.getStorageSync('token');
+      // 获取 storeId (参考 request.js 的逻辑)
+      const storeId = uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945';
+      
+      console.log('Debug Token:', token); 
+
+      if (!token) {
+          uni.showToast({ title: '登录状态已失效，请重新登录', icon: 'none' });
+          setTimeout(() => uni.redirectTo({ url: '/pages/login/index' }), 1500);
+          return;
+      }
     
       const submitData = {
         clinicName: clinicInfo.clinicName,
@@ -614,82 +555,55 @@ export default {
     
       uni.showLoading({ title: '提交中...' });
     
-      // 【修改】使用新的域名 BASE_URL
       uni.request({
         url: `${BASE_URL}/api/Clinic/SubmitCertificate`,
         method: 'POST',
         header: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'content-type': 'application/json',
+          'Authorization': `Bearer ${token}`, // 文档要求的鉴权
+          'AppKey': 'MP-WEIXIN',            // 后端强制要求
+          'platform': 'MP-WEIXIN',          // 补全：request.js 中有的
+          'storeId': storeId,               // 补全：request.js 中有的
+          // 为了保险，加上 request.js 里的 X-Token，防止后端中间件混用
+          'X-Token': token 
         },
         data: submitData,
         success: (res) => {
           uni.hideLoading();
-          console.log('[提交] 响应:', res.data);
-    
-          if (res.data?.code === 200) {
-            uni.setStorageSync('auditStatus', 'pending');
-            // 如果后端返回了新的 ID
-            if(res.data.result && res.data.result.clinicId) {
-                uni.setStorageSync('clinicId', res.data.result.clinicId);
-            }
-            uni.showToast({ title: '提交成功，等待审核' });
+          const code = res.data.code !== undefined ? res.data.code : res.data.Code;
+          
+          if (code === 200) {
+            let userInfo = uni.getStorageSync('user_info') || {};
+            userInfo.ClinicAuditStatus = 0; 
+            userInfo.HasClinicProfile = true;
+            uni.setStorageSync('user_info', userInfo);
+            
+            uni.showToast({ title: '提交成功' });
             setTimeout(() => {
-              uni.navigateTo({ url: '/pages/auth/certStatus' });
+              uni.redirectTo({ url: '/pages/auth/certStatus' });
             }, 1500);
           } else {
-            const msg = res.data?.message || '提交失败';
-            uni.showToast({ title: msg, icon: 'none' });
-			console.error('【提交失败详情】', res.data);
-    
-            if (res.data?.code === 401 || msg.includes('token') || msg.includes('认证')) {
-              uni.removeStorageSync('token');
-              setTimeout(() => uni.redirectTo({ url: '/pages/login/index' }), 2000);
+            console.error('提交失败:', res.data);
+            uni.showToast({ title: res.data.message || '提交失败', icon: 'none' });
+            
+            if (code === 50014) {
+                setTimeout(() => uni.redirectTo({ url: '/pages/login/index' }), 1500);
             }
           }
         },
         fail: (err) => {
           uni.hideLoading();
-          console.error('[提交] 网络失败:', err);
-          uni.showToast({ title: '网络错误，请重试', icon: 'none' });
+          console.error('请求失败:', err);
+          uni.showToast({ title: '网络错误', icon: 'none' });
         }
       });
-    },
-
-	checkLoginStatus() {
-	  return new Promise((resolve) => {
-	    const token = uni.getStorageSync('token');
-	    if (!token) {
-	      resolve(false);
-	      return;
-	    }
-	
-        // 【修改】使用新的域名 BASE_URL
-	    uni.request({
-	      url: `${BASE_URL}/api/Clinic/CheckStatus`,
-	      method: 'GET',
-	      header: {
-	        'Authorization': `Bearer ${token}`
-	      },
-	      success: (res) => {
-	        if (res.statusCode === 200 && res.data?.code === 200) {
-	          resolve(true);
-	        } else {
-	          resolve(false);
-	        }
-	      },
-	      fail: () => {
-	        resolve(false);
-	      }
-	    });
-	  });
-	}
-  },
+    }
+  }
 }
 </script>
 
 <style>
-/* 样式保持不变 */
+/* 保持原有样式 */
 .container { padding: 20rpx; background-color: #f5f5f5; min-height: 100vh; }
 .custom-nav { text-align: center; padding: 20rpx 0; background-color: white; margin-bottom: 20rpx; }
 .title { font-size: 36rpx; font-weight: bold; }

@@ -1,12 +1,3 @@
-// 集中管理用户身份认证数据（token、userId）
-// 封装登录/登出逻辑：调用后端 API → 成功后更新 store + 缓存（localStorage）
-// 解耦组件与认证逻辑：页面只需调用 this.$store.dispatch('LoginByPhoneCode', ...)，无需关心细节
-// 关键点：
-// 登录成功后通过 loginSuccess() 函数 同时更新 Vuex 状态 + 持久化存储（storage.set）
-// 退出时 清除缓存 + 重置 Vuex 状态
-
-
-
 import {
 	AccessToken,
 	UserId
@@ -14,112 +5,108 @@ import {
 import storage from '@/utils/storage.js'
 import * as apiLogin from '@/api/login/login.js'
 
-// 登陆成功后执行
-const loginSuccess = (commit, userInfo) => {
-
-	var userId = userInfo.userId;
-	var token = userInfo.token;
-	// 过期时间30天
-	const expiryTime = 30 * 86400
-	// 保存tokne和userId到缓存
-	storage.set(UserId, userId, expiryTime)
-	storage.set(AccessToken, token, expiryTime)
-	// 记录到store全局变量
-	commit('SetToken', token)
-	commit('SetUserId', userId)
-}
+const USER_INFO_KEY = 'user_info'
 
 const user = {
-	// state: 存储用户核心信息
 	state: {
-		// 用户认证token
 		token: '',
-		// 用户ID
-		userId: null
+		userId: null,
+		userInfo: {}
 	},
-	
-	// mutations: 同步修改用户状态
+
 	mutations: {
-		SetToken: (state, value) => {
+		SET_TOKEN: (state, value) => {
 			state.token = value
 		},
-		SetUserId: (state, value) => {
+		SET_USER_ID: (state, value) => {
 			state.userId = value
+		},
+		SET_USER_INFO: (state, value) => {
+			state.userInfo = value
 		}
 	},
 
-	// actions: 异步操作（如登录、退出）
 	actions: {
+		// 统一处理登录成功逻辑
+		LoginSuccess({ commit }, loginResult) {
+			const token = loginResult.Token || loginResult.token
+			const userId = loginResult.UserId || loginResult.userId
+			
+			const expiryTime = 30 * 86400
 
-		// 用户登录(普通登录: 输入手机号和验证码)
-		LoginByPhoneCode({
-			commit
-		}, data) {
+			// 1. 存 Token (使用 storage 工具)
+			storage.set(AccessToken, token, expiryTime)
+			
+			// 【关键修复】强制存一个 'token' 键，确保 certUpload.vue 能用 uni.getStorageSync('token') 读到
+			uni.setStorageSync('token', token) 
+
+			commit('SET_TOKEN', token)
+
+			// 2. 存 UserID
+			storage.set(UserId, userId, expiryTime)
+			commit('SET_USER_ID', userId)
+
+			// 3. 存 UserInfo
+			storage.set(USER_INFO_KEY, loginResult, expiryTime)
+			commit('SET_USER_INFO', loginResult)
+		},
+
+		// 手机验证码登录
+		LoginByPhone({ dispatch }, data) {
 			return new Promise((resolve, reject) => {
-				apiLogin.loginByPhoneCode(data)
-					.then(res => {
-						const result = res.result
-						loginSuccess(commit, result)
+				apiLogin.loginByPhone(data).then(res => {
+					if (res.code === 200 || res.Code === 200) {
+						dispatch('LoginSuccess', res.Result || res.result)
 						resolve(res)
-					})
-					.catch(reject)
+					} else {
+						reject(res)
+					}
+				}).catch(reject)
 			})
 		},
 
-		// 微信小程序一键授权登录(获取用户基本信息)
-		loginWx({
-			commit
-		}, data) {
+		// 账号密码登录
+		LoginByPassword({ dispatch }, data) {
 			return new Promise((resolve, reject) => {
-				apiLogin.loginWx(data, {
-						isPrompt: false
-					})
-					.then(res => {
-						var result = res.result
-						loginSuccess(commit, result)
-						resolve(result)
-					})
-					.catch(reject)
+				apiLogin.loginByPassword(data).then(res => {
+					if (res.code === 200 || res.Code === 200) {
+						dispatch('LoginSuccess', res.Result || res.result)
+						resolve(res)
+					} else {
+						reject(res)
+					}
+				}).catch(reject)
 			})
 		},
 
-		// 微信小程序一键授权登录(授权手机号)
-		bindWxPhone({
-			commit
-		}, data) {
+		// 微信一键登录
+		LoginByWechat({ dispatch }, data) {
 			return new Promise((resolve, reject) => {
-				apiLogin.bindWxPhone(data, {
-						isPrompt: false
-					})
-					.then(res => {
-						const result = res.result
-						// loginSuccess(commit, result)
+				apiLogin.loginByWechat(data).then(res => {
+					if (res.code === 200 || res.Code === 200) {
+						dispatch('LoginSuccess', res.Result || res.result)
 						resolve(res)
-					})
-					.catch(reject)
+					} else {
+						reject(res)
+					}
+				}).catch(reject)
 			})
 		},
 
 		// 退出登录
-		Logout({
-			commit
-		}, data) {
-			const store = this
-			return new Promise((resolve, reject) => {
-				// apiLogin.logout().then(res=>{
-
+		Logout({ commit }) {
+			return new Promise((resolve) => {
 				storage.remove(UserId)
 				storage.remove(AccessToken)
-				// 记录到store全局变量
-				commit('SetToken', null)
-				commit('SetUserId', null)
+				storage.remove(USER_INFO_KEY)
+				uni.removeStorageSync('token') // 清除强制存的 token
+				
+				commit('SET_TOKEN', '')
+				commit('SET_USER_ID', null)
+				commit('SET_USER_INFO', {})
 				resolve()
-
-
-				// })
 			})
 		}
-
 	}
 }
 
