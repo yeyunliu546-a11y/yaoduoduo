@@ -26,11 +26,7 @@
       </view>
 
       <view class="goods-item" v-for="(item, index) in goodsList" :key="index">
-        <image 
-          :src="item.imageUrl" 
-          mode="aspectFill" 
-          class="thumb"
-        ></image>
+        <image :src="item.imageUrl" mode="aspectFill" class="thumb"></image>
         <view class="content">
           <view class="title u-line-2">{{ item.goodsName }}</view>
           <view class="spec">
@@ -113,17 +109,24 @@ export default {
     this.options = options;
     this.isDispensing = options.type === 'dispensing';
     
+    // 【核心修复】健壮的参数解析，防止 Proxy 问题
     try {
         if (options.cartIds) {
-            const decoded = decodeURIComponent(options.cartIds);
-            if (decoded.startsWith('[') && decoded.endsWith(']')) {
-                this.parsedCartIds = JSON.parse(decoded);
+            let raw = decodeURIComponent(options.cartIds);
+            // 尝试 JSON 解析，如果是数组直接用，否则按逗号分割
+            if (raw.startsWith('[') && raw.endsWith(']')) {
+                this.parsedCartIds = JSON.parse(raw);
             } else {
-                this.parsedCartIds = decoded.split(',');
+                this.parsedCartIds = raw.split(',');
             }
         }
     } catch (e) {
-        this.parsedCartIds = options.cartIds ? options.cartIds.split(',') : [];
+        console.error('解析 cartIds 失败:', e);
+        this.parsedCartIds = [];
+    }
+    // 确保是数组
+    if (!Array.isArray(this.parsedCartIds)) {
+        this.parsedCartIds = [];
     }
 
     if (this.isDispensing) {
@@ -144,12 +147,22 @@ export default {
   },
   
   methods: {
+    // 获取购物车ID的纯字符串 (去除 Proxy)
+    getIdsString() {
+        // 使用 JSON 序列化解包 Proxy
+        const rawList = JSON.parse(JSON.stringify(this.parsedCartIds));
+        return rawList.join(',');
+    },
+
     loadSettlement() {
       uni.showLoading({ title: '准备中...' });
 
+      const idsStr = this.getIdsString(); // 获取纯字符串
+
+      // === 处方结算 ===
       if (this.isDispensing) {
           const params = {
-              cartIds: this.parsedCartIds.join(','), 
+              cartIds: idsStr, 
               dosageDays: Number(this.prescription.days), 
               dailyPackages: Number(this.prescription.packs),
               addressId: this.address.id || ''
@@ -162,13 +175,12 @@ export default {
               } else {
                   uni.showToast({ title: res.message || '结算失败', icon: 'none' });
               }
-          }).catch(err => {
-              uni.hideLoading();
-          });
+          }).catch(() => uni.hideLoading());
           return;
       }
 
-      const idsStr = this.parsedCartIds.join(',');
+      // === 采购结算 ===
+      // 【关键修复】确保传的是 StrCartIds 且是字符串
       const params = { StrCartIds: idsStr };
 
       getOrderSettlement(params).then(res => {
@@ -178,9 +190,7 @@ export default {
         } else {
             uni.showToast({ title: res.message || '结算失败', icon: 'none' });
         }
-      }).catch(err => {
-          uni.hideLoading();
-      });
+      }).catch(() => uni.hideLoading());
     },
 
     handlePrescriptionData(data) {
@@ -199,8 +209,8 @@ export default {
         const priceInfo = data.priceInfo || {};
         this.settlement = {
             totalAmount: priceInfo.totalGoodsPrice || data.totalAmount || 0,
-            payAmount: priceInfo.payPrice || data.payAmount || 0,
-            freightAmount: priceInfo.freightPrice || data.freightAmount || 0,
+            payAmount: priceInfo.payPrice || data.payPrice || 0,
+            freightAmount: priceInfo.freightPrice || data.freightPrice || 0,
             couponAmount: 0
         };
 
@@ -241,34 +251,45 @@ export default {
       if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
 
       this.submitting = true;
-      
+      const idsStr = this.getIdsString(); // 获取纯字符串
+
       let promise;
       
       if (this.isDispensing) {
+          // === 处方下单 ===
           const payload = {
-              cartIds: this.parsedCartIds.join(','),
+              cartIds: idsStr,
               addressId: this.address.id,
               dosageDays: Number(this.prescription.days),
               dailyPackages: Number(this.prescription.packs),
               medicalAdvice: this.doctorAdvice,
               buyerRemark: this.buyerRemark,
-              payType: 20
+              // payType: 20 // 移除自动支付
           };
           promise = createPrescriptionOrder(payload);
       } else {
+          // === 采购下单 ===
           const payload = {
               addressId: this.address.id,
-              payType: 20, 
               buyerRemark: this.buyerRemark, 
-              cartIds: this.parsedCartIds, 
-              orderType: 1
+              cartIds: idsStr, 
+              StrCartIds: idsStr, // 双保险
+              orderType: 1,
+              // payType: 20 // 移除自动支付
           };
           promise = createOrder(payload);
       }
 
       promise.then(res => {
         this.submitting = false;
+        
         if (res.code === 200) {
+          const result = res.result || res.data || {};
+          // 检查业务标识
+          if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
+              return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+          }
+
           uni.showToast({ title: '下单成功', icon: 'success' });
           setTimeout(() => {
              uni.redirectTo({ url: '/pages/order/order?status=10' }); 

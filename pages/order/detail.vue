@@ -3,7 +3,8 @@
     <block v-if="orderInfo.id">
       <view class="status-header">
         <view class="status-text">{{ orderInfo.orderStatusName }}</view>
-        <view class="status-desc" v-if="orderInfo.orderStatus===10">请在30分钟内完成支付</view>
+        <view class="status-desc" v-if="orderInfo.orderStatus===10">请尽快完成支付</view>
+        <view class="status-desc" v-if="orderInfo.expressNo">快递单号: {{ orderInfo.expressNo }}</view>
       </view>
 
       <view class="address-card">
@@ -16,7 +17,7 @@
 
       <view class="goods-card">
         <view class="prescription-info" v-if="isPrescription">
-            <text class="tag">处方</text>
+            <text class="tag">处方调剂</text>
             <text>{{ orderInfo.dosageDesc }}</text>
         </view>
         
@@ -42,19 +43,28 @@
           <text class="label">下单时间</text>
           <text class="value">{{ orderInfo.createTime }}</text>
         </view>
-        <view class="cell">
-          <text class="label">支付方式</text>
-          <text class="value">在线支付</text>
+        <view class="cell" v-if="orderInfo.payTime">
+          <text class="label">支付时间</text>
+          <text class="value">{{ orderInfo.payTime }}</text>
         </view>
         <view class="cell" v-if="isPrescription && orderInfo.medicalAdvice">
-          <text class="label">医嘱</text>
+          <text class="label">医嘱备注</text>
           <text class="value">{{ orderInfo.medicalAdvice }}</text>
+        </view>
+        <view class="cell" v-if="orderInfo.buyerRemark">
+          <text class="label">买家留言</text>
+          <text class="value">{{ orderInfo.buyerRemark }}</text>
         </view>
       </view>
 
-      <view class="footer-bar" v-if="orderInfo.orderStatus === 10">
-        <view class="btn plain">取消订单</view>
-        <view class="btn primary" @click="handlePay">立即支付</view>
+      <view class="footer-bar">
+        <view class="btn plain" v-if="orderInfo.orderStatus === 10" @click="handleCancel">取消订单</view>
+        
+        <view class="btn plain" v-if="orderInfo.orderStatus === 20" @click="handleApplyRefund">申请退款</view>
+        
+        <view class="btn primary" v-if="orderInfo.orderStatus === 10" @click="handlePay">立即支付</view>
+        
+        <view class="btn primary" v-if="orderInfo.orderStatus === 30" @click="handleReceive">确认收货</view>
       </view>
     </block>
     
@@ -63,13 +73,20 @@
 </template>
 
 <script>
-import { getOrderDetail, getPrescriptionDetail, payOrder } from '@/api/order/order.js';
+// 【关键】引入所有需要的 API
+import { 
+    getOrderDetail, getPrescriptionDetail, 
+    payOrder, 
+    confirmReceive, confirmPrescriptionReceive,
+    cancelOrder, cancelPrescriptionOrder,
+    applyCancelOrder
+} from '@/api/order/order.js';
 
 export default {
   data() {
     return {
       orderId: '',
-      orderType: 1, // 1采购 2处方
+      orderType: 1, 
       loading: true,
       orderInfo: {}
     };
@@ -80,8 +97,7 @@ export default {
   onLoad(options) {
     if (options.id) {
       this.orderId = options.id;
-      // 接收列表传来的类型，默认普通订单
-      this.orderType = options.type || 1; 
+      this.orderType = options.type || 1;
       this.loadDetail();
     } else {
       uni.showToast({ title: '订单参数错误', icon: 'none' });
@@ -91,100 +107,171 @@ export default {
   methods: {
     loadDetail() {
       this.loading = true;
-      
-      // 分流调用 API
       const api = this.isPrescription ? getPrescriptionDetail(this.orderId) : getOrderDetail(this.orderId);
       
       api.then(res => {
         this.loading = false;
         if (res.code === 200) {
           const data = res.result || res.data;
-          
-          if(this.isPrescription) {
-              this.handlePrescriptionData(data);
-          } else {
-              this.handleProcurementData(data);
-          }
+          this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
             uni.showToast({ title: res.message || '获取详情失败', icon: 'none' });
         }
-      }).catch(err => {
-        this.loading = false;
-        console.error(err);
-      });
+      }).catch(() => this.loading = false);
     },
     
-    // 处理处方详情数据
     handlePrescriptionData(data) {
         const rawGoods = data.listSku || [];
         this.orderInfo = {
             id: data.id,
             orderNo: data.orderNo,
             orderStatus: data.orderStatus,
-            orderStatusName: data.orderStatusName,
+            orderStatusName: this.getStatusName(data.orderStatus),
             createTime: data.createTime,
-            // 处方特有
+            payTime: data.payTime,
+            expressNo: data.expressNo,
             dosageDesc: data.dosageDesc || `共服${data.dosageDays}天`,
             medicalAdvice: data.medicalAdvice,
-            
+            buyerRemark: data.buyerRemark,
             receiverName: data.address?.name || '',
             receiverPhone: data.address?.phone || '',
             receiverAddress: data.address?.fullAddress || '',
-            
             goodsList: rawGoods.map(g => ({
                goodsName: g.goodsName,
-               spec: `单剂:${g.goodsWeight}g`,
+               spec: '配方颗粒',
                imageUrl: g.urlImg || '/static/default-goods.png',
                salePrice: g.unitPrice,
-               goodsNum: 1 // 处方单品数量显示逻辑通常不同，这里暂显示1
+               goodsNum: 1 
             }))
         };
     },
     
-    // 处理采购详情数据
     handleProcurementData(data) {
-        const rawGoods = data.orderSkus || data.listGoods || [];
+        const rawGoods = data.OrderSkus || data.ListSku || [];
+        const addr = data.AddressInfo || data.OrderAddressInfo || {};
+        
         this.orderInfo = {
-            id: data.id || data.Id,
-            orderNo: data.orderNo || data.OrderNo,
-            orderStatus: data.orderStatus || data.OrderStatus,
-            orderStatusName: this.getStatusName(data.orderStatus || data.OrderStatus),
-            createTime: data.createTime || data.CreateTime,
-            
-            receiverName: data.receiverName || data.ReceiverName || data.name || '',
-            receiverPhone: data.receiverPhone || data.ReceiverPhone || data.phone || '',
-            receiverAddress: data.receiverAddress || data.ReceiverAddress || data.address || '',
-            
+            id: data.Id,
+            orderNo: data.OrderNo,
+            orderStatus: data.OrderStatus,
+            orderStatusName: this.getStatusName(data.OrderStatus),
+            createTime: data.CreateTime,
+            payTime: data.PayTime,
+            expressNo: data.ExpressNo,
+            buyerRemark: data.BuyerRemark,
+            receiverName: addr.Name || '',
+            receiverPhone: addr.Phone || '',
+            receiverAddress: addr.FullAddress || '',
             goodsList: rawGoods.map(g => ({
-               goodsName: g.goodsName || g.GoodsName,
-               spec: g.skuName || g.SkuName || '默认规格',
-               imageUrl: g.imageUrl || g.skuUrlImage || g.urlImg || '/static/default-goods.png',
-               salePrice: g.salePrice || g.SalePrice || 0,
-               goodsNum: g.quantity || g.GoodsNum || 1
+               goodsName: g.GoodsName,
+               spec: g.SkuName || '默认规格',
+               imageUrl: g.ImageUrl || g.GoodsImg || '/static/default-goods.png',
+               salePrice: g.SalePrice || g.PayPrice,
+               goodsNum: g.Quantity
             }))
         };
     },
     
     getStatusName(status) {
-        const map = { 10: '待付款', 30: '待发货', 40: '待收货', 80: '已完成', '-1': '已取消' };
-        return map[status] || '未知状态';
+        const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
+        return map[String(status)] || '未知状态';
     },
     
     handlePay() {
-        uni.showLoading({ title: '支付中...' });
-        payOrder({ orderId: this.orderId }).then(res => {
+        uni.showLoading();
+        payOrder({ OrderId: this.orderId }).then(res => {
             uni.hideLoading();
             if(res.code === 200) {
-                uni.showToast({ title: '支付成功', icon: 'success' });
-                this.loadDetail(); 
+                uni.showToast({ title: '支付成功' });
+                this.loadDetail();
             }
         });
+    },
+    
+    // 【核心修复】确认收货分流
+    handleReceive() {
+        uni.showModal({
+            title: '提示', content: '确认收货?',
+            success: (r) => {
+                if(r.confirm) {
+                    uni.showLoading();
+                    let promise;
+                    if (this.isPrescription) {
+                        promise = confirmPrescriptionReceive({ orderId: this.orderId });
+                    } else {
+                        promise = confirmReceive({ OrderId: this.orderId });
+                    }
+
+                    promise.then(res => {
+                        uni.hideLoading();
+                        if(res.code === 200) {
+                            uni.showToast({ title: '收货成功' });
+                            this.loadDetail();
+                        } else {
+                            uni.showToast({ title: res.message || '操作失败', icon: 'none' });
+                        }
+                    }).catch(() => uni.hideLoading());
+                }
+            }
+        });
+    },
+    
+    // 【核心修复】取消订单分流 (未付款状态)
+    handleCancel() {
+        uni.showModal({
+            title: '提示', content: '确认取消订单?',
+            success: (r) => {
+                if(r.confirm) {
+                    uni.showLoading();
+                    let promise;
+                    if (this.isPrescription) {
+                        promise = cancelPrescriptionOrder({ orderId: this.orderId });
+                    } else {
+                        promise = cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
+                    }
+
+                    promise.then(res => {
+                        uni.hideLoading();
+                        if(res.code === 200) {
+                            uni.showToast({ title: '已取消' });
+                            this.loadDetail(); 
+                        } else {
+                            uni.showToast({ title: res.message || '取消失败', icon: 'none' });
+                        }
+                    }).catch(() => uni.hideLoading());
+                }
+            }
+        });
+    },
+
+    // 【新增】申请退款 (已付款状态)
+    handleApplyRefund() {
+        uni.showModal({
+            title: '申请退款',
+            editable: true,
+            placeholderText: '请输入退款理由',
+            content: '确定要申请退款吗？',
+            success: (res) => {
+                if(res.confirm) {
+                    const reason = res.content || '用户申请退款';
+                    applyCancelOrder({ OrderId: this.orderId, Reason: reason }).then(r => {
+                        if(r.code === 200) {
+                            uni.showToast({ title: '申请提交成功' });
+                            this.loadDetail();
+                        } else {
+                            uni.showToast({ title: r.message || '申请失败', icon: 'none' });
+                        }
+                    });
+                }
+            }
+        })
     }
   }
 }
 </script>
 
 <style lang="scss" scoped>
+/* 保持原有样式 */
 .container { background-color: #f5f5f5; min-height: 100vh; padding-bottom: 120rpx; }
 .status-header { background: #2979ff; color: #fff; padding: 40rpx 30rpx; 
   .status-text { font-size: 36rpx; font-weight: bold; margin-bottom: 10rpx; }

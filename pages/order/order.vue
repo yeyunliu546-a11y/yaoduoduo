@@ -32,9 +32,19 @@
           <text class="price">¥{{ item.payPrice }}</text>
         </view>
         
-        <view class="action-box" v-if="item.orderStatus === 10">
-          <view class="btn plain" @click.stop="cancelOrder(item)">取消订单</view>
-          <view class="btn primary" @click.stop="handlePay(item)">立即支付</view>
+        <view class="action-box">
+          <block v-if="item.orderStatus === 10">
+             <view class="btn plain" @click.stop="handleCancel(item)">取消订单</view>
+             <view class="btn primary" @click.stop="handlePay(item)">立即支付</view>
+          </block>
+          
+          <block v-if="item.orderStatus === 20">
+             <view class="btn plain" @click.stop="handleApplyRefund(item)">申请退款</view>
+          </block>
+
+          <block v-if="item.orderStatus === 30">
+             <view class="btn primary" @click.stop="handleReceive(item)">确认收货</view>
+          </block>
         </view>
       </view>
       
@@ -45,8 +55,14 @@
 </template>
 
 <script>
-import { getOrderList, payOrder } from '@/api/order/order.js';
-import request from '@/utils/request/request.js';
+// 引入所有需要的 API
+import { 
+    getOrderList, 
+    payOrder, 
+    confirmReceive, confirmPrescriptionReceive,
+    cancelOrder, cancelPrescriptionOrder,
+    applyCancelOrder 
+} from '@/api/order/order.js';
 
 export default {
   data() {
@@ -56,15 +72,16 @@ export default {
       orderList: [], 
       page: 1,
       isLoading: false,
-      loadStatus: 'loadmore'
+      loadStatus: 'loadmore',
+      // 标准状态码映射
+      statusMapCode: [0, 10, 20, 30, 80] 
     };
   },
   onLoad(option) {
       if(option.status) {
           const val = parseInt(option.status);
-          const statusMap = [0, 10, 30, 40, 80];
-          const indexByValue = statusMap.indexOf(val);
-          this.currentStatus = indexByValue !== -1 ? indexByValue : 0;
+          const index = this.statusMapCode.indexOf(val);
+          this.currentStatus = index !== -1 ? index : 0;
       }
   },
   onShow() {
@@ -91,16 +108,13 @@ export default {
     },
     loadData() {
       this.isLoading = true;
-      const statusMap = [0, 10, 30, 40, 80];
-      
       const params = {
         page: this.page,
         limit: 10,
         orderType: 0 
       };
-
       if (this.currentStatus !== 0) {
-          params.orderStatus = statusMap[this.currentStatus];
+          params.orderStatus = this.statusMapCode[this.currentStatus];
       }
 
       getOrderList(params).then(res => {
@@ -111,42 +125,40 @@ export default {
           const rawList = res.result || res.data?.list || res.data || [];
           
           const list = rawList.map(order => {
-              // 1. 尝试获取真实的商品列表
-              let rawGoods = order.listSku || order.OrderSkus || order.goodsList || order.ListGoods || order.list || [];
+              // 兼容各类商品字段
+              let rawGoods = order.OrderSkus || order.listSku || order.goodsList || order.ListGoods || order.list || [];
               
-              // 2. 【核心修复】如果没拿到列表，但有 firstImage (说明是聚合简化接口)
-              // 手动构造一个"虚拟商品"用于展示
+              // 聚合接口兜底逻辑
               if (rawGoods.length === 0 && order.firstImage) {
                   rawGoods = [{
-                      isVirtual: true, // 标记
+                      isVirtual: true,
                       imageUrl: order.firstImage,
-                      // 使用 dosageDesc (服用说明) 或 orderTypeName (订单类型) 作为商品名替代
-                      goodsName: order.dosageDesc || order.orderTypeName || '商品详情见订单',
-                      spec: order.createTime, // 显示创建时间或其他信息
-                      quantity: order.itemCount || 1,
-                      salePrice: '' // 列表页不显示单价，只看总价
+                      goodsName: order.dosageDesc || (order.orderType===2 ? '中药配方颗粒调剂' : '采购商品'),
+                      spec: '',
+                      salePrice: order.payPrice, 
+                      goodsNum: order.itemCount || 1
                   }];
               }
 
               return {
                   id: order.id || order.Id,
                   orderNo: order.orderNo || order.OrderNo,
-                  orderType: order.orderType || 1,
+                  // 智能识别类型: 2为处方, 1为采购 (CF开头为处方)
+                  orderType: order.orderType || (String(order.orderNo || '').startsWith('CF') ? 2 : 1),
                   orderStatus: order.orderStatus || order.OrderStatus,
-                  orderStatusName: order.orderStatusName || this.getStatusName(order.orderStatus),
+                  orderStatusName: this.getStatusName(order.orderStatus || order.OrderStatus),
                   payPrice: order.payPrice || order.PayPrice || 0,
-                  totalNum: order.itemCount || rawGoods.length, // 优先用接口返回的总数
-                  
-                  // 商品映射
+                  totalNum: order.itemCount || rawGoods.length,
                   goodsList: rawGoods.map(g => {
                       const entity = g.sku || g;
+                      const price = entity.SalePrice || entity.salePrice || entity.unitPrice || entity.price || 0;
                       return {
-                          goodsName: g.isVirtual ? g.goodsName : (entity.goodsName || entity.GoodsName || '未知商品'),
-                          spec: g.isVirtual ? g.spec : (entity.spec || entity.skuName || '默认规格'),
-                          imageUrl: entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/default-goods.png',
-                          pricePerGram: entity.pricePerGram,
-                          salePrice: g.isVirtual ? '' : (entity.unitPrice || entity.salePrice || 0),
-                          goodsNum: g.goodsNum || g.quantity || 1
+                          goodsName: g.isVirtual ? g.goodsName : (entity.GoodsName || entity.goodsName),
+                          spec: g.isVirtual ? '' : (entity.SkuName || entity.skuName || entity.spec || (order.orderType===2 ? '配方颗粒' : '默认规格')),
+                          imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/default-goods.png',
+                          salePrice: price,
+                          pricePerGram: entity.PricePerGram || entity.pricePerGram,
+                          goodsNum: g.isVirtual ? g.goodsNum : (entity.Quantity || entity.goodsNum || entity.quantity || 1)
                       };
                   })
               };
@@ -155,15 +167,15 @@ export default {
           this.orderList = [...this.orderList, ...list];
           this.loadStatus = list.length < 10 ? 'nomore' : 'loadmore';
         }
-      }).catch(() => {
+      }).catch(err => {
         this.isLoading = false;
         uni.stopPullDownRefresh();
       });
     },
     
     getStatusName(status) {
-        const map = { 10: '待付款', 30: '待发货', 40: '待收货', 80: '已完成', '-1': '已取消' };
-        return map[status] || '未知状态';
+        const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
+        return map[String(status)] || '未知状态';
     },
 
     goDetail(item) {
@@ -171,22 +183,99 @@ export default {
     },
     
     handlePay(item) {
-        uni.showLoading({ title: '支付中...' });
-        payOrder({ orderId: item.id }).then(res => {
+        uni.showLoading({ title: '请求中...' });
+        payOrder({ OrderId: item.id }).then(res => {
             uni.hideLoading();
             if(res.code === 200) {
                 uni.showToast({ title: '支付成功', icon: 'success' });
-                setTimeout(() => {
-                    this.refreshList();
-                }, 1000);
+                setTimeout(() => { this.refreshList(); }, 1000);
             } else {
                 uni.showToast({ title: res.message || '支付失败', icon: 'none' });
             }
         });
     },
     
-    cancelOrder(item) {
-        uni.showToast({ title: '暂不支持取消', icon: 'none' });
+    // 【核心修复】确认收货分流
+    handleReceive(item) {
+        uni.showModal({
+            title: '提示', content: '确认已收到货物吗？',
+            success: (res) => {
+                if(res.confirm) {
+                    let promise;
+                    // 判断订单类型 (CF开头或type=2为处方)
+                    const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+                    
+                    if (isPrescription) {
+                        promise = confirmPrescriptionReceive({ orderId: item.id });
+                    } else {
+                        promise = confirmReceive({ OrderId: item.id });
+                    }
+
+                    promise.then(r => {
+                        if(r.code === 200) {
+                            uni.showToast({ title: '收货成功' });
+                            this.refreshList();
+                        } else {
+                            uni.showToast({ title: r.message || '操作失败', icon: 'none' });
+                        }
+                    });
+                }
+            }
+        })
+    },
+    
+    // 【核心修复】取消未付款订单分流
+    handleCancel(item) {
+        uni.showModal({
+            title: '提示',
+            content: '确定要取消订单吗？',
+            success: (res) => {
+                if(res.confirm) {
+                    let promise;
+                    const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+
+                    if (isPrescription) {
+                        // 处方取消 (orderId 小写)
+                        promise = cancelPrescriptionOrder({ orderId: item.id });
+                    } else {
+                        // 采购取消 (OrderId 大写)
+                        promise = cancelOrder({ OrderId: item.id, Reason: '用户主动取消' });
+                    }
+
+                    promise.then(r => {
+                        if(r.code === 200) {
+                            uni.showToast({ title: '取消成功' });
+                            this.refreshList();
+                        } else {
+                            uni.showToast({ title: r.message || '取消失败', icon: 'none' });
+                        }
+                    });
+                }
+            }
+        })
+    },
+
+    // 【新增】申请退款 (用于已付款订单)
+    handleApplyRefund(item) {
+        uni.showModal({
+            title: '申请退款',
+            editable: true,
+            placeholderText: '请输入退款理由',
+            content: '确定要申请退款吗？',
+            success: (res) => {
+                if(res.confirm) {
+                    const reason = res.content || '用户申请退款';
+                    applyCancelOrder({ OrderId: item.id, Reason: reason }).then(r => {
+                        if(r.code === 200) {
+                            uni.showToast({ title: '申请提交成功' });
+                            this.refreshList();
+                        } else {
+                            uni.showToast({ title: r.message || '申请失败', icon: 'none' });
+                        }
+                    });
+                }
+            }
+        })
     }
   }
 }
@@ -197,21 +286,17 @@ export default {
 .container { background-color: #f5f5f5; min-height: 100vh; }
 .tabs-box { background: #fff; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #f5f5f5; }
 .order-list { padding: 20rpx; }
-.order-item { 
-  background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; 
-  .header { 
-    display: flex; justify-content: space-between; margin-bottom: 20rpx; font-size: 26rpx;
-    .order-no { 
-      color: #666; display: flex; align-items: center; 
-      .tag { font-size: 20rpx; padding: 2rpx 8rpx; border-radius: 4rpx; margin-right: 12rpx;}
-      .prescription { background: #e6f1fc; color: #2979ff; border: 1px solid #a3d0fd; }
-      .purchase { background: #fff7e6; color: #ff9900; border: 1px solid #ffe58f; }
-      .no { font-weight: 500; color: #333; }
+.order-item { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 20rpx; 
+  .header { display: flex; justify-content: space-between; margin-bottom: 20rpx; font-size: 26rpx;
+    .order-no { color: #666; display: flex; align-items: center; 
+       .tag { font-size: 20rpx; padding: 2rpx 8rpx; border-radius: 4rpx; margin-right: 12rpx;}
+       .prescription { background: #e6f1fc; color: #2979ff; border: 1px solid #a3d0fd; }
+       .purchase { background: #fff7e6; color: #ff9900; border: 1px solid #ffe58f; }
+       .no { font-weight: 500; color: #333; }
     }
     .status { color: #2979ff; font-weight: bold; }
   }
-  .goods-box { 
-    display: flex; margin-bottom: 20rpx;
+  .goods-box { display: flex; margin-bottom: 20rpx;
     .thumb { width: 140rpx; height: 140rpx; border-radius: 8rpx; background: #f9f9f9; margin-right: 20rpx;}
     .content { flex: 1; 
       .title { font-size: 28rpx; color: #333; margin-bottom: 10rpx;}
@@ -222,14 +307,11 @@ export default {
       .num { font-size: 24rpx; color: #999; margin-top: 6rpx;}
     }
   }
-  .total-row { 
-    text-align: right; border-top: 1px solid #f9f9f9; padding-top: 20rpx; font-size: 26rpx; color: #333;
+  .total-row { text-align: right; border-top: 1px solid #f9f9f9; padding-top: 20rpx; font-size: 26rpx; color: #333;
     .price { font-size: 32rpx; color: #333; font-weight: bold; margin-left: 10rpx;}
   }
-  .action-box { 
-    display: flex; justify-content: flex-end; margin-top: 20rpx;
-    .btn { 
-      width: 160rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; margin-left: 20rpx;
+  .action-box { display: flex; justify-content: flex-end; margin-top: 20rpx;
+    .btn { width: 160rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; margin-left: 20rpx;
       &.plain { border: 1px solid #ccc; color: #666; }
       &.primary { background: #2979ff; color: #fff; border: 1px solid #2979ff; }
     }
