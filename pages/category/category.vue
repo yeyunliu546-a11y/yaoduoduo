@@ -51,6 +51,9 @@
 						<text class="u-line-1">{{ item }}</text>
 					</view>
 				</block>
+				<view v-if="!filterOptions.manufacturers || filterOptions.manufacturers.length === 0" class="empty-manufacturer">
+					<text></text>
+				</view>
 			</scroll-view>
 
 			<view class="right-box">
@@ -154,7 +157,6 @@
 </template>
 
 <script>
-	// 引入 API
 	import * as GoodsApi from '@/api/goods/goods.js';
 	import { addCart, addPrescriptionCart } from '@/api/goods/cart.js';
 
@@ -174,7 +176,7 @@
 				page: 1, limit: 10,
 				isLoading: false, loadStatus: 'loadmore',
 				
-				submiting: false // 防抖开关
+				submiting: false // 防抖
 			}
 		},
 		onLoad() {
@@ -189,21 +191,39 @@
 			},
 			closeFilter() { this.showFilter = false; },
 
+			// 切换业务类型（采购/调剂）
 			switchBusiness(type) {
 				if (this.businessType === type) return;
 				this.businessType = type;
 				this.keyword = '';
+				
+				// 重置所有筛选状态
 				this.selectedFilter = { manufacturer: '', packageType: '', standard: '' };
 				this.tempFilter = { packageType: '', standard: '' };
 				this.currentSort = 'default';
+				
+				// 清空列表数据，防止残留
 				this.goodsList = []; 
+				this.filterOptions = { manufacturers: [], packageTypes: [], standards: [] };
+				
+				// 重新加载基于当前类型的筛选条件和商品数据
 				this.loadFilterOptions();
 				this.loadGoodsData(true);
 			},
 
+			// 加载筛选条件（关键修改：传入 goodsType 进行隔离）
 			loadFilterOptions() {
-				GoodsApi.getFilterOptions({}).then(res => {
-                    if(res.code === 200 && res.result) this.filterOptions = res.result;
+				// 1: 药品采购, 2: 处方调剂
+				const goodsType = this.businessType === 'dispensing' ? 2 : 1;
+				
+				GoodsApi.getFilterOptions({ goodsType: goodsType }).then(res => {
+                    if(res.code === 200 && res.result) {
+						this.filterOptions = res.result;
+					} else {
+						this.filterOptions = { manufacturers: [], packageTypes: [], standards: [] };
+					}
+				}).catch(err => {
+					console.error("加载筛选条件失败", err);
 				});
 			},
 
@@ -221,22 +241,20 @@
                     sortType = 60; 
                 }
 
-                // 根据 businessType 映射 goodsType 参数
+                // 确保这里使用正确的 goodsType (1或2)
                 const goodsType = this.businessType === 'dispensing' ? 2 : 1;
 
                 const params = {
                     page: this.page, 
                     limit: this.limit, 
                     key: this.keyword,
-                    goodsType: goodsType, 
+                    goodsType: goodsType, // 关键：数据隔离核心
                     manufacturer: this.selectedFilter.manufacturer,
                     packageType: this.selectedFilter.packageType,
                     standard: this.selectedFilter.standard,
                     sortType: sortType 
                 };
 
-				// 【核心修复】这里必须调用 getGoodsList，而不是 getGoodsListByWhere
-				// 因为我们在 api/goods/goods.js 里已经把名字改成了 getGoodsList
 				GoodsApi.getGoodsList(params).then(res => {
 					const list = res.result || res.data?.list || [];
 					this.goodsList = [...this.goodsList, ...list];
@@ -295,20 +313,16 @@
 				
                 uni.showLoading({ title: '处理中...', mask: true });
 				
-				// 调用详情接口获取 SKU
 				GoodsApi.getGoodsDetail(item.id).then(res => {
 					this.submiting = false;
 					
 					if (res.code === 200 && res.result) {
 						const detail = res.result;
 						
-						// 检查 SKU 是否存在
 						if (detail.listSku && detail.listSku.length > 0) {
 							
-							// 【分支判断】采购 vs 调剂
 							if (this.businessType === 'dispensing') {
-								// --- 调剂业务 ---
-								// 单规格直接默认加 10g，多规格跳详情
+								// 调剂业务
 								if (detail.listSku.length === 1) {
 									const skuId = detail.listSku[0].id;
 									addPrescriptionCart({
@@ -325,9 +339,8 @@
 								}
 								
 							} else {
-								// --- 采购业务 ---
+								// 采购业务
 								if (detail.listSku.length === 1) {
-									// 单规格 -> 自动取 SkuId -> 提交
 									const skuId = detail.listSku[0].id;
 									addCart({
 										goodsSkuId: skuId,
@@ -338,7 +351,6 @@
 										else uni.showToast({ title: addRes.message || '失败', icon: 'none' });
 									});
 								} else {
-									// 多规格 -> 跳转详情页让用户选
 									uni.hideLoading();
 									uni.showToast({ title: '请选择规格', icon: 'none' });
 									setTimeout(() => {
@@ -386,6 +398,7 @@
 	.u-tab-item { height: 100rpx; background: #f6f6f6; display: flex; align-items: center; justify-content: center; font-size: 26rpx; color: #444; border-bottom: 1px solid #f0f0f0; padding: 0 10rpx; }
 	.u-tab-item-active { position: relative; color: #2979ff; font-size: 28rpx; font-weight: 600; background: #fff; }
 	.u-tab-item-active::before { content: ""; position: absolute; border-left: 4px solid #2979ff; height: 32rpx; left: 0; top: 34rpx; }
+	.empty-manufacturer { height: 100rpx; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24rpx; }
 
 	.right-box { flex: 1; background-color: #fff; height: 100%; display: flex; flex-direction: column; position: relative; }
     .fixed-header { background-color: #fff; border-bottom: 1px solid #f8f8f8; box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.02); flex-shrink: 0; z-index: 9; }
