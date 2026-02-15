@@ -73,10 +73,9 @@
 </template>
 
 <script>
-// 【关键】引入所有需要的 API
 import { 
     getOrderDetail, getPrescriptionDetail, 
-    payOrder, 
+    payOrder, payPrescriptionOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
     applyCancelOrder
@@ -111,16 +110,18 @@ export default {
       
       api.then(res => {
         this.loading = false;
-        if (res.code === 200) {
-          const data = res.result || res.data;
+        const code = res.code !== undefined ? res.code : res.Code;
+        if (code === 200) {
+          const data = res.result || res.data || res.Result;
           this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
-            uni.showToast({ title: res.message || '获取详情失败', icon: 'none' });
+            uni.showToast({ title: res.message || res.Message || '获取详情失败', icon: 'none' });
         }
       }).catch(() => this.loading = false);
     },
     
     handlePrescriptionData(data) {
+        if(!data) return;
         const rawGoods = data.listSku || [];
         this.orderInfo = {
             id: data.id,
@@ -147,27 +148,28 @@ export default {
     },
     
     handleProcurementData(data) {
+        if(!data) return;
         const rawGoods = data.OrderSkus || data.ListSku || [];
         const addr = data.AddressInfo || data.OrderAddressInfo || {};
         
         this.orderInfo = {
-            id: data.Id,
-            orderNo: data.OrderNo,
-            orderStatus: data.OrderStatus,
-            orderStatusName: this.getStatusName(data.OrderStatus),
-            createTime: data.CreateTime,
-            payTime: data.PayTime,
-            expressNo: data.ExpressNo,
-            buyerRemark: data.BuyerRemark,
-            receiverName: addr.Name || '',
-            receiverPhone: addr.Phone || '',
-            receiverAddress: addr.FullAddress || '',
+            id: data.Id || data.id,
+            orderNo: data.OrderNo || data.orderNo,
+            orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
+            orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
+            createTime: data.CreateTime || data.createTime,
+            payTime: data.PayTime || data.payTime,
+            expressNo: data.ExpressNo || data.expressNo,
+            buyerRemark: data.BuyerRemark || data.buyerRemark,
+            receiverName: addr.Name || addr.name || '',
+            receiverPhone: addr.Phone || addr.phone || '',
+            receiverAddress: addr.FullAddress || addr.fullAddress || '',
             goodsList: rawGoods.map(g => ({
-               goodsName: g.GoodsName,
-               spec: g.SkuName || '默认规格',
-               imageUrl: g.ImageUrl || g.GoodsImg || '/static/default-goods.png',
-               salePrice: g.SalePrice || g.PayPrice,
-               goodsNum: g.Quantity
+               goodsName: g.GoodsName || g.goodsName,
+               spec: g.SkuName || g.skuName || '默认规格',
+               imageUrl: g.ImageUrl || g.GoodsImg || g.imageUrl || '/static/default-goods.png',
+               salePrice: g.SalePrice || g.PayPrice || g.salePrice,
+               goodsNum: g.Quantity || g.quantity
             }))
         };
     },
@@ -178,37 +180,83 @@ export default {
     },
     
     handlePay() {
-        uni.showLoading();
-        payOrder({ OrderId: this.orderId }).then(res => {
+        uni.showLoading({ title: '获取支付信息...', mask: true });
+        
+        let payApi;
+
+        if (this.isPrescription) {
+            payApi = payPrescriptionOrder({ 
+                orderId: this.orderId,
+                payType: 20, 
+                appKey: 'MP-WEIXIN'
+            });
+        } else {
+            // 双管齐下，大写小写都传，兼容老接口
+            payApi = payOrder({ 
+                OrderId: this.orderId, 
+                PayType: 20,           
+                AppKey: 'MP-WEIXIN',   
+                orderId: this.orderId, 
+                payType: 20,
+                appKey: 'MP-WEIXIN'
+            });
+        }
+
+        payApi.then(res => {
             uni.hideLoading();
-            if(res.code === 200) {
-                uni.showToast({ title: '支付成功' });
-                this.loadDetail();
+            const code = res.code !== undefined ? res.code : res.Code;
+            
+            if(code === 200) {
+                const result = res.result || res.Result || res.data || {};
+                const wxPayParams = result.payParams || result.wxPayParams || result;
+                
+                if (!wxPayParams.timeStamp && !wxPayParams.TimeStamp) {
+                    return uni.showToast({ title: '支付参数不完整', icon: 'none' });
+                }
+                
+                uni.requestPayment({
+                    provider: 'wxpay',
+                    timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
+                    nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
+                    package: wxPayParams.package || wxPayParams.Package,
+                    signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
+                    paySign: wxPayParams.paySign || wxPayParams.PaySign,
+                    success: (payRes) => {
+                        uni.showToast({ title: '支付成功', icon: 'success' });
+                        setTimeout(() => { this.loadDetail(); }, 1500);
+                    },
+                    fail: (err) => {
+                        console.log('支付取消或失败', err);
+                        uni.showToast({ title: '已取消支付', icon: 'none' });
+                    }
+                });
+            } else {
+                uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
             }
+        }).catch(err => {
+            uni.hideLoading();
+            uni.showToast({ title: '网络异常', icon: 'none' });
         });
     },
     
-    // 【核心修复】确认收货分流
     handleReceive() {
         uni.showModal({
             title: '提示', content: '确认收货?',
             success: (r) => {
                 if(r.confirm) {
                     uni.showLoading();
-                    let promise;
-                    if (this.isPrescription) {
-                        promise = confirmPrescriptionReceive({ orderId: this.orderId });
-                    } else {
-                        promise = confirmReceive({ OrderId: this.orderId });
-                    }
+                    let promise = this.isPrescription 
+                        ? confirmPrescriptionReceive({ orderId: this.orderId })
+                        : confirmReceive({ OrderId: this.orderId });
 
                     promise.then(res => {
                         uni.hideLoading();
-                        if(res.code === 200) {
+                        const code = res.code !== undefined ? res.code : res.Code;
+                        if(code === 200) {
                             uni.showToast({ title: '收货成功' });
                             this.loadDetail();
                         } else {
-                            uni.showToast({ title: res.message || '操作失败', icon: 'none' });
+                            uni.showToast({ title: res.message || res.Message || '操作失败', icon: 'none' });
                         }
                     }).catch(() => uni.hideLoading());
                 }
@@ -216,27 +264,24 @@ export default {
         });
     },
     
-    // 【核心修复】取消订单分流 (未付款状态)
     handleCancel() {
         uni.showModal({
             title: '提示', content: '确认取消订单?',
             success: (r) => {
                 if(r.confirm) {
                     uni.showLoading();
-                    let promise;
-                    if (this.isPrescription) {
-                        promise = cancelPrescriptionOrder({ orderId: this.orderId });
-                    } else {
-                        promise = cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
-                    }
+                    let promise = this.isPrescription
+                        ? cancelPrescriptionOrder({ orderId: this.orderId })
+                        : cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
 
                     promise.then(res => {
                         uni.hideLoading();
-                        if(res.code === 200) {
+                        const code = res.code !== undefined ? res.code : res.Code;
+                        if(code === 200) {
                             uni.showToast({ title: '已取消' });
                             this.loadDetail(); 
                         } else {
-                            uni.showToast({ title: res.message || '取消失败', icon: 'none' });
+                            uni.showToast({ title: res.message || res.Message || '取消失败', icon: 'none' });
                         }
                     }).catch(() => uni.hideLoading());
                 }
@@ -244,7 +289,6 @@ export default {
         });
     },
 
-    // 【新增】申请退款 (已付款状态)
     handleApplyRefund() {
         uni.showModal({
             title: '申请退款',
@@ -255,11 +299,12 @@ export default {
                 if(res.confirm) {
                     const reason = res.content || '用户申请退款';
                     applyCancelOrder({ OrderId: this.orderId, Reason: reason }).then(r => {
-                        if(r.code === 200) {
+                        const code = r.code !== undefined ? r.code : r.Code;
+                        if(code === 200) {
                             uni.showToast({ title: '申请提交成功' });
                             this.loadDetail();
                         } else {
-                            uni.showToast({ title: r.message || '申请失败', icon: 'none' });
+                            uni.showToast({ title: r.message || r.Message || '申请失败', icon: 'none' });
                         }
                     });
                 }
@@ -271,7 +316,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式 */
 .container { background-color: #f5f5f5; min-height: 100vh; padding-bottom: 120rpx; }
 .status-header { background: #2979ff; color: #fff; padding: 40rpx 30rpx; 
   .status-text { font-size: 36rpx; font-weight: bold; margin-bottom: 10rpx; }

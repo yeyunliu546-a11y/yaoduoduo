@@ -63,35 +63,32 @@
 </template>
 
 <script>
-// 引入所有需要的 API
 import { 
     getOrderList, 
     payOrder, 
+    payPrescriptionOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
     applyCancelOrder,
-    deleteOrder // 【新增】
+    deleteOrder
 } from '@/api/order/order.js';
 
 export default {
   data() {
     return {
-      // 【新增】增加了"已取消" Tab
       statusList: [
           { name: '全部' }, 
           { name: '待付款' }, 
           { name: '待发货' }, 
           { name: '待收货' }, 
           { name: '已完成' },
-          { name: '已取消' } // 新增
+          { name: '已取消' }
       ],
       currentStatus: 0,
       orderList: [], 
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      // 【关键】状态码映射，增加了 -30
-      // 0:全部, 10:待付款, 20:待发货, 30:待收货, 80:已完成, -30:已取消
       statusMapCode: [0, 10, 20, 30, 80, -30] 
     };
   },
@@ -131,7 +128,6 @@ export default {
         limit: 10,
         orderType: 0 
       };
-      // 只有非"全部"状态时，才传 orderStatus
       if (this.currentStatus !== 0) {
           params.orderStatus = this.statusMapCode[this.currentStatus];
       }
@@ -199,15 +195,63 @@ export default {
     },
     
     handlePay(item) {
-        uni.showLoading({ title: '请求中...' });
-        payOrder({ OrderId: item.id }).then(res => {
+        uni.showLoading({ title: '获取支付信息...', mask: true });
+        
+        const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+        let payApi;
+        
+        if (isPrescription) {
+            payApi = payPrescriptionOrder({ 
+                orderId: item.id, 
+                payType: 20, 
+                appKey: 'MP-WEIXIN' 
+            });
+        } else {
+            // 双管齐下，大写小写都传，兼容老接口
+            payApi = payOrder({ 
+                OrderId: item.id,
+                PayType: 20,
+                AppKey: 'MP-WEIXIN',
+                orderId: item.id, 
+                payType: 20, 
+                appKey: 'MP-WEIXIN' 
+            });
+        }
+
+        payApi.then(res => {
             uni.hideLoading();
-            if(res.code === 200) {
-                uni.showToast({ title: '支付成功', icon: 'success' });
-                setTimeout(() => { this.refreshList(); }, 1000);
+            const code = res.code !== undefined ? res.code : res.Code;
+            
+            if(code === 200) {
+                const result = res.result || res.Result || res.data || {};
+                const wxPayParams = result.payParams || result.wxPayParams || result;
+                
+                if (!wxPayParams.timeStamp && !wxPayParams.TimeStamp) {
+                    return uni.showToast({ title: '支付参数不完整', icon: 'none' });
+                }
+                
+                uni.requestPayment({
+                    provider: 'wxpay',
+                    timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
+                    nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
+                    package: wxPayParams.package || wxPayParams.Package,
+                    signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
+                    paySign: wxPayParams.paySign || wxPayParams.PaySign,
+                    success: (payRes) => {
+                        uni.showToast({ title: '支付成功', icon: 'success' });
+                        setTimeout(() => { this.refreshList(); }, 1500);
+                    },
+                    fail: (err) => {
+                        console.log('支付取消或失败', err);
+                        uni.showToast({ title: '已取消支付', icon: 'none' });
+                    }
+                });
             } else {
-                uni.showToast({ title: res.message || '支付失败', icon: 'none' });
+                uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
             }
+        }).catch(err => {
+            uni.hideLoading();
+            uni.showToast({ title: '网络异常', icon: 'none' });
         });
     },
     
@@ -288,7 +332,6 @@ export default {
         })
     },
 
-    // 【新增】删除订单
     handleDelete(item) {
         uni.showModal({
             title: '提示',
@@ -296,17 +339,12 @@ export default {
             success: (res) => {
                 if(res.confirm) {
                     uni.showLoading({ title: '删除中' });
-                    // API 需要传数组格式 ["id"]
                     deleteOrder([item.id]).then(r => {
                         uni.hideLoading();
                         if(r.code === 200) {
                             uni.showToast({ title: '删除成功' });
-                            // 如果当前就在"已取消"Tab，直接移除该项体验更好
                             const idx = this.orderList.findIndex(o => o.id === item.id);
                             if(idx > -1) this.orderList.splice(idx, 1);
-                            
-                            // 或者调用刷新
-                            // this.refreshList();
                         } else {
                             uni.showToast({ title: r.message || '删除失败', icon: 'none' });
                         }
@@ -320,7 +358,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式 */
 .container { background-color: #f5f5f5; min-height: 100vh; }
 .tabs-box { background: #fff; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #f5f5f5; }
 .order-list { padding: 20rpx; }
@@ -333,7 +370,7 @@ export default {
        .no { font-weight: 500; color: #333; }
     }
     .status { color: #2979ff; font-weight: bold; 
-      &.gray { color: #999; } /* 已取消状态为灰色 */
+      &.gray { color: #999; } 
     }
   }
   .goods-box { display: flex; margin-bottom: 20rpx;
@@ -355,7 +392,6 @@ export default {
       &.plain { border: 1px solid #ccc; color: #666; }
       &.primary { background: #2979ff; color: #fff; border: 1px solid #2979ff; }
       
-      // 删除按钮样式
       &.icon-btn { display: flex; align-items: center; justify-content: center; width: auto; padding: 0 30rpx;}
     }
   }

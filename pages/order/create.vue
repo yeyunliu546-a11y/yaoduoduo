@@ -109,11 +109,9 @@ export default {
     this.options = options;
     this.isDispensing = options.type === 'dispensing';
     
-    // 【核心修复】健壮的参数解析，防止 Proxy 问题
     try {
         if (options.cartIds) {
             let raw = decodeURIComponent(options.cartIds);
-            // 尝试 JSON 解析，如果是数组直接用，否则按逗号分割
             if (raw.startsWith('[') && raw.endsWith(']')) {
                 this.parsedCartIds = JSON.parse(raw);
             } else {
@@ -124,7 +122,6 @@ export default {
         console.error('解析 cartIds 失败:', e);
         this.parsedCartIds = [];
     }
-    // 确保是数组
     if (!Array.isArray(this.parsedCartIds)) {
         this.parsedCartIds = [];
     }
@@ -147,19 +144,15 @@ export default {
   },
   
   methods: {
-    // 获取购物车ID的纯字符串 (去除 Proxy)
     getIdsString() {
-        // 使用 JSON 序列化解包 Proxy
         const rawList = JSON.parse(JSON.stringify(this.parsedCartIds));
         return rawList.join(',');
     },
 
     loadSettlement() {
       uni.showLoading({ title: '准备中...' });
+      const idsStr = this.getIdsString();
 
-      const idsStr = this.getIdsString(); // 获取纯字符串
-
-      // === 处方结算 ===
       if (this.isDispensing) {
           const params = {
               cartIds: idsStr, 
@@ -170,25 +163,22 @@ export default {
           
           getPrescriptionSettlement(params).then(res => {
               uni.hideLoading();
-              if(res.code === 200) {
-                  this.handlePrescriptionData(res.result || res.data);
+              if(res.code === 200 || res.Code === 200) {
+                  this.handlePrescriptionData(res.result || res.data || res.Result);
               } else {
-                  uni.showToast({ title: res.message || '结算失败', icon: 'none' });
+                  uni.showToast({ title: res.message || res.Message || '结算失败', icon: 'none' });
               }
           }).catch(() => uni.hideLoading());
           return;
       }
 
-      // === 采购结算 ===
-      // 【关键修复】确保传的是 StrCartIds 且是字符串
       const params = { StrCartIds: idsStr };
-
       getOrderSettlement(params).then(res => {
         uni.hideLoading();
-        if (res.code === 200) {
-          this.handleProcurementData(res.result || res.data);
+        if (res.code === 200 || res.Code === 200) {
+          this.handleProcurementData(res.result || res.data || res.Result);
         } else {
-            uni.showToast({ title: res.message || '结算失败', icon: 'none' });
+            uni.showToast({ title: res.message || res.Message || '结算失败', icon: 'none' });
         }
       }).catch(() => uni.hideLoading());
     },
@@ -251,12 +241,11 @@ export default {
       if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
 
       this.submitting = true;
-      const idsStr = this.getIdsString(); // 获取纯字符串
+      const idsStr = this.getIdsString();
 
       let promise;
       
       if (this.isDispensing) {
-          // === 处方下单 ===
           const payload = {
               cartIds: idsStr,
               addressId: this.address.id,
@@ -264,18 +253,19 @@ export default {
               dailyPackages: Number(this.prescription.packs),
               medicalAdvice: this.doctorAdvice,
               buyerRemark: this.buyerRemark,
-              // payType: 20 // 移除自动支付
+              payType: 20, // 微信支付
+              appKey: 'MP-WEIXIN'
           };
           promise = createPrescriptionOrder(payload);
       } else {
-          // === 采购下单 ===
           const payload = {
               addressId: this.address.id,
               buyerRemark: this.buyerRemark, 
               cartIds: idsStr, 
-              StrCartIds: idsStr, // 双保险
+              StrCartIds: idsStr,
               orderType: 1,
-              // payType: 20 // 移除自动支付
+              payType: 20, // 微信支付
+              appKey: 'MP-WEIXIN'
           };
           promise = createOrder(payload);
       }
@@ -283,28 +273,69 @@ export default {
       promise.then(res => {
         this.submitting = false;
         
-        if (res.code === 200) {
-          const result = res.result || res.data || {};
-          // 检查业务标识
+        const code = res.code !== undefined ? res.code : res.Code;
+        if (code === 200) {
+          const result = res.result || res.data || res.Result || {};
+          
           if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
               return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
           }
 
-          uni.showToast({ title: '下单成功', icon: 'success' });
-          setTimeout(() => {
-             uni.redirectTo({ url: '/pages/order/order?status=10' }); 
-          }, 1500);
+          // 【关键修复1】严格按照后端文档获取 orderId
+          const orderId = result.orderId;
+          
+          // 【关键修复2】提取微信支付参数
+          const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams;
+          
+          // 【关键修复3】区分详情页 URL (处方单必须带 type=2)
+          const detailUrl = this.isDispensing 
+                            ? `/pages/order/detail?id=${orderId}&type=2` 
+                            : `/pages/order/detail?id=${orderId}&type=1`;
+
+          if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+              // 有支付参数，唤起微信收银台
+              this.callWechatPay(wxPayParams, detailUrl);
+          } else {
+              uni.showToast({ title: '下单成功', icon: 'success' });
+              setTimeout(() => {
+                 uni.redirectTo({ url: detailUrl }); 
+              }, 1500);
+          }
         } else {
-          uni.showToast({ title: res.message || '下单失败', icon: 'none' });
+          uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' });
         }
       }).catch(() => { this.submitting = false; });
+    },
+    
+    // 【修改】唤起微信支付收银台，接收跳转链接作为参数
+    callWechatPay(params, detailUrl) {
+        uni.requestPayment({
+            provider: 'wxpay',
+            timeStamp: String(params.timeStamp || params.TimeStamp),
+            nonceStr: params.nonceStr || params.NonceStr,
+            package: params.package || params.Package,
+            signType: params.signType || params.SignType || 'MD5',
+            paySign: params.paySign || params.PaySign,
+            success: (payRes) => {
+                uni.showToast({ title: '支付成功', icon: 'success' });
+                setTimeout(() => {
+                    uni.redirectTo({ url: detailUrl });
+                }, 1500);
+            },
+            fail: (err) => {
+                console.log('支付取消或失败', err);
+                uni.showToast({ title: '取消支付', icon: 'none' });
+                setTimeout(() => {
+                    uni.redirectTo({ url: detailUrl });
+                }, 1500);
+            }
+        });
     }
   }
 };
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式 */
 .container { padding-bottom: 120rpx; background-color: #f5f5f5; min-height: 100vh; }
 .address-section { background: #fff; padding: 30rpx; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; .user-row { font-size: 30rpx; font-weight: bold; margin-bottom: 10rpx; .mobile { margin-left: 20rpx; color: #666; font-weight: normal; font-size: 26rpx; } } .addr-text { font-size: 26rpx; color: #333; line-height: 1.4; } .addr-empty { display: flex; align-items: center; color: #333; font-size: 28rpx; .icon-box { width: 40rpx; height: 40rpx; background: #2979ff; color: #fff; text-align: center; line-height: 36rpx; border-radius: 8rpx; margin-right: 12rpx; font-weight: bold;} } }
 .goods-section { background: #fff; margin-bottom: 20rpx; .prescription-header { padding: 20rpx 30rpx; border-bottom: 1px solid #f8f8f8; display: flex; align-items: center; .tag { background: #e6f1fc; color: #2979ff; font-size: 22rpx; padding: 4rpx 10rpx; border-radius: 6rpx; margin-right: 16rpx;} .usage-info { font-size: 26rpx; color: #333; font-weight: bold; } } .goods-item { display: flex; padding: 20rpx 30rpx; background: #fff; border-bottom: 1px solid #f8f8f8; .thumb { width: 140rpx; height: 140rpx; border-radius: 8rpx; margin-right: 20rpx; background: #f5f5f5;} .content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .title { font-size: 28rpx; color: #333; } .spec { font-size: 24rpx; color: #999; margin-top: 8rpx; } .price-row { display: flex; justify-content: space-between; margin-top: 10rpx; .price { color: #ff3b30; font-size: 30rpx; font-weight: bold; } .num { color: #999; font-size: 26rpx; } } } } }
