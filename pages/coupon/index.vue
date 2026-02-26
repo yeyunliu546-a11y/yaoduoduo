@@ -1,306 +1,225 @@
 <template>
   <view class="container">
-    <view v-if="list.length" class="coupon-list">
-      <view class="coupon-item" v-for="(item, index) in list" :key="index">
-        <view class="item-wrapper"
-          :class="[ item.status==10 ? 'color-' + color[index % color.length] : 'color-gray' ]">
-          <view class="coupon-type">{{item.strCouponType}}</view>
-          <view class="tip dis-flex flex-dir-column flex-x-center">
-            <view>
-              <text class="f-30">￥</text>
-              <text class="money">{{ item.reducePrice }}</text>
-            </view>
-            <text class="pay-line">满{{ item.minPrice }}元可用</text>
+    <view class="coupon-list">
+      <view class="coupon-item" v-for="(item, index) in list" :key="item.id || index">
+        <view class="left-box" :class="{ 'discount-bg': item.type === 20 }">
+          <view class="price-row">
+            <template v-if="item.type === 10">
+              <text class="symbol">¥</text>
+              <text class="num">{{ item.money }}</text>
+            </template>
+            <template v-else-if="item.type === 20">
+              <text class="num">{{ item.discount }}</text>
+              <text class="symbol">折</text>
+            </template>
           </view>
-          <view class="split-line"></view>
-          <view class="content dis-flex flex-dir-column flex-x-between">
-            <view class="title oneline-hide">{{ item.name }}</view>
-            <view class="bottom dis-flex flex-y-center">
-              <view class="time flex-box">
-                <text v-if="item.expireType == 10">领取{{ item.expireDay }}天内有效</text>
-                <text v-if="item.expireType == 20">
-                  <block v-if="item.startTime === item.endTime">{{ item.startTime }} 当天有效</block>
-                  <block v-else>{{ item.startTime }}~{{ item.endTime }}</block>
-                </text>
-              </view>
-              <view class="receive" v-if="item.status==10" @click="receive(item.id)">
-                <text>立即领取</text>
-              </view>
-              <view v-else class="receive state">
-                <text>{{ item.strStatus }}</text>
-              </view>
+          <view class="condition">
+            {{ item.minPoint > 0 ? `满${item.minPoint}元可用` : '无门槛' }}
+          </view>
+        </view>
+        
+        <view class="right-box">
+          <view class="info">
+            <view class="title-row">
+              <view class="tag" v-if="item.applyGoodsType === 1">采购</view>
+              <view class="tag purple" v-else-if="item.applyGoodsType === 2">调剂</view>
+              <view class="tag blue" v-else>通用</view>
+              <text class="title u-line-1">{{ item.name }}</text>
             </view>
+            <view class="desc u-line-1" v-if="item.remarks">{{ item.remarks }}</view>
+            <view class="date" v-if="item.expireType === 10">领取后 {{ item.expireDay }} 天有效</view>
+            <view class="date" v-else>{{ formatDate(item.startTime) }}-{{ formatDate(item.endTime) }}</view>
+          </view>
+          
+          <view class="btn-box">
+            <u-button 
+              size="mini" 
+              shape="circle" 
+              :type="item.isReceived ? 'info' : 'primary'" 
+              :disabled="item.isReceived"
+              @click="handleReceive(item, index)"
+            >
+              {{ item.isReceived ? '已领取' : '立即领取' }}
+            </u-button>
           </view>
         </view>
       </view>
+      
+      <u-empty v-if="!isLoading && list.length === 0" mode="coupon" margin-top="100" text="暂无优惠券可领"></u-empty>
+      <u-loadmore v-if="list.length > 0" :status="loadStatus" margin-top="30" margin-bottom="30"></u-loadmore>
     </view>
-    <empty v-if="!list.length" :isLoading="isLoading" />
   </view>
 </template>
 
 <script>
-  // import * as CouponApi from '@/api/user/coupon' // [模拟修改] 注释掉后端API
-  import { CouponTypeEnum } from '@/common/enum/coupon'
-  import Empty from '@/components/empty'
+import { getCouponList, receiveCoupon } from '@/api/user/coupon.js';
 
-  const color = ['red', 'blue', 'violet', 'yellow']
-
-  export default {
-    components: {
-      Empty
-    },
-    data() {
-      return {
-        // 枚举类
-        CouponTypeEnum,
-        // 颜色组
-        color,
-        // 优惠券列表
-        list: [],
-        // 正在加载中
-        isLoading: true
-      }
-    },
-
-    onLoad(options) {
-      // 获取优惠券列表
-      this.getCouponList()
-    },
-
-    methods: {
-
-      /**
-       * [模拟] 获取优惠券列表
-       */
-      getCouponList(load = true) {
-        const app = this
-        if(load) app.isLoading = true;
+export default {
+  data() {
+    return {
+      list: [],
+      page: 1,
+      limit: 10,
+      isLoading: true,
+      loadStatus: 'loadmore'
+    };
+  },
+  onLoad() {
+    this.loadData();
+  },
+  onPullDownRefresh() {
+    this.refresh();
+  },
+  onReachBottom() {
+    if (this.loadStatus === 'nomore' || this.loadStatus === 'loading') return;
+    this.page++;
+    this.loadData();
+  },
+  methods: {
+    formatDate(val) {
+        if (!val) return '';
+        // 【兼容性修复】iOS 不支持 '2024-06-30' 格式，需要替换为 '2024/06/30'
+        const safeVal = typeof val === 'string' ? val.replace(/-/g, '/') : val;
+        const date = new Date(safeVal);
         
-        // 模拟网络延迟 0.5秒
-        setTimeout(() => {
-          // 构造模拟数据
-          const mockList = [
-            {
-              id: 101,
-              name: '新人全场通用红包',
-              strCouponType: '全场券',
-              reducePrice: '10.00',
-              minPrice: '100.00',
-              status: 10, // 10: 可领取
-              strStatus: '立即领取',
-              expireType: 10, // 10: 天数
-              expireDay: 7
-            },
-            {
-              id: 102,
-              name: '限时满减福利券',
-              strCouponType: '满减券',
-              reducePrice: '50.00',
-              minPrice: '300.00',
-              status: 10,
-              strStatus: '立即领取',
-              expireType: 20, // 20: 时间段
-              startTime: '2023-12-01',
-              endTime: '2023-12-31'
-            },
-            {
-              id: 103,
-              name: '仅限感冒类药品使用',
-              strCouponType: '品类券',
-              reducePrice: '5.00',
-              minPrice: '20.00',
-              status: 20, // 20: 已领取
-              strStatus: '已领取',
-              expireType: 10,
-              expireDay: 30
-            },
-            {
-              id: 104,
-              name: '大额店铺优惠券',
-              strCouponType: '店铺券',
-              reducePrice: '100.00',
-              minPrice: '999.00',
-              status: 30, // 30: 已抢光
-              strStatus: '已抢光',
-              expireType: 20,
-              startTime: '2023-11-01',
-              endTime: '2023-11-15'
-            }
-          ];
-          
-          app.list = mockList;
-          app.isLoading = false;
-        }, 500);
-      },
-
-      // [模拟] 立即领取
-      receive(couponId) {
-        const app = this
-        uni.showLoading({ title: '领取中...' });
+        if (isNaN(date.getTime())) return val; 
         
-        setTimeout(() => {
-          // 1. 在列表中找到该优惠券
-          const index = app.list.findIndex(item => item.id === couponId);
-          
-          if(index !== -1) {
-            // 2. 修改状态为已领取
-            // 注意：这里为了界面刷新，直接修改对象属性可能需要$set，或者直接替换
-            app.list[index].status = 20;
-            app.list[index].strStatus = '已领取';
+        const y = date.getFullYear();
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const d = date.getDate().toString().padStart(2, '0');
+        return `${y}.${m}.${d}`;
+    },
+
+    refresh() {
+        this.page = 1;
+        this.list = [];
+        this.loadStatus = 'loading';
+        this.loadData();
+    },
+
+    normalizeData(item) {
+        return {
+            id: item.Id || item.id,
+            name: item.Name || item.name,
+            type: item.CouponType || item.couponType || 10, 
             
-            uni.hideLoading();
-            // 提示成功 (如果没有 app.$success，改用 uni.showToast)
-            if (app.$success) {
-               app.$success('领取成功');
-            } else {
-               uni.showToast({ title: '领取成功', icon: 'success' });
-            }
-          }
-        }, 600);
-      }
+            // 【关键修复】映射后端正确的字段名 reducePrice
+            money: Number(item.reducePrice || item.ReducePrice || item.Money || item.money || 0),
+            
+            // 【关键修复】映射后端正确的字段名 discountRate
+            discount: Number(item.discountRate || item.DiscountRate || item.Discount || item.discount || 0),
+            
+            // 映射 minPrice
+            minPoint: Number(item.minPrice || item.MinPrice || item.MinPoint || item.minPoint || 0),
+            
+            applyGoodsType: item.ApplyGoodsType || item.applyGoodsType || 0,
+            remarks: item.describe || item.Describe || item.Remarks || item.remarks || '', // 后端用了 describe
+            expireType: item.ExpireType || item.expireType,
+            expireDay: item.ExpireDay || item.expireDay,
+            startTime: item.StartTime || item.startTime,
+            endTime: item.EndTime || item.endTime,
+            isReceived: item.IsReceived || item.isReceived || false
+        };
+    },
 
+    loadData() {
+      this.loadStatus = 'loading';
+      getCouponList({ page: this.page, limit: this.limit }).then(res => {
+        uni.stopPullDownRefresh();
+        this.isLoading = false;
+        
+        if (res.code === 200) {
+          let rawList = [];
+          if (Array.isArray(res.result)) {
+              rawList = res.result;
+          } else if (res.result && Array.isArray(res.result.list)) {
+              rawList = res.result.list;
+          } else if (res.data && Array.isArray(res.data.list)) {
+              rawList = res.data.list;
+          }
+          
+          const cleanList = rawList.map(item => this.normalizeData(item));
+          
+          if (this.page === 1) {
+              this.list = cleanList;
+          } else {
+              const newItems = cleanList.filter(n => !this.list.some(o => o.id === n.id));
+              this.list = [...this.list, ...newItems];
+          }
+
+          if (cleanList.length < this.limit) {
+              this.loadStatus = 'nomore';
+          } else {
+              this.loadStatus = 'loadmore';
+          }
+        } else {
+            this.loadStatus = 'nomore';
+        }
+      }).catch(() => {
+        this.isLoading = false;
+        this.loadStatus = 'nomore';
+        uni.stopPullDownRefresh();
+      });
+    },
+    
+    handleReceive(item, index) {
+      if (item.isReceived) return;
+      
+      uni.showLoading({ title: '领取中' });
+      receiveCoupon({ couponId: item.id }).then(res => {
+        uni.hideLoading();
+        if (res.code === 200) {
+          uni.showToast({ title: '领取成功' });
+          const newItem = { ...this.list[index], isReceived: true };
+          this.list.splice(index, 1, newItem);
+        } else {
+          uni.showToast({ title: res.message || '领取失败', icon: 'none' });
+        }
+      });
     }
   }
+};
 </script>
 
 <style lang="scss" scoped>
-  .coupon-list {
-    padding: 20rpx;
-  }
-
-  .coupon-item {
+.container { background-color: #f5f5f5; min-height: 100vh; padding: 20rpx; }
+.coupon-list { padding-bottom: 40rpx; }
+.coupon-item {
+  display: flex; background: #fff; border-radius: 12rpx; overflow: hidden; margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05);
+  .left-box {
+    width: 200rpx; background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%);
+    color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center;
     position: relative;
-    overflow: hidden;
-    margin-bottom: 22rpx;
-  }
-
-  .item-wrapper {
-    width: 100%;
-    display: flex;
-    background: #fff;
-    border-radius: 8rpx;
-    color: #fff;
-    height: 180rpx;
-
-    .coupon-type {
-      position: absolute;
-      top: 0;
-      right: 0;
-      z-index: 10;
-      width: 128rpx;
-      padding: 3px 0;
-      background: #a771ff;
-      font-size: 20rpx;
-      text-align: center;
-      color: #ffffff;
-      transform: rotate(45deg);
-      transform-origin: 64rpx 64rpx;
+    &.discount-bg { background: linear-gradient(135deg, #ff9f43 0%, #ee5253 100%); }
+    .price-row {
+      margin-bottom: 10rpx;
+      .symbol { font-size: 24rpx; margin-right: 4rpx; }
+      .num { font-size: 56rpx; font-weight: bold; }
     }
-
-    &.color-blue {
-      background: linear-gradient(-125deg, #57bdbf, #2f9de2);
-    }
-
-    &.color-red {
-      background: linear-gradient(-128deg, #ff6d6d, #ff3636);
-    }
-
-    &.color-violet {
-      background: linear-gradient(-113deg, #ef86ff, #b66ff5);
-
-      .coupon-type {
-        background: #55b5ff;
-      }
-    }
-
-    &.color-yellow {
-      background: linear-gradient(-141deg, #f7d059, #fdb054);
-    }
-
-    &.color-gray {
-      background: linear-gradient(-113deg, #bdbdbd, #a2a1a2);
-
-      .coupon-type {
-        background: #9e9e9e;
-      }
-    }
-
-    .content {
-      flex: 1;
-      padding: 30rpx 20rpx;
-      border-radius: 8px 0 0 8px;
-
-      .title {
-        width: 400rpx;
-        font-size: 32rpx;
-      }
-
-      .bottom {
-        .time {
-          font-size: 24rpx;
-        }
-
-        .receive {
-          height: 46rpx;
-          width: 122rpx;
-          line-height: 46rpx;
-          text-align: center;
-          border: 1px solid #fff;
-          border-radius: 30rpx;
-          color: #fff;
-          font-size: 24rpx;
-
-          &.state {
-            border: none;
-          }
-        }
-      }
-    }
-
-    .tip {
-      position: relative;
-      flex: 0 0 32%;
-      text-align: center;
-      border-radius: 0 8px 8px 0;
-
-      .money {
-        font-weight: bold;
-        font-size: 52rpx;
-      }
-
-      .pay-line {
-        font-size: 22rpx;
-      }
-    }
-
-    .split-line {
-      position: relative;
-      flex: 0 0 0;
-      border-left: 4rpx solid #fff;
-      margin: 0 5px 0 3px;
-      background: #fff;
-
-      &:before,
-      {
-        border-radius: 0 0 16rpx 16rpx;
-        top: 0;
-      }
-
-      &:after {
-        border-radius: 16rpx 16rpx 0 0;
-        bottom: 0;
-      }
-
-      &:before,
-      &:after {
-        content: '';
-        position: absolute;
-        width: 24rpx;
-        height: 12rpx;
-        background: #f7f7f7;
-        left: -14rpx;
-        z-index: 1;
-      }
+    .condition { font-size: 22rpx; opacity: 0.9; }
+    &::after {
+      content: ''; position: absolute; right: -8rpx; top: 0; bottom: 0; width: 16rpx;
+      background: radial-gradient(circle, #fff 8rpx, transparent 0) 0 0/16rpx 16rpx;
     }
   }
+  .right-box {
+    flex: 1; padding: 20rpx 24rpx; display: flex; align-items: center; justify-content: space-between;
+    .info {
+      flex: 1; margin-right: 20rpx;
+      .title-row {
+        display: flex; align-items: center; margin-bottom: 12rpx;
+        .tag { 
+          font-size: 20rpx; background: #fff2e8; color: #ff9900; padding: 2rpx 8rpx; border-radius: 4rpx; margin-right: 10rpx; flex-shrink: 0;
+          &.purple { background: #f9f0ff; color: #722ed1; }
+          &.blue { background: #e6f7ff; color: #1890ff; }
+        }
+        .title { font-size: 30rpx; font-weight: bold; color: #333; }
+      }
+      .desc { font-size: 24rpx; color: #999; margin-bottom: 12rpx; }
+      .date { font-size: 22rpx; color: #ccc; }
+    }
+    .btn-box { flex-shrink: 0; }
+  }
+}
 </style>

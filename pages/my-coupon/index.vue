@@ -1,324 +1,227 @@
 <template>
-	<view class="container">
-		<mescroll-body ref="mescrollRef" :sticky="true" @init="mescrollInit" :down="{ use: false }" :up="upOption"
-			@up="upCallback">
-
-			<u-tabs :list="tabs" :is-scroll="false" :current="curTab" active-color="#FA2209" :duration="0.2"
-				@change="onChangeTab" />
-
-			<empty v-if="!list.data.length" :isLoading="isLoading"></empty>
-
-			<view class="coupon-list">
-				<view class="coupon-item" v-for="(item, index) in list.data" :key="index">
-					<view class="item-wrapper"
-						:class="['color-' + (item.status == 10 ? color[index % color.length] : 'gray')]">
-						<view class="coupon-type">{{item.strCouponType}}</view>
-						<view class="tip dis-flex flex-dir-column flex-x-center">
-							<view>
-								<text class="f-30">￥</text>
-								<text class="money">{{ item.reducePrice }}</text>
-							</view>
-							<text class="pay-line">满{{ item.minPrice }}元可用</text>
-						</view>
-						<view class="split-line"></view>
-						<view class="content dis-flex flex-dir-column flex-x-between">
-							<view class="title">{{ item.name }}</view>
-							<view class="bottom dis-flex flex-y-center">
-								<view class="time flex-box">
-									<block v-if="item.startTime === item.endTime">{{ item.startTime }} 当天有效</block>
-									<block v-else>{{ item.startTime }}~{{ item.endTime }}</block>
-								</view>
-								<view class="receive status">
-									<text>{{ item.strStatus }}</text>
-								</view>
-							</view>
-						</view>
-					</view>
-				</view>
-			</view>
-		</mescroll-body>
-	</view>
+  <view class="container">
+    <view class="tabs-box">
+      <u-tabs :list="tabList" :is-scroll="false" :current="currentTab" @change="changeTab" active-color="#2979ff"></u-tabs>
+    </view>
+    
+    <view class="coupon-list">
+      <view class="coupon-item" :class="{'gray': item.status !== 10}" v-for="(item, index) in list" :key="item.id || index">
+        <view class="left-box" :class="{ 'discount-bg': item.type === 20 }">
+          <view class="price-row">
+            <template v-if="item.type === 10">
+              <text class="symbol">¥</text>
+              <text class="num">{{ item.money }}</text>
+            </template>
+            <template v-else>
+              <text class="num">{{ item.discount }}</text>
+              <text class="symbol">折</text>
+            </template>
+          </view>
+          <view class="condition">
+            {{ item.minPoint > 0 ? `满${item.minPoint}元可用` : '无门槛' }}
+          </view>
+        </view>
+        
+        <view class="right-box">
+          <view class="info">
+            <view class="title-row">
+              <view class="tag" v-if="item.applyGoodsType === 1">采购</view>
+              <view class="tag purple" v-else-if="item.applyGoodsType === 2">调剂</view>
+              <view class="tag blue" v-else>通用</view>
+              <text class="title u-line-1">{{ item.name }}</text>
+            </view>
+            <view class="desc u-line-1" v-if="item.remarks">{{ item.remarks }}</view>
+            <view class="date">有效期至：{{ formatDate(item.endTime) }}</view>
+          </view>
+          
+          <view class="status-icon" v-if="item.status === -20">
+            <u-icon name="checkbox-mark" color="#ccc" size="40"></u-icon>
+            <text>已使用</text>
+          </view>
+          <view class="status-icon" v-if="item.status === -10">
+            <text>已过期</text>
+          </view>
+          
+          <view class="btn-box" v-if="item.status === 10">
+            <u-button size="mini" shape="circle" type="primary" @click="goHome">去使用</u-button>
+          </view>
+        </view>
+      </view>
+      
+      <u-empty v-if="!isLoading && list.length === 0" mode="coupon" margin-top="100"></u-empty>
+      <u-loadmore v-if="list.length > 0" :status="loadStatus" margin-top="30" margin-bottom="30"></u-loadmore>
+    </view>
+  </view>
 </template>
 
 <script>
-	import MescrollBody from '@/components/mescroll-uni/mescroll-body.vue'
-	import MescrollMixin from '@/components/mescroll-uni/mescroll-mixins.js'
-	import {
-		getEmptyPaginateObj,
-		getMoreListData
-	} from '@/core/app.js'
-	// import * as UserCouponApi from '@/api/user/userCoupon' // [模拟修改] 注释API
-	import {
-		CouponTypeEnum
-	} from '@/common/enum/coupon'
-	import uTabs from '@/uview-ui/components/u-tabs/u-tabs.vue';
+import { getMyCouponList } from '@/api/user/coupon.js';
 
-	const color = ['red', 'blue', 'violet', 'yellow']
-	const pageSize = 15
-	
-	// Tab配置
-	const tabs = [{
-		name: `未使用`,
-		value: '10'
-	}, {
-		name: `已使用`,
-		value: '-20'
-	}, {
-		name: `已过期`,
-		value: '-10'
-	}]
+export default {
+  data() {
+    return {
+      tabList: [
+        { name: '未使用', value: 10 },
+        { name: '已使用', value: -20 },
+        { name: '已过期', value: -10 }
+      ],
+      currentTab: 0,
+      list: [],
+      page: 1,
+      limit: 10,
+      isLoading: true,
+      loadStatus: 'loadmore'
+    };
+  },
+  onLoad() {
+    this.loadData();
+  },
+  onPullDownRefresh() {
+    this.refresh();
+  },
+  onReachBottom() {
+    if (this.loadStatus === 'nomore' || this.loadStatus === 'loading') return;
+    this.page++;
+    this.loadData();
+  },
+  methods: {
+    formatDate(val) {
+        if (!val) return '';
+        // 【兼容性修复】
+        const safeVal = typeof val === 'string' ? val.replace(/-/g, '/') : val;
+        const date = new Date(safeVal);
+        if (isNaN(date.getTime())) return val; 
+        
+        const y = date.getFullYear();
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const d = date.getDate().toString().padStart(2, '0');
+        return `${y}.${m}.${d}`;
+    },
 
-	// [模拟修改] 定义模拟数据源
-	const mockAllCoupons = [
-		// --- 未使用 (status: 10) ---
-		{ id: 1, name: '新人注册礼包', strCouponType: '全场券', reducePrice: '10.00', minPrice: '0.00', startTime: '2023-11-01', endTime: '2025-12-31', status: 10, strStatus: '去使用' },
-		{ id: 2, name: '满减优惠券', strCouponType: '满减券', reducePrice: '20.00', minPrice: '199.00', startTime: '2023-11-05', endTime: '2025-11-05', status: 10, strStatus: '去使用' },
-		{ id: 3, name: '会员专属券', strCouponType: '会员券', reducePrice: '50.00', minPrice: '500.00', startTime: '2023-10-01', endTime: '2025-10-01', status: 10, strStatus: '去使用' },
-		{ id: 4, name: '周末狂欢券', strCouponType: '限时券', reducePrice: '5.00', minPrice: '20.00', startTime: '2023-12-01', endTime: '2025-12-30', status: 10, strStatus: '去使用' },
-		
-		// --- 已使用 (status: -20) ---
-		{ id: 5, name: '双11大促红包', strCouponType: '大促券', reducePrice: '100.00', minPrice: '1000.00', startTime: '2023-11-11', endTime: '2023-11-11', status: -20, strStatus: '已使用' },
-		{ id: 6, name: '感冒灵专用券', strCouponType: '单品券', reducePrice: '2.00', minPrice: '15.00', startTime: '2023-09-01', endTime: '2023-09-30', status: -20, strStatus: '已使用' },
-		
-		// --- 已过期 (status: -10) ---
-		{ id: 7, name: '限时秒杀券', strCouponType: '秒杀券', reducePrice: '30.00', minPrice: '200.00', startTime: '2022-01-01', endTime: '2022-01-03', status: -10, strStatus: '已过期' },
-		{ id: 8, name: '旧版新人券', strCouponType: '全场券', reducePrice: '5.00', minPrice: '0.00', startTime: '2021-05-01', endTime: '2021-06-01', status: -10, strStatus: '已过期' }
-	]
+    changeTab(index) {
+      this.currentTab = index;
+      this.refresh();
+    },
+    refresh() {
+      this.page = 1;
+      this.list = [];
+      this.loadStatus = 'loading';
+      this.loadData();
+    },
 
-	export default {
-		components: {
-			MescrollBody,
-			uTabs
-		},
-		mixins: [MescrollMixin],
-		data() {
-			return {
-				CouponTypeEnum,
-				color,
-				tabs,
-				curTab: 0,
-				list: getEmptyPaginateObj(), // 初始化分页对象
-				upOption: {
-					auto: true,
-					page: {
-						size: pageSize
-					},
-					noMoreSize: 0,
-					empty: {
-						tip: '亲，暂无相关优惠券'
-					}
-				},
-				isLoading: false
-			}
-		},
+    normalizeData(item) {
+        return {
+            id: item.Id || item.id,
+            name: item.Name || item.name,
+            type: item.CouponType || item.couponType || 10,
+            
+            // 【关键修复】
+            money: Number(item.reducePrice || item.ReducePrice || item.Money || item.money || 0),
+            discount: Number(item.discountRate || item.DiscountRate || item.Discount || item.discount || 0),
+            minPoint: Number(item.minPrice || item.MinPrice || item.MinPoint || item.minPoint || 0),
+            
+            applyGoodsType: item.ApplyGoodsType || item.applyGoodsType || 0,
+            remarks: item.describe || item.Describe || item.Remarks || item.remarks || '',
+            status: item.Status || item.status, 
+            endTime: item.EndTime || item.endTime
+        };
+    },
 
-		methods: {
-
-			/**
-			 * 上拉加载的回调
-			 */
-			upCallback(page) {
-				const _this = this
-				_this.getCouponList(page.num)
-					.then(list => {
-						// mescroll 成功回调
-						// curPageDataLength: 当前页数据的长度
-						// totalSize: 数据总长度
-						const curlimit = list.data.length // 本次模拟返回的长度
-						_this.mescroll.endBySize(curlimit, list.count)
-					})
-					.catch(() => _this.mescroll.endErr())
-			},
-
-			/**
-			 * [模拟修改] 获取优惠券列表
-			 */
-			getCouponList(pageNo = 1) {
-				const _this = this
-				return new Promise((resolve, reject) => {
-					// 模拟网络请求延迟
-					setTimeout(() => {
-						const currentStatus = _this.getTabValue()
-						
-						// 1. 根据当前 Tab (status) 筛选数据
-						// status 为字符串，需要转换比较
-						const filteredList = mockAllCoupons.filter(item => item.status == currentStatus)
-						
-						// 2. 模拟分页逻辑
-						const totalCount = filteredList.length
-						const start = (pageNo - 1) * pageSize
-						const end = start + pageSize
-						const pageList = filteredList.slice(start, end)
-						
-						// 3. 组装数据结构 (保持和原 API 返回结构一致)
-						// 这里的 getMoreListData 负责将新页数据拼接到旧数据上
-						_this.list.count = totalCount
-						_this.list.data = getMoreListData(pageList, _this.list, pageNo)
-						
-						resolve(_this.list)
-					}, 500)
-				})
-			},
-
-			// 获取当前 Tab 的 value
-			getTabValue() {
-				return this.tabs[this.curTab].value
-			},
-
-			// 切换标签项
-			onChangeTab(index) {
-				const _this = this
-				_this.curTab = index
-				_this.onRefreshList()
-			},
-
-			// 刷新列表
-			onRefreshList() {
-				this.list = getEmptyPaginateObj()
-				// 重置 mescroll (回到第一页并触发 upCallback)
-				setTimeout(() => {
-					this.mescroll.resetUpScroll()
-				}, 120)
-			},
-
-		}
-	}
+    loadData() {
+      const status = this.tabList[this.currentTab].value;
+      this.loadStatus = 'loading';
+      
+      getMyCouponList({ page: this.page, limit: this.limit, status }).then(res => {
+        uni.stopPullDownRefresh();
+        this.isLoading = false;
+        
+        if (res.code === 200) {
+          let rawList = [];
+          if (Array.isArray(res.result)) {
+              rawList = res.result;
+          } else if (res.result && Array.isArray(res.result.list)) {
+              rawList = res.result.list;
+          } else if (res.data && Array.isArray(res.data.list)) {
+              rawList = res.data.list;
+          }
+          
+          const cleanList = rawList.map(item => this.normalizeData(item));
+          
+          if (this.page === 1) {
+              this.list = cleanList;
+          } else {
+              const newItems = cleanList.filter(n => !this.list.some(o => o.id === n.id));
+              this.list = [...this.list, ...newItems];
+          }
+          
+          if (cleanList.length < this.limit) {
+              this.loadStatus = 'nomore';
+          } else {
+              this.loadStatus = 'loadmore';
+          }
+        } else {
+            this.loadStatus = 'nomore';
+        }
+      }).catch(() => {
+        this.isLoading = false;
+        this.loadStatus = 'nomore';
+        uni.stopPullDownRefresh();
+      });
+    },
+    goHome() {
+      uni.switchTab({ url: '/pages/index/index' });
+    }
+  }
+};
 </script>
 
 <style lang="scss" scoped>
-	.coupon-list {
-		padding: 20rpx;
-	}
-
-	.coupon-item {
-		position: relative;
-		overflow: hidden;
-		margin-bottom: 22rpx;
-	}
-
-	.item-wrapper {
-		width: 100%;
-		display: flex;
-		background: #fff;
-		border-radius: 8rpx;
-		color: #fff;
-		height: 180rpx;
-
-		.coupon-type {
-			position: absolute;
-			top: 0;
-			right: 0;
-			z-index: 10;
-			width: 128rpx;
-			padding: 6rpx 0;
-			background: #a771ff;
-			font-size: 20rpx;
-			text-align: center;
-			color: #ffffff;
-			transform: rotate(45deg);
-			transform-origin: 64rpx 64rpx;
-		}
-
-		/* 动态颜色类名对应 */
-		&.color-blue {
-			background: linear-gradient(-125deg, #57bdbf, #2f9de2);
-		}
-
-		&.color-red {
-			background: linear-gradient(-128deg, #ff6d6d, #ff3636);
-		}
-
-		&.color-violet {
-			background: linear-gradient(-113deg, #ef86ff, #b66ff5);
-			.coupon-type { background: #55b5ff; }
-		}
-
-		&.color-yellow {
-			background: linear-gradient(-141deg, #f7d059, #fdb054);
-		}
-
-		&.color-gray {
-			background: linear-gradient(-113deg, #bdbdbd, #a2a1a2);
-			.coupon-type { background: #9e9e9e; }
-		}
-
-		.content {
-			flex: 1;
-			padding: 30rpx 20rpx;
-			border-radius: 16rpx 0 0 16rpx;
-
-			.title {
-				font-size: 32rpx;
-			}
-
-			.bottom {
-				.time {
-					font-size: 24rpx;
-				}
-
-				.receive {
-					height: 46rpx;
-					width: 122rpx;
-					line-height: 46rpx;
-					text-align: center;
-					border: 1rpx solid #fff;
-					border-radius: 30rpx;
-					color: #fff;
-					font-size: 24rpx;
-
-					&.status {
-						border: none;
-					}
-				}
-			}
-		}
-
-		.tip {
-			position: relative;
-			flex: 0 0 32%;
-			text-align: center;
-			border-radius: 0 16rpx 16rpx 0;
-
-			.money {
-				font-weight: bold;
-				font-size: 52rpx;
-			}
-
-			.pay-line {
-				font-size: 22rpx;
-			}
-		}
-
-		.split-line {
-			position: relative;
-			flex: 0 0 0;
-			border-left: 4rpx solid #fff;
-			margin: 0 10rpx 0 6rpx;
-			background: #fff;
-
-			&:before {
-				content: '';
-				position: absolute;
-				width: 24rpx;
-				height: 12rpx;
-				background: #f7f7f7;
-				left: -14rpx;
-				z-index: 1;
-				border-radius: 0 0 16rpx 16rpx;
-				top: 0;
-			}
-
-			&:after {
-				content: '';
-				position: absolute;
-				width: 24rpx;
-				height: 12rpx;
-				background: #f7f7f7;
-				left: -14rpx;
-				z-index: 1;
-				border-radius: 16rpx 16rpx 0 0;
-				bottom: 0;
-			}
-		}
-	}
+.container { background-color: #f5f5f5; min-height: 100vh; }
+.tabs-box { background: #fff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.02); }
+.coupon-list { padding: 20rpx; padding-bottom: 40rpx;}
+.coupon-item {
+  display: flex; background: #fff; border-radius: 12rpx; overflow: hidden; margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05);
+  &.gray {
+    .left-box { background: #ccc; &.discount-bg { background: #ccc; } }
+    .right-box .info .title { color: #999; }
+    .right-box .info .tag { background: #f5f5f5; color: #999; border: 1px solid #eee; }
+  }
+  .left-box {
+    width: 200rpx; background: linear-gradient(135deg, #2979ff 0%, #609df8 100%);
+    color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    position: relative;
+    &.discount-bg { background: linear-gradient(135deg, #ff9f43 0%, #feca57 100%); }
+    .price-row {
+      margin-bottom: 10rpx;
+      .symbol { font-size: 24rpx; margin-right: 4rpx; }
+      .num { font-size: 56rpx; font-weight: bold; }
+    }
+    .condition { font-size: 22rpx; opacity: 0.9; }
+    &::after {
+      content: ''; position: absolute; right: -8rpx; top: 0; bottom: 0; width: 16rpx;
+      background: radial-gradient(circle, #fff 8rpx, transparent 0) 0 0/16rpx 16rpx;
+    }
+  }
+  .right-box {
+    flex: 1; padding: 20rpx 24rpx; display: flex; align-items: center; justify-content: space-between;
+    .info {
+      flex: 1; margin-right: 20rpx;
+      .title-row {
+        display: flex; align-items: center; margin-bottom: 12rpx;
+        .tag { 
+          font-size: 20rpx; background: #e6f1fc; color: #2979ff; padding: 2rpx 8rpx; border-radius: 4rpx; margin-right: 10rpx; flex-shrink: 0;
+          &.purple { background: #f9f0ff; color: #722ed1; }
+          &.blue { background: #e6f7ff; color: #1890ff; }
+        }
+        .title { font-size: 30rpx; font-weight: bold; color: #333; }
+      }
+      .desc { font-size: 24rpx; color: #999; margin-bottom: 12rpx; }
+      .date { font-size: 22rpx; color: #ccc; }
+    }
+    .status-icon {
+      color: #ccc; font-size: 24rpx; text-align: center;
+    }
+  }
+}
 </style>
