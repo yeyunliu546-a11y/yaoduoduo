@@ -58,6 +58,23 @@
 
 			<view class="right-box">
 				<view class="fixed-header">
+					<view class="dropdown-filter-area">
+						<u-dropdown active-color="#2979ff">
+							<u-dropdown-item 
+								v-model="selectedFilter.packageType" 
+								title="包装类型" 
+								:options="dropdownPackageTypes"
+								@change="onDropdownFilterChange"
+							></u-dropdown-item>
+							<u-dropdown-item 
+								v-model="selectedFilter.standard" 
+								title="执行标准" 
+								:options="dropdownStandards"
+								@change="onDropdownFilterChange"
+							></u-dropdown-item>
+						</u-dropdown>
+					</view>
+
 					<view class="sort-toolbar">
 						<view class="sort-btn" :class="{active: currentSort === 'default'}" @click="onSort('default')">综合</view>
 						<view class="sort-btn" :class="{active: currentSort === 'sales'}" @click="onSort('sales')">
@@ -69,9 +86,6 @@
 								<view class="css-arrow up" :class="{active: currentSort === 'price' && sortOrder === 'asc'}"></view>
 								<view class="css-arrow down" :class="{active: currentSort === 'price' && sortOrder === 'desc'}"></view>
 							</view>
-						</view>
-						<view class="sort-btn filter-btn" @click="openFilter">
-							筛选 <u-icon name="list" size="28" color="#666" style="margin-left: 8rpx;"></u-icon>
 						</view>
 					</view>
 				</view>
@@ -126,33 +140,6 @@
 				</scroll-view>
 			</view>
 		</view>
-
-		<view class="custom-mask" v-if="showFilter" @click="closeFilter" @touchmove.stop.prevent></view>
-		<view class="custom-drawer" :class="{ 'show': showFilter }" @touchmove.stop.prevent>
-			<view class="drawer-container">
-				<view class="drawer-header">筛选</view>
-				<scroll-view scroll-y class="drawer-scroll">
-					<view class="drawer-content">
-						<view class="filter-block" v-if="filterOptions.packageTypes && filterOptions.packageTypes.length > 0">
-							<view class="block-title">包装类型</view>
-							<view class="tag-box">
-								<view class="tag-item" :class="{ active: tempFilter.packageType === item }" v-for="(item, index) in filterOptions.packageTypes" :key="`pkg-${index}`" @tap="onTempSelect('packageType', item)">{{ item }}</view>
-							</view>
-						</view>
-						<view class="filter-block" v-if="filterOptions.standards && filterOptions.standards.length > 0">
-							<view class="block-title">执行标准</view>
-							<view class="tag-box">
-								<view class="tag-item" :class="{ active: tempFilter.standard === item }" v-for="(item, index) in filterOptions.standards" :key="`std-${index}`" @tap="onTempSelect('standard', item)">{{ item }}</view>
-							</view>
-						</view>
-					</view>
-				</scroll-view>
-				<view class="drawer-footer">
-					<view class="drawer-btn reset" @click="resetFilter">重置</view>
-					<view class="drawer-btn confirm" @click="confirmFilter">确定</view>
-				</view>
-			</view>
-		</view>
 	</view>
 </template>
 
@@ -166,9 +153,12 @@
 				businessType: 'procurement', // 'procurement' | 'dispensing'
 				keyword: '', 
 				filterOptions: { manufacturers: [], packageTypes: [], standards: [] },
+				
+				// 下拉菜单需要的数据格式
+				dropdownPackageTypes: [{label: '全部包装', value: ''}],
+				dropdownStandards: [{label: '全部标准', value: ''}],
+
 				selectedFilter: { manufacturer: '', packageType: '', standard: '' },
-				tempFilter: { packageType: '', standard: '' },
-				showFilter: false,
 				
                 currentSort: 'default',
                 sortOrder: 'desc',      
@@ -184,13 +174,6 @@
 			this.loadGoodsData(true);
 		},
 		methods: {
-			openFilter() {
-				this.tempFilter.packageType = this.selectedFilter.packageType;
-				this.tempFilter.standard = this.selectedFilter.standard;
-				this.showFilter = true;
-			},
-			closeFilter() { this.showFilter = false; },
-
 			// 切换业务类型（采购/调剂）
 			switchBusiness(type) {
 				if (this.businessType === type) return;
@@ -199,19 +182,20 @@
 				
 				// 重置所有筛选状态
 				this.selectedFilter = { manufacturer: '', packageType: '', standard: '' };
-				this.tempFilter = { packageType: '', standard: '' };
 				this.currentSort = 'default';
 				
 				// 清空列表数据，防止残留
 				this.goodsList = []; 
 				this.filterOptions = { manufacturers: [], packageTypes: [], standards: [] };
+				this.dropdownPackageTypes = [{label: '全部包装', value: ''}];
+				this.dropdownStandards = [{label: '全部标准', value: ''}];
 				
 				// 重新加载基于当前类型的筛选条件和商品数据
 				this.loadFilterOptions();
 				this.loadGoodsData(true);
 			},
 
-			// 加载筛选条件（关键修改：传入 goodsType 进行隔离）
+			// 加载筛选条件并转换为 dropdown 需要的格式
 			loadFilterOptions() {
 				// 1: 药品采购, 2: 处方调剂
 				const goodsType = this.businessType === 'dispensing' ? 2 : 1;
@@ -219,8 +203,29 @@
 				GoodsApi.getFilterOptions({ goodsType: goodsType }).then(res => {
                     if(res.code === 200 && res.result) {
 						this.filterOptions = res.result;
+						
+						// 转换包装类型数据
+						let pkgTypes = [{label: '全部包装', value: ''}];
+						if(res.result.packageTypes) {
+							res.result.packageTypes.forEach(item => {
+								pkgTypes.push({label: item, value: item});
+							});
+						}
+						this.dropdownPackageTypes = pkgTypes;
+
+						// 转换执行标准数据
+						let stds = [{label: '全部标准', value: ''}];
+						if(res.result.standards) {
+							res.result.standards.forEach(item => {
+								stds.push({label: item, value: item});
+							});
+						}
+						this.dropdownStandards = stds;
+
 					} else {
 						this.filterOptions = { manufacturers: [], packageTypes: [], standards: [] };
+						this.dropdownPackageTypes = [{label: '全部包装', value: ''}];
+						this.dropdownStandards = [{label: '全部标准', value: ''}];
 					}
 				}).catch(err => {
 					console.error("加载筛选条件失败", err);
@@ -271,14 +276,9 @@
 				this.selectedFilter.manufacturer = name;
 				this.loadGoodsData(true);
 			},
-			onTempSelect(key, value) {
-				this.tempFilter[key] = this.tempFilter[key] === value ? '' : value;
-			},
-			resetFilter() { this.tempFilter = { packageType: '', standard: '' }; },
-			confirmFilter() {
-				this.selectedFilter.packageType = this.tempFilter.packageType;
-				this.selectedFilter.standard = this.tempFilter.standard;
-				this.showFilter = false; 
+
+			// 下拉筛选改变时触发
+			onDropdownFilterChange(val) {
 				this.loadGoodsData(true);
 			},
 
@@ -403,10 +403,14 @@
 	.right-box { flex: 1; background-color: #fff; height: 100%; display: flex; flex-direction: column; position: relative; }
     .fixed-header { background-color: #fff; border-bottom: 1px solid #f8f8f8; box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.02); flex-shrink: 0; z-index: 9; }
     
-    .sort-toolbar { display: flex; justify-content: space-around; padding: 16rpx 0; background: #fff; border-top: 1px solid #f8f8f8;
+	/* 下拉筛选区域样式 */
+	.dropdown-filter-area {
+		border-bottom: 1px solid #f2f2f2;
+	}
+
+    .sort-toolbar { display: flex; justify-content: space-around; padding: 16rpx 0; background: #fff; 
         .sort-btn { font-size: 28rpx; color: #666; display: flex; align-items: center; height: 40rpx;
             &.active { color: #2979ff; font-weight: bold; }
-			&.filter-btn { border-left: 1px solid #eee; padding-left: 30rpx; }
             
             .css-icon-box { display: flex; flex-direction: column; justify-content: center; margin-left: 8rpx; height: 100%; }
 			.css-arrow { width: 0; height: 0; border: 8rpx solid transparent; margin: 1rpx 0; }
@@ -422,20 +426,4 @@
 	.page-view { padding: 16rpx; }
 	.class-item { display: flex; margin-bottom: 30rpx; background-color: #fff; padding: 20rpx; border-radius: 12rpx; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03); border-bottom: 1px solid #f8f8f8; .item-img { width: 140rpx; height: 140rpx; border-radius: 8rpx; overflow: hidden; border: 1px solid #f0f0f0; margin-right: 20rpx; flex-shrink: 0; } .item-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4; .type-tag { display: inline-block; font-size: 20rpx; color: #fff; background: #ff9900; padding: 0 6rpx; border-radius: 4rpx; margin-right: 8rpx; vertical-align: middle; } } .item-desc { font-size: 22rpx; color: #999; margin-top: 6rpx; .ml-10 { margin-left: 10rpx; } } .item-tags { margin-top: 8rpx; .mr-10 { margin-right: 10rpx; } } .item-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx; .price-box { display: flex; align-items: baseline; .price-symbol { color: #ff3b30; font-size: 24rpx; } .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; } .unit-text { font-size: 22rpx; color: #999; margin-left: 2rpx; } .vip-tag { font-size: 18rpx; color: #bfa170; border: 1px solid #bfa170; padding: 0 6rpx; border-radius: 4rpx; margin-left: 10rpx; transform: scale(0.9); } } .cart-box { display: flex; align-items: center; .sales { font-size: 20rpx; color: #ccc; } .add-btn-circle { width: 50rpx; height: 50rpx; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 12rpx; box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3); color: #fff; font-size: 40rpx; font-weight: bold; line-height: 1; padding-bottom: 4rpx; &.dispensing-btn { background: #ff9900; box-shadow: 0 2rpx 6rpx rgba(255, 153, 0, 0.3); } } } } } }
 	.loading-center { padding: 50rpx; display: flex; justify-content: center; }
-
-	.custom-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
-	.custom-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 80%; background-color: #fff; z-index: 999; transform: translateX(100%); transition: transform 0.3s ease; 
-		&.show { transform: translateX(0); }
-		.drawer-container { width: 100%; height: 100%; display: flex; flex-direction: column; }
-		.drawer-header { height: 88rpx; line-height: 88rpx; text-align: center; font-size: 32rpx; font-weight: bold; border-bottom: 1px solid #f0f0f0; }
-		.drawer-scroll { flex: 1; height: 0; padding: 24rpx; }
-		.filter-block { margin-bottom: 40rpx; 
-			.block-title { font-size: 28rpx; font-weight: bold; color: #333; margin-bottom: 20rpx; }
-			.tag-box { display: flex; flex-wrap: wrap; 
-				.tag-item { min-width: 160rpx; height: 64rpx; line-height: 64rpx; text-align: center; background-color: #f6f6f6; border-radius: 32rpx; font-size: 26rpx; color: #666; margin-right: 20rpx; margin-bottom: 20rpx; padding: 0 20rpx; border: 1px solid transparent; 
-					&.active { background-color: #e6f1fc; color: #2979ff; font-weight: 500; border-color: #2979ff; } } } }
-		.drawer-footer { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 30rpx; border-top: 1px solid #f0f0f0; background-color: #fff; padding-bottom: calc(20rpx + constant(safe-area-inset-bottom)); padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); 
-			.drawer-btn { width: 48%; height: 80rpx; line-height: 80rpx; text-align: center; border-radius: 40rpx; font-size: 28rpx; 
-				&.reset { background-color: #f6f6f6; color: #666; }
-				&.confirm { background-color: #2979ff; color: #fff; } } } }
 </style>

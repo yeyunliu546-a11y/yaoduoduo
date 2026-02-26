@@ -1,46 +1,58 @@
 <template>
-  <view class="container">
+  <view class="login-container">
+    <view class="top-bg"></view>
+    
     <view class="header">
-      <text class="title">{{ loginMode === 'sms' ? '手机号登录' : '账号/手机号登录' }}</text>
-      <text class="desc">建议使用微信一键登录</text>
+      <text class="title">药多多线上平台</text>
+      <text class="subtitle">欢迎登录，{{ loginMode === 'sms' ? '请进行手机验证' : '请输入账号和密码' }}</text>
     </view>
 
-    <view class="form">
-      <input 
-        v-model="mobile" 
-        type="text"
-        :placeholder="loginMode === 'sms' ? '请输入手机号码' : '请输入账号/手机号'"
-        class="input"
-      />
+    <view class="form-box">
+      <view class="input-group">
+        <u-icon name="account" color="#c0c4cc" size="40" class="input-icon"></u-icon>
+        <input 
+          v-model="mobile" 
+          type="text"
+          :placeholder="loginMode === 'sms' ? '请输入手机号码' : '请输入账号/手机号'"
+          class="input-box"
+          placeholder-class="placeholder"
+        />
+      </view>
 
-      <view v-if="loginMode === 'sms'" class="sms-row">
+      <view v-if="loginMode === 'sms'" class="input-group">
+        <u-icon name="lock" color="#c0c4cc" size="40" class="input-icon"></u-icon>
         <input 
           v-model="smsCode" 
+          type="number"
+          maxlength="6"
           placeholder="请输入短信验证码"
-          class="input sms-input"
+          class="input-box"
+          placeholder-class="placeholder"
         />
-        <button 
-          :disabled="isSending || !canSend" 
-          @click="handleSendSms"
-          class="sms-btn"
-        >
-          {{ isSending ? `(${countdown}s)` : '获取验证码' }}
-        </button>
+        <view class="sms-btn" :class="{ 'disabled': isSending || !canSend }" @click="handleSendSms">
+          {{ isSending ? `${countdown}s后重发` : '获取验证码' }}
+        </view>
       </view>
 
       <block v-else>
-        <input 
-          v-model="password" 
-          type="password"
-          placeholder="请输入密码"
-          class="input"
-        />
+        <view class="input-group">
+          <u-icon name="lock" color="#c0c4cc" size="40" class="input-icon"></u-icon>
+          <input 
+            v-model="password" 
+            type="password"
+            placeholder="请输入密码"
+            class="input-box"
+            placeholder-class="placeholder"
+          />
+        </view>
         
-        <view class="captcha-row">
+        <view class="input-group">
+          <u-icon name="photo" color="#c0c4cc" size="40" class="input-icon"></u-icon>
           <input 
             v-model="captchaCode" 
-            placeholder="请输入右侧验证码"
-            class="input captcha-input"
+            placeholder="请输入图形验证码"
+            class="input-box"
+            placeholder-class="placeholder"
           />
           <image 
             :src="captchaBase64" 
@@ -49,21 +61,45 @@
             @click="refreshCaptcha"
           />
         </view>
-        <view class="captcha-tip" @click="refreshCaptcha">看不清？点击图片换一张</view>
+        <view class="captcha-tip" @click="refreshCaptcha">看不清？点击换一张</view>
       </block>
 
-      <button @click="handleLogin" class="login-btn">登录</button>
-      
-      <button @click="wechatLogin" class="wechat-login-btn">
-        <image src="/static/wechat-icon.png" class="wechat-icon" /> 微信一键登录
+      <button class="primary-btn" hover-class="btn-hover" @click="handleLogin">
+        {{ loginMode === 'sms' ? '验证码登录' : '密 码 登 录' }}
       </button>
-      
-      <view @click="toggleLoginMode" class="toggle-mode">
-        {{ loginMode === 'sms' ? '切换为账号密码登录' : '切换为验证码登录' }}
+
+      <view class="divider-box">
+        <text class="line"></text>
+        <text class="text">或者</text>
+        <text class="line"></text>
       </view>
 
-      <view @click="skipLogin" class="skip">暂不登录</view>
+      <button class="wechat-login-btn" hover-class="btn-hover" @click="wechatLogin">
+        <u-icon name="weixin-fill" color="#ffffff" size="44"></u-icon>
+        <text class="text">微信一键登录</text>
+      </button>
+
+      <view class="action-row">
+        <text class="toggle-mode" @click="toggleLoginMode">
+          {{ loginMode === 'sms' ? '切换为账号密码登录' : '切换为手机验证码登录' }}
+        </text>
+      </view>
     </view>
+
+    <view class="footer-area">
+      <view class="service-tip" @click="showService = true">
+        遇到问题？<text class="link">联系客服</text>
+      </view>
+    </view>
+
+    <u-action-sheet 
+      :list="serviceList" 
+      v-model="showService" 
+      @click="handleServiceClick"
+      border-radius="24"
+      cancel-text="取消"
+    ></u-action-sheet>
+
   </view>
 </template>
 
@@ -86,7 +122,14 @@ export default {
       
       smsVerifyCodeId: '', 
       isSending: false,
-      countdown: 60
+      countdown: 60,
+
+      // --- 客服组件相关数据 ---
+      showService: false,
+      serviceList: [
+        { text: '在线客服 (工作日 9:00-18:00)', subText: '解答您的操作疑问' },
+        { text: '拨打热线电话: 400-XXX-XXXX', color: '#2979ff' } // TODO: 修改为真实的客服电话
+      ]
     }
   },
   computed: {
@@ -102,11 +145,26 @@ export default {
     }
   },
   methods: {
+    // ----------------------------------------------------
+    // 客服列表点击处理
+    // ----------------------------------------------------
+    handleServiceClick(index) {
+        if (index === 0) {
+            // 在线客服逻辑 (可调整为跳转在线聊天页面)
+            uni.showToast({ title: '请在小程序“我的”页面联系在线客服', icon: 'none' });
+        } else if (index === 1) {
+            // 拨打电话
+            uni.makePhoneCall({
+                phoneNumber: '400-123-4567' // TODO: 替换为实际客服电话
+            });
+        }
+    },
+
     // 刷新/获取图形验证码
     async refreshCaptcha() {
       try {
         const res = await apiAuth.getImageCaptcha();
-        // 注意：根据文档 Result 是大写，但 api 层可能处理过，这里做个兼容
+        // 兼容大小写
         const result = res.Result || res.result; 
         if (res.Code === 200 || res.code === 200) {
           let base64 = result.Base64Str || result.base64Str;
@@ -134,18 +192,17 @@ export default {
     // ----------------------------------------------------
     wechatLogin() {
       // #ifdef MP-WEIXIN
-      uni.showLoading({ title: '正在登录...' });
+      uni.showLoading({ title: '正在拉起微信授权' });
       
       uni.login({
         provider: 'weixin',
         success: async (loginRes) => {
           if (loginRes.code) {
             try {
-              // 调用 Vuex Action
               const res = await this.$store.dispatch('LoginByWechat', {
                 WxCode: loginRes.code,
                 InviteCode: '',
-                AppKey: 'MP-WEIXIN' // 必须加这个，保持与账号登录一致 
+                AppKey: 'MP-WEIXIN' 
               });
               this.processLoginResult(res);
             } catch (err) {
@@ -166,7 +223,7 @@ export default {
       // #endif
       
       // #ifndef MP-WEIXIN
-      uni.showToast({ title: '请在微信小程序中测试', icon: 'none' });
+      uni.showToast({ title: '请在微信小程序中测试该功能', icon: 'none' });
       // #endif
     },
 
@@ -178,21 +235,8 @@ export default {
       
       try {
         this.isSending = true;
-        // 如果有图形验证码逻辑，这里需要先校验图形验证码再发短信(根据文档，手机登录前置是发短信)
-        // 注意：文档中发送短信验证码接口 /api/Check/SendSmsCaptcha 参数需要 VerifyCodeId 和 VerifyCode
-        // 如果业务逻辑需要图形验证码来防刷短信，请在此处补充弹窗逻辑。
-        // 根据你提供的文档，发送短信需要图形验证码。这里简化处理，假设不需要或者已经验证。
-        // 如果文档强制需要图形验证码ID，你需要先调用 getImageCaptcha，弹窗让用户输入，然后再调 SendSmsCaptcha
-        
-        // 修正：根据文档，发送短信接口为 /api/Check/SendSmsCaptcha
-        // 但你的 api/login/login.js 里写的是 sendSmsCode。请确保 API 文件路径对齐。
-        // 这里假设 api 文件已对齐
-        
         const res = await apiAuth.sendSmsCode({ 
-            Mobile: this.mobile, 
-            // 如果接口不需要图形验证码，这行可忽略；如果需要，流程需调整
-            // 根据文档: "Mobile", "VerifyCodeId", "VerifyCode" 是参数
-            // 这里为了演示，暂时只传 Mobile，如果报错请按文档补充图形验证码逻辑
+            Mobile: this.mobile
         });
 
         const result = res.Result || res.result;
@@ -239,7 +283,6 @@ export default {
                uni.hideLoading();
                return uni.showToast({ title: '请输入验证码', icon: 'none' });
            }
-           // 调用 Vuex Action
            res = await this.$store.dispatch('LoginByPhone', { 
                Mobile: this.mobile, 
                SmsCode: this.smsCode,
@@ -255,9 +298,8 @@ export default {
                return uni.showToast({ title: '请输入图形验证码', icon: 'none' });
            }
 
-           // 调用 Vuex Action
            res = await this.$store.dispatch('LoginByPassword', { 
-               AppKey: 'MP-WEIXIN', // 文档固定值
+               AppKey: 'MP-WEIXIN', 
                Account: this.mobile,  
                Password: this.password, 
                VerifyCodeId: this.captchaId,
@@ -270,7 +312,7 @@ export default {
       } catch (err) {
         uni.hideLoading();
         console.error('登录异常', err);
-        if (this.loginMode === 'password') this.refreshCaptcha(); // 失败刷新验证码
+        if (this.loginMode === 'password') this.refreshCaptcha(); 
         
         let msg = err.Message || err.message || '登录失败';
         uni.showToast({ title: msg, icon: 'none' });
@@ -283,22 +325,17 @@ export default {
     processLoginResult(res) {
         uni.hideLoading();
         
-        // 兼容大小写
         const code = res.Code !== undefined ? res.Code : res.code;
         const result = res.Result || res.result;
 
         if (code === 200 && result) {
             uni.showToast({ title: '登录成功', icon: 'success' });
             
-            // 获取核心状态字段
-            // 注意：API文档返回的是 PascalCase (如 ClinicAuditStatus)，但前端 request 可能转为 camelCase
-            // 这里做防御性编程
             const hasProfile = result.HasClinicProfile !== undefined ? result.HasClinicProfile : result.hasClinicProfile;
             const status = result.ClinicAuditStatus !== undefined ? result.ClinicAuditStatus : result.clinicAuditStatus;
             const remark = result.AuditRemark || result.auditRemark || '';
 
             setTimeout(() => {
-                // 场景1: 未提交过诊所资料
                 if (!hasProfile || status === -99) {
                     uni.showModal({
                         title: '提示',
@@ -310,7 +347,6 @@ export default {
                         }
                     });
                 }
-                // 场景2: 审核拒绝
                 else if (status === -1) {
                     uni.showModal({
                         title: '审核未通过',
@@ -318,17 +354,13 @@ export default {
                         showCancel: false,
                         confirmText: '去修改',
                         success: () => {
-                            // 跳转到上传页，可能需要传递参数让页面回显或重置状态
                             uni.redirectTo({ url: '/pages/auth/certUpload?status=-1' });
                         }
                     });
                 }
-                // 场景3: 待审核
                 else if (status === 0) {
-                    // 跳转到状态查看页
                     uni.redirectTo({ url: '/pages/auth/certStatus' });
                 }
-                // 场景4: 审核通过 (status === 1)
                 else {
                     uni.switchTab({ url: '/pages/index/index' });
                 }
@@ -338,31 +370,217 @@ export default {
             uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
             if (this.loginMode === 'password') this.refreshCaptcha();
         }
-    },
-
-    skipLogin() {
-      uni.switchTab({ url: '/pages/index/index' });
     }
   }
 }
 </script>
 
 <style lang="scss">
-.container { padding: 40rpx; background-color: #f5f5f5; min-height: 100vh; }
-.header { text-align: center; margin-bottom: 60rpx; }
-.title { font-size: 36rpx; font-weight: bold; margin-bottom: 20rpx; display: block;}
-.desc { font-size: 28rpx; color: #999; }
-.input { width: 100%; height: 80rpx; border: 1px solid #ddd; border-radius: 8rpx; padding: 0 20rpx; margin-bottom: 30rpx; box-sizing: border-box; background: #fff; }
-.sms-row { display: flex; gap: 20rpx; }
-.sms-input { flex: 1; margin-bottom: 0; }
-.sms-btn { height: 80rpx; line-height: 80rpx; background: #e0e0e0; color: #333; padding: 0 20rpx; font-size: 26rpx; }
-.login-btn { width: 100%; height: 80rpx; background: #007aff; color: white; border-radius: 8rpx; margin-top: 40rpx; }
-.toggle-mode { text-align: center; margin-top: 20rpx; color: #007aff; font-size: 28rpx; }
-.wechat-login-btn { width: 100%; height: 80rpx; background: #07c160; color: white; border-radius: 8rpx; margin-top: 20rpx; display: flex; align-items: center; justify-content: center; font-size: 28rpx; }
-.wechat-icon { width: 36rpx; height: 36rpx; margin-right: 16rpx; }
-.skip { text-align: center; margin-top: 40rpx; color: #007aff; }
-.captcha-row { display: flex; align-items: center; gap: 20rpx; margin-bottom: 10rpx; }
-.captcha-input { flex: 1; margin-bottom: 0; }
-.captcha-img { width: 200rpx; height: 80rpx; background-color: #fff; border: 1px solid #ddd; border-radius: 8rpx; }
-.captcha-tip { font-size: 24rpx; color: #999; text-align: right; margin-bottom: 30rpx; }
+/* 强行接管整个页面的背景色 */
+page {
+  background-color: #ffffff;
+  height: 100%;
+}
+
+.login-container {
+  min-height: 100vh;
+  background-color: #ffffff;
+  padding: 0 60rpx;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* 顶部装饰背景 */
+.top-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 480rpx;
+  background: linear-gradient(180deg, rgba(41, 121, 255, 0.08) 0%, rgba(255, 255, 255, 1) 100%);
+  z-index: 0;
+}
+
+/* 标题区 */
+.header {
+  position: relative;
+  z-index: 1;
+  margin-top: 180rpx; /* 避开状态栏 */
+  margin-bottom: 80rpx;
+  
+  .title {
+    font-size: 52rpx;
+    font-weight: bold;
+    color: #333;
+    display: block;
+    margin-bottom: 20rpx;
+    letter-spacing: 2rpx;
+  }
+  .subtitle {
+    font-size: 28rpx;
+    color: #999;
+  }
+}
+
+/* 核心表单区 */
+.form-box {
+  position: relative;
+  z-index: 1;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  height: 100rpx;
+  background-color: #f6f7f9;
+  border-radius: 50rpx;
+  margin-bottom: 36rpx;
+  padding: 0 30rpx;
+  
+  .input-icon {
+    margin-right: 16rpx;
+  }
+  
+  .input-box {
+    flex: 1;
+    font-size: 30rpx;
+    color: #333;
+    height: 100%;
+  }
+  
+  .placeholder {
+    color: #c0c4cc;
+  }
+  
+  .sms-btn {
+    font-size: 28rpx;
+    color: #2979ff;
+    padding-left: 20rpx;
+    border-left: 1px solid #e4e7ed;
+    height: 40rpx;
+    line-height: 40rpx;
+    
+    &.disabled {
+      color: #999;
+    }
+  }
+  
+  .captcha-img {
+    width: 180rpx;
+    height: 64rpx;
+    border-radius: 32rpx;
+    margin-left: 20rpx;
+    background-color: #fff;
+  }
+}
+
+.captcha-tip {
+  font-size: 24rpx;
+  color: #999;
+  text-align: right;
+  margin-top: -16rpx;
+  margin-bottom: 30rpx;
+  padding-right: 20rpx;
+}
+
+/* 主操作按钮 */
+.primary-btn {
+  width: 100%;
+  height: 96rpx;
+  background: linear-gradient(90deg, #5b8ff9, #2979ff);
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: bold;
+  border-radius: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 60rpx;
+  box-shadow: 0 8rpx 20rpx rgba(41, 121, 255, 0.3);
+  border: none;
+  
+  &::after { border: none; }
+}
+
+.btn-hover {
+  opacity: 0.8;
+  transform: scale(0.98);
+}
+
+/* 分割线 */
+.divider-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 50rpx 0 10rpx;
+  
+  .line {
+    flex: 1;
+    height: 1px;
+    background-color: #f0f0f0;
+  }
+  
+  .text {
+    font-size: 24rpx;
+    color: #999;
+    margin: 0 30rpx;
+  }
+}
+
+/* 微信一键登录按钮 */
+.wechat-login-btn {
+  width: 100%;
+  height: 96rpx;
+  background-color: #07c160;
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: bold;
+  border-radius: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10rpx;
+  box-shadow: 0 8rpx 20rpx rgba(7, 193, 96, 0.3);
+  border: none;
+  
+  .text {
+    margin-left: 12rpx;
+  }
+  
+  &::after { border: none; }
+}
+
+/* 账号切换区 */
+.action-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 40rpx;
+  
+  .toggle-mode {
+    font-size: 28rpx;
+    color: #666;
+  }
+}
+
+/* 底部区域 */
+.footer-area {
+  margin-top: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  margin-bottom: 60rpx;
+  position: relative;
+  z-index: 1;
+  
+  .service-tip {
+    text-align: center;
+    font-size: 26rpx;
+    color: #999;
+    
+    .link {
+      color: #2979ff;
+      margin-left: 8rpx;
+      font-weight: bold;
+    }
+  }
+}
 </style>

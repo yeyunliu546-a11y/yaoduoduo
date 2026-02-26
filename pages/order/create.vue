@@ -459,70 +459,90 @@ export default {
     },
 
     submitOrder() {
-      if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
-
-      this.submitting = true;
-      const idsStr = this.getIdsString();
-
-      const commonPayload = {
-          addressId: this.address.id,
-          buyerRemark: this.buyerRemark,
-          payType: 20, 
-          appKey: 'MP-WEIXIN',
-          // 提交订单时，如果是 emptyGuid，传给后端
-          UserCouponId: this.currentCouponId 
-      };
-
-      let promise;
-      
-      if (this.isDispensing) {
-          promise = createPrescriptionOrder({
-              ...commonPayload,
-              cartIds: idsStr,
-              dosageDays: Number(this.prescription.days),
-              dailyPackages: Number(this.prescription.packs),
-              medicalAdvice: this.doctorAdvice
-          });
-      } else {
-          promise = createOrder({
-              ...commonPayload,
-              cartIds: idsStr, 
-              StrCartIds: idsStr,
-              orderType: 1
-          });
-      }
-
-      promise.then(res => {
-        this.submitting = false;
-        
-        const code = res.code !== undefined ? res.code : res.Code;
-        if (code === 200) {
-          const result = res.result || res.data || res.Result || {};
+          if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
+    
+          this.submitting = true;
+          const idsStr = this.getIdsString();
+    
+          // 1. 公共参数（不包含优惠券字段）
+          const commonPayload = {
+              addressId: this.address.id,
+              buyerRemark: this.buyerRemark,
+              payType: 20, 
+              appKey: 'MP-WEIXIN'
+          };
+    
+          let promise;
           
-          if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
-              return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
-          }
-
-          const orderId = result.orderId;
-          const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams;
-          
-          const detailUrl = this.isDispensing 
-                            ? `/pages/order/detail?id=${orderId}&type=2` 
-                            : `/pages/order/detail?id=${orderId}&type=1`;
-
-          if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
-              this.callWechatPay(wxPayParams, detailUrl);
+          if (this.isDispensing) {
+              // ==========================================
+              // 🛒 处方订单逻辑
+              // ==========================================
+              const payload = {
+                  ...commonPayload,
+                  cartIds: idsStr,
+                  dosageDays: Number(this.prescription.days),
+                  dailyPackages: Number(this.prescription.packs),
+                  medicalAdvice: this.doctorAdvice
+              };
+              
+              // 【核心修正】处方订单必须用 CouponId 这个字段名
+              if (this.currentCouponId) {
+                  payload.CouponId = this.currentCouponId;
+              }
+              
+              promise = createPrescriptionOrder(payload);
+              
           } else {
-              uni.showToast({ title: '下单成功', icon: 'success' });
-              setTimeout(() => {
-                 uni.redirectTo({ url: detailUrl }); 
-              }, 1500);
+              // ==========================================
+              // 🛍️ 普通采购订单逻辑
+              // ==========================================
+              const payload = {
+                  ...commonPayload,
+                  cartIds: idsStr, 
+                  StrCartIds: idsStr,
+                  orderType: 1
+              };
+              
+              // 【核心修正】普通采购必须用 UserCouponId 这个字段名
+              if (this.currentCouponId) {
+                  payload.UserCouponId = this.currentCouponId;
+              }
+              
+              promise = createOrder(payload);
           }
-        } else {
-          uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' });
-        }
-      }).catch(() => { this.submitting = false; });
-    },
+    
+          promise.then(res => {
+            this.submitting = false;
+            
+            const code = res.code !== undefined ? res.code : res.Code;
+            if (code === 200) {
+              const result = res.result || res.data || res.Result || {};
+              
+              if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
+                  return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+              }
+    
+              const orderId = result.orderId || result.OrderId;
+              const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams;
+              
+              const detailUrl = this.isDispensing 
+                                ? `/pages/order/detail?id=${orderId}&type=2` 
+                                : `/pages/order/detail?id=${orderId}&type=1`;
+    
+              if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+                  this.callWechatPay(wxPayParams, detailUrl);
+              } else {
+                  uni.showToast({ title: '下单成功', icon: 'success' });
+                  setTimeout(() => {
+                     uni.redirectTo({ url: detailUrl }); 
+                  }, 1500);
+              }
+            } else {
+              uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' });
+            }
+          }).catch(() => { this.submitting = false; });
+        },
     
     callWechatPay(params, detailUrl) {
         uni.requestPayment({
