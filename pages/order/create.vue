@@ -156,418 +156,391 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { ref, reactive } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import { getOrderSettlement, getPrescriptionSettlement, createOrder, createPrescriptionOrder } from '@/api/order/order.js';
 import { getAvailableCoupons } from '@/api/user/coupon.js';
 
-export default {
-  data() {
-    return {
-      options: {},
-      isDispensing: false,
-      address: {},
-      goodsList: [],
-      
-      settlement: { totalAmount: '0.00', freightAmount: '0.00', couponAmount: '0.00', payAmount: '0.00' },
-      
-      prescription: { days: 0, packs: 0 },
-      doctorAdvice: '',
-      buyerRemark: '',
-      submitting: false,
-      parsedCartIds: [],
-      
-      // 优惠券相关
-      showCouponPopup: false,
-      couponList: [], 
-      currentCouponId: '', 
-      currentCouponName: '', 
-      // 空GUID，用于标记"不使用"
-      emptyGuid: '00000000-0000-0000-0000-000000000000',
-      
-      // 标记是否是用户手动选择（如果是，则不再被后端覆盖）
-      isManualSelected: false
-    };
-  },
-  onLoad(options) {
-    this.options = options;
-    this.isDispensing = options.type === 'dispensing';
+// --- 响应式状态 ---
+const optionsData = ref({});
+const isDispensing = ref(false);
+const address = ref({});
+const goodsList = ref([]);
+
+const settlement = reactive({ totalAmount: '0.00', freightAmount: '0.00', couponAmount: '0.00', payAmount: '0.00' });
+const prescription = reactive({ days: 0, packs: 0 });
+const doctorAdvice = ref('');
+const buyerRemark = ref('');
+const submitting = ref(false);
+const parsedCartIds = ref([]);
+
+// --- 优惠券状态 ---
+const showCouponPopup = ref(false);
+const couponList = ref([]); 
+const currentCouponId = ref(''); 
+const currentCouponName = ref(''); 
+const emptyGuid = '00000000-0000-0000-0000-000000000000';
+const isManualSelected = ref(false);
+
+// --- 生命周期 ---
+onLoad((options) => {
+    optionsData.value = options;
+    isDispensing.value = options.type === 'dispensing';
     
     try {
         if (options.cartIds) {
             let raw = decodeURIComponent(options.cartIds);
             if (raw.startsWith('[') && raw.endsWith(']')) {
-                this.parsedCartIds = JSON.parse(raw);
+                parsedCartIds.value = JSON.parse(raw);
             } else {
-                this.parsedCartIds = raw.split(',');
+                parsedCartIds.value = raw.split(',');
             }
         }
     } catch (e) {
-        this.parsedCartIds = [];
+        parsedCartIds.value = [];
     }
-    if (!Array.isArray(this.parsedCartIds)) {
-        this.parsedCartIds = [];
+    if (!Array.isArray(parsedCartIds.value)) {
+        parsedCartIds.value = [];
     }
 
-    if (this.isDispensing) {
-        this.prescription.days = options.days || 3;
-        this.prescription.packs = options.packs || 2;
-        if(options.advice) this.doctorAdvice = decodeURIComponent(options.advice);
+    if (isDispensing.value) {
+        prescription.days = options.days || 3;
+        prescription.packs = options.packs || 2;
+        if(options.advice) doctorAdvice.value = decodeURIComponent(options.advice);
     }
     
-    this.loadSettlement();
-  },
-  
-  onShow() {
-      const selectedAddr = uni.getStorageSync('selectedAddress');
-      if (selectedAddr) {
-          this.address = selectedAddr;
-          uni.removeStorageSync('selectedAddress'); 
-          // 地址变了可能影响运费，重新拉一次，但要保持用户选的券
-          this.loadSettlement();
-      }
-  },
-  
-  methods: {
-    formatDate(val) {
-        if (!val) return '';
-        const safeVal = typeof val === 'string' ? val.replace(/-/g, '/') : val;
-        const date = new Date(safeVal);
-        if (isNaN(date.getTime())) return val; 
-        const y = date.getFullYear();
-        const m = (date.getMonth() + 1).toString().padStart(2, '0');
-        const d = date.getDate().toString().padStart(2, '0');
-        return `${y}.${m}.${d}`;
-    },
+    loadSettlement();
+});
 
-    normalizeCoupon(item) {
-        return {
-            id: item.Id || item.id,
-            name: item.Name || item.name,
-            type: item.CouponType || item.couponType || 10,
-            money: Number(item.reducePrice || item.ReducePrice || item.Money || item.money || item.CouponMoney || 0),
-            discount: Number(item.discountRate || item.DiscountRate || item.Discount || item.discount || 0),
-            minPoint: Number(item.minPrice || item.MinPrice || item.MinPoint || item.minPoint || 0),
-            applyGoodsType: item.ApplyGoodsType || item.applyGoodsType || 0,
-            endTime: item.EndTime || item.endTime,
-            isAvailable: true 
+onShow(() => {
+    const selectedAddr = uni.getStorageSync('selectedAddress');
+    if (selectedAddr) {
+        address.value = selectedAddr;
+        uni.removeStorageSync('selectedAddress'); 
+        loadSettlement();
+    }
+});
+
+// --- 方法 ---
+const formatDate = (val) => {
+    if (!val) return '';
+    const safeVal = typeof val === 'string' ? val.replace(/-/g, '/') : val;
+    const date = new Date(safeVal);
+    if (isNaN(date.getTime())) return val; 
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}.${m}.${d}`;
+};
+
+const normalizeCoupon = (item) => {
+    return {
+        id: item.Id || item.id,
+        name: item.Name || item.name,
+        type: item.CouponType || item.couponType || 10,
+        money: Number(item.reducePrice || item.ReducePrice || item.Money || item.money || item.CouponMoney || 0),
+        discount: Number(item.discountRate || item.DiscountRate || item.Discount || item.discount || 0),
+        minPoint: Number(item.minPrice || item.MinPrice || item.MinPoint || item.minPoint || 0),
+        applyGoodsType: item.ApplyGoodsType || item.applyGoodsType || 0,
+        endTime: item.EndTime || item.endTime,
+        isAvailable: true 
+    };
+};
+
+const getIdsString = () => {
+    return parsedCartIds.value.join(',');
+};
+
+const loadSettlement = () => {
+    uni.showLoading({ title: '计算中...', mask: true });
+    const idsStr = getIdsString();
+    
+    const commonParams = { couponId: '' }; 
+
+    let promise;
+    if (isDispensing.value) {
+        const params = {
+            cartIds: idsStr, 
+            dosageDays: Number(prescription.days), 
+            dailyPackages: Number(prescription.packs),
+            addressId: address.value.id || '',
+            ...commonParams
         };
-    },
-
-    getIdsString() {
-        const rawList = JSON.parse(JSON.stringify(this.parsedCartIds));
-        return rawList.join(',');
-    },
-
-    loadSettlement() {
-      uni.showLoading({ title: '计算中...', mask: true });
-      const idsStr = this.getIdsString();
-      
-      const commonParams = { couponId: '' }; // 初始化只传空，让后端给默认值
-
-      let promise;
-      if (this.isDispensing) {
-          const params = {
-              cartIds: idsStr, 
-              dosageDays: Number(this.prescription.days), 
-              dailyPackages: Number(this.prescription.packs),
-              addressId: this.address.id || '',
-              ...commonParams
-          };
-          promise = getPrescriptionSettlement(params);
-      } else {
-          const params = { 
-              StrCartIds: idsStr,
-              addressId: this.address.id || '',
-              ...commonParams 
-          };
-          promise = getOrderSettlement(params);
-      }
-      
-      promise.then(res => {
-          uni.hideLoading();
-          if(res.code === 200 || res.Code === 200) {
-              const data = res.result || res.data || res.Result;
-              if (this.isDispensing) {
-                  this.handlePrescriptionData(data);
-              } else {
-                  this.handleProcurementData(data);
-              }
-              // 结算数据回来后，再拉取可用优惠券
-              this.loadCoupons();
-          } else {
-              uni.showToast({ title: res.message || '结算失败', icon: 'none' });
-          }
-      }).catch(() => uni.hideLoading());
-    },
-
-    loadCoupons() {
-        if(!this.settlement.totalAmount || this.settlement.totalAmount == 0) return;
-
-        const goodsItems = this.goodsList.map(item => ({
-            GoodsId: item.goodsId, 
-            GoodsType: this.isDispensing ? 2 : 1, 
-            Count: item.num || 1
-        }));
-
-        const payload = {
-            OrderAmount: Number(this.settlement.totalAmount),
-            GoodsItems: goodsItems
+        promise = getPrescriptionSettlement(params);
+    } else {
+        const params = { 
+            StrCartIds: idsStr,
+            addressId: address.value.id || '',
+            ...commonParams 
         };
-
-        getAvailableCoupons(payload).then(res => {
-            if (res.code === 200) {
-                let list = [];
-                const r = res.result;
-                if (r) {
-                    if (Array.isArray(r.availableCoupons)) list = r.availableCoupons;
-                    else if (Array.isArray(r.list)) list = r.list;
-                    else if (Array.isArray(r)) list = r;
-                }
-                
-                this.couponList = list.map(item => this.normalizeCoupon(item));
-                
-                // 如果用户还没有手动选过券，尝试应用后端推荐
-                if (!this.isManualSelected) {
-                    // 后端可能会在 getAvailableCoupons 返回 bestCouponId
-                    if (r && r.bestCouponId) {
-                        this.currentCouponId = r.bestCouponId;
-                        this.currentCouponName = r.bestCouponName || '';
-                        // 刷新一下金额（因为loadSettlement里的可能不准）
-                        const bestCoupon = this.couponList.find(c => c.id === r.bestCouponId);
-                        if(bestCoupon) this.applyCouponLocally(bestCoupon);
-                    }
-                }
-            }
-        });
-    },
-
-    // 核心：处理基础数据
-    handleBaseData(data) {
-        const priceInfo = data.priceInfo || data.order || {};
-        
-        // 1. 设置基础金额（不含优惠）
-        this.settlement.totalAmount = priceInfo.totalGoodsPrice || priceInfo.orderTotalPrice || data.totalAmount || 0;
-        this.settlement.freightAmount = priceInfo.freightPrice || priceInfo.freightMoney || data.freightPrice || 0;
-        
-        // 2. 如果用户还没手动操作，暂时信任后端的计算结果
-        if (!this.isManualSelected) {
-            this.settlement.payAmount = priceInfo.payPrice || priceInfo.orderPayPrice || data.payPrice || 0;
-            this.settlement.couponAmount = priceInfo.couponPrice || priceInfo.couponMoney || data.couponAmount || 0;
-        } else {
-            // 如果用户已经手动操作过，立刻重新执行本地计算，防止后端覆盖
-            this.recalcLocalPrice();
-        }
-
-        if (!this.address.id && data.address) this.address = data.address;
-    },
-
-    handlePrescriptionData(data) {
-        if(!data) return;
-        const list = data.listGoods || data.list || data.goodsList || [];
-        this.goodsList = list.map(item => ({
-            goodsId: item.goodsId || item.id,
-            goodsName: item.goodsName || item.GoodsName,
-            imageUrl: item.urlImg || item.goodsImage || '/static/default-goods.png',
-            manufacturer: item.manufacturer || '配方颗粒',
-            weight: item.goodsWeight || 0,
-            price: item.unitPrice || 0,
-            num: 1
-        }));
-        this.handleBaseData(data);
-    },
-
-    handleProcurementData(data) {
-        if(!data) return;
-        const rawList = data.listGoods || [];
-        this.goodsList = rawList.map(item => {
-            const sku = item.sku || {};
-            return {
-                goodsId: sku.id || item.goodsId,
-                goodsName: sku.goodsName || '未知商品',
-                imageUrl: sku.skuUrlImage || sku.urlImg || '/static/default-goods.png',
-                spec: sku.skuName || '默认规格',
-                price: sku.salePrice || 0,
-                num: item.quantity || 1
-            };
-        });
-        this.handleBaseData(data);
-    },
-
-    chooseAddress() {
-      uni.navigateTo({ url: '/pages/address/index?source=order' });
-    },
+        promise = getOrderSettlement(params);
+    }
     
-    openCouponPopup() {
-        this.showCouponPopup = true;
-    },
-    
-    // 【核心】前端本地计算：选中优惠券
-    selectCoupon(item) {
-        if (this.currentCouponId === item.id) return;
-        
-        this.isManualSelected = true; // 标记为手动模式
-        this.currentCouponId = item.id;
-        this.currentCouponName = item.name;
-        
-        this.applyCouponLocally(item);
-        this.showCouponPopup = false;
-    },
-    
-    // 【核心】前端本地计算：应用优惠
-    applyCouponLocally(item) {
-        let deduction = 0;
-        const goodsTotal = Number(this.settlement.totalAmount);
-        
-        if (item.type === 10) { // 满减
-            deduction = item.money;
-        } else if (item.type === 20) { // 折扣
-            // 折扣公式：商品总价 * (1 - 折扣率/10)
-            const rate = item.discount;
-            if (rate > 0 && rate < 10) {
-                deduction = goodsTotal * (1 - rate / 10);
-            }
-        }
-        
-        // 优惠不能超过商品总价
-        if (deduction > goodsTotal) deduction = goodsTotal;
-        
-        this.settlement.couponAmount = deduction.toFixed(2);
-        this.recalcLocalPrice();
-    },
-    
-    // 【核心】前端本地计算：不使用优惠券
-    clearCoupon() {
-        this.isManualSelected = true; // 标记为手动模式
-        this.currentCouponId = this.emptyGuid;
-        this.currentCouponName = '';
-        this.settlement.couponAmount = '0.00';
-        
-        this.recalcLocalPrice();
-        this.showCouponPopup = false;
-    },
-    
-    // 【核心】本地重算最终支付价
-    recalcLocalPrice() {
-        const total = Number(this.settlement.totalAmount);
-        const freight = Number(this.settlement.freightAmount);
-        const coupon = Number(this.settlement.couponAmount);
-        
-        let pay = total + freight - coupon;
-        if (pay < 0) pay = 0;
-        
-        this.settlement.payAmount = pay.toFixed(2);
-    },
-
-    submitOrder() {
-          if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
-    
-          this.submitting = true;
-          const idsStr = this.getIdsString();
-    
-          // 1. 公共参数（不包含优惠券字段）
-          const commonPayload = {
-              addressId: this.address.id,
-              buyerRemark: this.buyerRemark,
-              payType: 20, 
-              appKey: 'MP-WEIXIN'
-          };
-    
-          let promise;
-          
-          if (this.isDispensing) {
-              // ==========================================
-              // 🛒 处方订单逻辑
-              // ==========================================
-              const payload = {
-                  ...commonPayload,
-                  cartIds: idsStr,
-                  dosageDays: Number(this.prescription.days),
-                  dailyPackages: Number(this.prescription.packs),
-                  medicalAdvice: this.doctorAdvice
-              };
-              
-              // 【核心修正】处方订单必须用 CouponId 这个字段名
-              if (this.currentCouponId) {
-                  payload.CouponId = this.currentCouponId;
-              }
-              
-              promise = createPrescriptionOrder(payload);
-              
-          } else {
-              // ==========================================
-              // 🛍️ 普通采购订单逻辑
-              // ==========================================
-              const payload = {
-                  ...commonPayload,
-                  cartIds: idsStr, 
-                  StrCartIds: idsStr,
-                  orderType: 1
-              };
-              
-              // 【核心修正】普通采购必须用 UserCouponId 这个字段名
-              if (this.currentCouponId) {
-                  payload.UserCouponId = this.currentCouponId;
-              }
-              
-              promise = createOrder(payload);
-          }
-    
-          promise.then(res => {
-            this.submitting = false;
-            
-            const code = res.code !== undefined ? res.code : res.Code;
-            if (code === 200) {
-              const result = res.result || res.data || res.Result || {};
-              
-              if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
-                  return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
-              }
-    
-              const orderId = result.orderId || result.OrderId;
-              const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams;
-              
-              const detailUrl = this.isDispensing 
-                                ? `/pages/order/detail?id=${orderId}&type=2` 
-                                : `/pages/order/detail?id=${orderId}&type=1`;
-    
-              if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
-                  this.callWechatPay(wxPayParams, detailUrl);
-              } else {
-                  uni.showToast({ title: '下单成功', icon: 'success' });
-                  setTimeout(() => {
-                     uni.redirectTo({ url: detailUrl }); 
-                  }, 1500);
-              }
+    promise.then(res => {
+        uni.hideLoading();
+        if(res.code === 200 || res.Code === 200) {
+            const data = res.result || res.data || res.Result;
+            if (isDispensing.value) {
+                handlePrescriptionData(data);
             } else {
-              uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' });
+                handleProcurementData(data);
             }
-          }).catch(() => { this.submitting = false; });
-        },
+            loadCoupons();
+        } else {
+            uni.showToast({ title: res.message || '结算失败', icon: 'none' });
+        }
+    }).catch(() => uni.hideLoading());
+};
+
+const loadCoupons = () => {
+    if(!settlement.totalAmount || settlement.totalAmount == 0) return;
+
+    const goodsItems = goodsList.value.map(item => ({
+        GoodsId: item.goodsId, 
+        GoodsType: isDispensing.value ? 2 : 1, 
+        Count: item.num || 1
+    }));
+
+    const payload = {
+        OrderAmount: Number(settlement.totalAmount),
+        GoodsItems: goodsItems
+    };
+
+    getAvailableCoupons(payload).then(res => {
+        if (res.code === 200) {
+            let list = [];
+            const r = res.result;
+            if (r) {
+                if (Array.isArray(r.availableCoupons)) list = r.availableCoupons;
+                else if (Array.isArray(r.list)) list = r.list;
+                else if (Array.isArray(r)) list = r;
+            }
+            
+            couponList.value = list.map(item => normalizeCoupon(item));
+            
+            if (!isManualSelected.value) {
+                if (r && r.bestCouponId) {
+                    currentCouponId.value = r.bestCouponId;
+                    currentCouponName.value = r.bestCouponName || '';
+                    const bestCoupon = couponList.value.find(c => c.id === r.bestCouponId);
+                    if(bestCoupon) applyCouponLocally(bestCoupon);
+                }
+            }
+        }
+    });
+};
+
+const handleBaseData = (data) => {
+    const priceInfo = data.priceInfo || data.order || {};
     
-    callWechatPay(params, detailUrl) {
-        uni.requestPayment({
-            provider: 'wxpay',
-            timeStamp: String(params.timeStamp || params.TimeStamp),
-            nonceStr: params.nonceStr || params.NonceStr,
-            package: params.package || params.Package,
-            signType: params.signType || params.SignType || 'MD5',
-            paySign: params.paySign || params.PaySign,
-            success: (payRes) => {
-                uni.showToast({ title: '支付成功', icon: 'success' });
+    settlement.totalAmount = priceInfo.totalGoodsPrice || priceInfo.orderTotalPrice || data.totalAmount || 0;
+    settlement.freightAmount = priceInfo.freightPrice || priceInfo.freightMoney || data.freightPrice || 0;
+    
+    if (!isManualSelected.value) {
+        settlement.payAmount = priceInfo.payPrice || priceInfo.orderPayPrice || data.payPrice || 0;
+        settlement.couponAmount = priceInfo.couponPrice || priceInfo.couponMoney || data.couponAmount || 0;
+    } else {
+        recalcLocalPrice();
+    }
+
+    if (!address.value.id && data.address) address.value = data.address;
+};
+
+const handlePrescriptionData = (data) => {
+    if(!data) return;
+    const list = data.listGoods || data.list || data.goodsList || [];
+    goodsList.value = list.map(item => ({
+        goodsId: item.goodsId || item.id,
+        goodsName: item.goodsName || item.GoodsName,
+        imageUrl: item.urlImg || item.goodsImage || '/static/default-goods.png',
+        manufacturer: item.manufacturer || '配方颗粒',
+        weight: item.goodsWeight || 0,
+        price: item.unitPrice || 0,
+        num: 1
+    }));
+    handleBaseData(data);
+};
+
+const handleProcurementData = (data) => {
+    if(!data) return;
+    const rawList = data.listGoods || [];
+    goodsList.value = rawList.map(item => {
+        const sku = item.sku || {};
+        return {
+            goodsId: sku.id || item.goodsId,
+            goodsName: sku.goodsName || '未知商品',
+            imageUrl: sku.skuUrlImage || sku.urlImg || '/static/default-goods.png',
+            spec: sku.skuName || '默认规格',
+            price: sku.salePrice || 0,
+            num: item.quantity || 1
+        };
+    });
+    handleBaseData(data);
+};
+
+const chooseAddress = () => {
+    uni.navigateTo({ url: '/pages/address/index?source=order' });
+};
+
+const openCouponPopup = () => {
+    showCouponPopup.value = true;
+};
+
+const selectCoupon = (item) => {
+    if (currentCouponId.value === item.id) return;
+    
+    isManualSelected.value = true;
+    currentCouponId.value = item.id;
+    currentCouponName.value = item.name;
+    
+    applyCouponLocally(item);
+    showCouponPopup.value = false;
+};
+
+const applyCouponLocally = (item) => {
+    let deduction = 0;
+    const goodsTotal = Number(settlement.totalAmount);
+    
+    if (item.type === 10) { 
+        deduction = item.money;
+    } else if (item.type === 20) { 
+        const rate = item.discount;
+        if (rate > 0 && rate < 10) {
+            deduction = goodsTotal * (1 - rate / 10);
+        }
+    }
+    
+    if (deduction > goodsTotal) deduction = goodsTotal;
+    
+    settlement.couponAmount = deduction.toFixed(2);
+    recalcLocalPrice();
+};
+
+const clearCoupon = () => {
+    isManualSelected.value = true;
+    currentCouponId.value = emptyGuid;
+    currentCouponName.value = '';
+    settlement.couponAmount = '0.00';
+    
+    recalcLocalPrice();
+    showCouponPopup.value = false;
+};
+
+const recalcLocalPrice = () => {
+    const total = Number(settlement.totalAmount);
+    const freight = Number(settlement.freightAmount);
+    const coupon = Number(settlement.couponAmount);
+    
+    let pay = total + freight - coupon;
+    if (pay < 0) pay = 0;
+    
+    settlement.payAmount = pay.toFixed(2);
+};
+
+const submitOrder = () => {
+    if (!address.value.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
+
+    submitting.value = true;
+    const idsStr = getIdsString();
+
+    const commonPayload = {
+        addressId: address.value.id,
+        buyerRemark: buyerRemark.value,
+        payType: 20, 
+        appKey: 'MP-WEIXIN'
+    };
+
+    let promise;
+    
+    if (isDispensing.value) {
+        const payload = {
+            ...commonPayload,
+            cartIds: idsStr,
+            dosageDays: Number(prescription.days),
+            dailyPackages: Number(prescription.packs),
+            medicalAdvice: doctorAdvice.value
+        };
+        
+        if (currentCouponId.value) {
+            payload.CouponId = currentCouponId.value;
+        }
+        
+        promise = createPrescriptionOrder(payload);
+    } else {
+        const payload = {
+            ...commonPayload,
+            cartIds: idsStr, 
+            StrCartIds: idsStr,
+            orderType: 1
+        };
+        
+        if (currentCouponId.value) {
+            payload.UserCouponId = currentCouponId.value;
+        }
+        
+        promise = createOrder(payload);
+    }
+
+    promise.then(res => {
+        submitting.value = false;
+        
+        const code = res.code !== undefined ? res.code : res.Code;
+        if (code === 200) {
+            const result = res.result || res.data || res.Result || {};
+            
+            if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
+                return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+            }
+
+            const orderId = result.orderId || result.OrderId;
+            
+            // 【核心防漏容错处理】防止嵌套层级问题导致跳过支付
+            const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams || (result.timeStamp || result.TimeStamp ? result : null);
+            
+            const detailUrl = isDispensing.value 
+                            ? `/pages/order/detail?id=${orderId}&type=2` 
+                            : `/pages/order/detail?id=${orderId}&type=1`;
+
+            if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+                callWechatPay(wxPayParams, detailUrl);
+            } else {
+                uni.showToast({ title: '下单成功', icon: 'success' });
                 setTimeout(() => {
-                    uni.redirectTo({ url: detailUrl });
-                }, 1500);
-            },
-            fail: (err) => {
-                console.log('支付取消或失败', err);
-                uni.showToast({ title: '取消支付', icon: 'none' });
-                setTimeout(() => {
-                    uni.redirectTo({ url: detailUrl });
+                    uni.redirectTo({ url: detailUrl }); 
                 }, 1500);
             }
-        });
-    }
-  }
+        } else {
+            uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' });
+        }
+    }).catch(() => { submitting.value = false; });
+};
+
+// 【核心修复：剥离 Vue3 Proxy 代理】
+const callWechatPay = (params, detailUrl) => {
+    // Vue3 环境下 params 有可能是一个 Proxy 对象，微信 SDK 不识别 Proxy 会直接拦截报 banned
+    // 解决方案：使用 String() 强制转换拆解为一个极其干净的普通 JS 对象
+    uni.requestPayment({
+        provider: 'wxpay',
+        timeStamp: String(params.timeStamp || params.TimeStamp),
+        nonceStr: String(params.nonceStr || params.NonceStr),
+        package: String(params.package || params.Package),
+        signType: String(params.signType || params.SignType || 'MD5'),
+        paySign: String(params.paySign || params.PaySign),
+        success: (payRes) => {
+            uni.showToast({ title: '支付成功', icon: 'success' });
+            setTimeout(() => {
+                uni.redirectTo({ url: detailUrl });
+            }, 1500);
+        },
+        fail: (err) => {
+            console.log('支付取消或失败', err);
+            uni.showToast({ title: '取消支付', icon: 'none' });
+            setTimeout(() => {
+                uni.redirectTo({ url: detailUrl });
+            }, 1500);
+        }
+    });
 };
 </script>
 
