@@ -32,6 +32,11 @@
             </view>
           </view>
         </view>
+        
+        <view v-if="!orderInfo.goodsList || orderInfo.goodsList.length === 0" style="text-align:center; padding: 40rpx 0; color:#999; font-size:24rpx; background: #f9f9f9; border-radius: 12rpx;">
+            <view>⚠️ 该订单缺乏商品详细数据</view>
+            <view style="font-size: 20rpx; margin-top: 8rpx;">请联系后端排查详情接口返回值</view>
+        </view>
       </view>
 
       <view class="info-card">
@@ -59,11 +64,8 @@
 
       <view class="footer-bar">
         <view class="btn plain" v-if="orderInfo.orderStatus === 10" @click="handleCancel">取消订单</view>
-        
         <view class="btn plain" v-if="orderInfo.orderStatus === 20" @click="handleApplyRefund">申请退款</view>
-        
         <view class="btn primary" v-if="orderInfo.orderStatus === 10" @click="handlePay">立即支付</view>
-        
         <view class="btn primary" v-if="orderInfo.orderStatus === 30" @click="handleReceive">确认收货</view>
       </view>
     </block>
@@ -113,6 +115,10 @@ export default {
         const code = res.code !== undefined ? res.code : res.Code;
         if (code === 200) {
           const data = res.result || res.data || res.Result;
+          
+          // 🚨 这一行非常重要！如果订单不显示商品，立刻打开控制台看打印出来的这个 data 里面到底有没有商品数组！
+          console.log('【后端返回的订单详细原始数据】', data);
+          
           this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
             uni.showToast({ title: res.message || res.Message || '获取详情失败', icon: 'none' });
@@ -120,37 +126,70 @@ export default {
       }).catch(() => this.loading = false);
     },
     
+    // 【新增核心功能】：前端智能合并相同商品
+    aggregateGoods(rawGoodsList, defaultSpec) {
+        const grouped = [];
+        const map = {};
+        
+        rawGoodsList.forEach(g => {
+            const sku = g.sku || g.goods || g;
+            
+            // 提取基础信息
+            const name = sku.GoodsName || sku.goodsName || g.goodsName || g.GoodsName || '未知商品';
+            const spec = sku.SkuName || sku.skuName || sku.spec || g.specification || g.spec || defaultSpec;
+            const imageUrl = sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/default-goods.png';
+            const salePrice = sku.SalePrice || sku.PayPrice || sku.unitPrice || sku.salePrice || sku.price || g.unitPrice || g.salePrice || g.price || 0;
+            const num = Number(sku.Quantity || sku.quantity || g.quantity || g.goodsNum || g.buyNum || 1);
+            
+            // 用 商品名+规格 作为合并的唯一 Key
+            const uniqueKey = `${name}_${spec}`;
+            
+            if (map[uniqueKey]) {
+                // 如果已经存在，单纯把数量累加起来
+                map[uniqueKey].goodsNum += num;
+            } else {
+                // 如果是新商品，存入字典并添加到结果数组
+                map[uniqueKey] = {
+                    goodsName: name,
+                    spec: spec,
+                    imageUrl: imageUrl,
+                    salePrice: Number(salePrice).toFixed(2),
+                    goodsNum: num
+                };
+                grouped.push(map[uniqueKey]);
+            }
+        });
+        
+        return grouped;
+    },
+
     handlePrescriptionData(data) {
         if(!data) return;
-        const rawGoods = data.listSku || [];
+        const rawGoods = data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [];
+        
         this.orderInfo = {
-            id: data.id,
-            orderNo: data.orderNo,
-            orderStatus: data.orderStatus,
-            orderStatusName: this.getStatusName(data.orderStatus),
-            createTime: data.createTime,
-            payTime: data.payTime,
-            expressNo: data.expressNo,
-            dosageDesc: data.dosageDesc || `共服${data.dosageDays}天`,
-            medicalAdvice: data.medicalAdvice,
-            buyerRemark: data.buyerRemark,
-            receiverName: data.address?.name || '',
-            receiverPhone: data.address?.phone || '',
-            receiverAddress: data.address?.fullAddress || '',
-            goodsList: rawGoods.map(g => ({
-               goodsName: g.goodsName,
-               spec: '配方颗粒',
-               imageUrl: g.urlImg || '/static/default-goods.png',
-               salePrice: g.unitPrice,
-               goodsNum: 1 
-            }))
+            id: data.id || data.Id,
+            orderNo: data.orderNo || data.OrderNo,
+            orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
+            orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
+            createTime: data.createTime || data.CreateTime,
+            payTime: data.payTime || data.PayTime,
+            expressNo: data.expressNo || data.ExpressNo,
+            dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
+            medicalAdvice: data.medicalAdvice || data.MedicalAdvice,
+            buyerRemark: data.buyerRemark || data.BuyerRemark,
+            receiverName: data.address?.name || data.AddressInfo?.Name || '',
+            receiverPhone: data.address?.phone || data.AddressInfo?.Phone || '',
+            receiverAddress: data.address?.fullAddress || data.AddressInfo?.FullAddress || '',
+            // 调用合并方法
+            goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
         };
     },
     
     handleProcurementData(data) {
         if(!data) return;
-        const rawGoods = data.OrderSkus || data.ListSku || [];
-        const addr = data.AddressInfo || data.OrderAddressInfo || {};
+        const rawGoods = data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || [];
+        const addr = data.AddressInfo || data.OrderAddressInfo || data.address || {};
         
         this.orderInfo = {
             id: data.Id || data.id,
@@ -161,16 +200,11 @@ export default {
             payTime: data.PayTime || data.payTime,
             expressNo: data.ExpressNo || data.expressNo,
             buyerRemark: data.BuyerRemark || data.buyerRemark,
-            receiverName: addr.Name || addr.name || '',
-            receiverPhone: addr.Phone || addr.phone || '',
-            receiverAddress: addr.FullAddress || addr.fullAddress || '',
-            goodsList: rawGoods.map(g => ({
-               goodsName: g.GoodsName || g.goodsName,
-               spec: g.SkuName || g.skuName || '默认规格',
-               imageUrl: g.ImageUrl || g.GoodsImg || g.imageUrl || '/static/default-goods.png',
-               salePrice: g.SalePrice || g.PayPrice || g.salePrice,
-               goodsNum: g.Quantity || g.quantity
-            }))
+            receiverName: addr.Name || addr.name || addr.receiverName || '',
+            receiverPhone: addr.Phone || addr.phone || addr.receiverPhone || '',
+            receiverAddress: addr.FullAddress || addr.fullAddress || addr.receiverAddress || '',
+            // 调用合并方法
+            goodsList: this.aggregateGoods(rawGoods, '默认规格')
         };
     },
     
@@ -183,23 +217,10 @@ export default {
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
         let payApi;
-
         if (this.isPrescription) {
-            payApi = payPrescriptionOrder({ 
-                orderId: this.orderId,
-                payType: 20, 
-                appKey: 'MP-WEIXIN'
-            });
+            payApi = payPrescriptionOrder({ orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' });
         } else {
-            // 双管齐下，大写小写都传，兼容老接口
-            payApi = payOrder({ 
-                OrderId: this.orderId, 
-                PayType: 20,           
-                AppKey: 'MP-WEIXIN',   
-                orderId: this.orderId, 
-                payType: 20,
-                appKey: 'MP-WEIXIN'
-            });
+            payApi = payOrder({ OrderId: this.orderId, PayType: 20, AppKey: 'MP-WEIXIN', orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' });
         }
 
         payApi.then(res => {
@@ -226,12 +247,11 @@ export default {
                         setTimeout(() => { this.loadDetail(); }, 1500);
                     },
                     fail: (err) => {
-                        console.log('支付取消或失败', err);
                         uni.showToast({ title: '已取消支付', icon: 'none' });
                     }
                 });
             } else {
-                uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
+                uni.showToast({ title: res.message || res.Message || '获取参数失败', icon: 'none' });
             }
         }).catch(err => {
             uni.hideLoading();
@@ -245,19 +265,14 @@ export default {
             success: (r) => {
                 if(r.confirm) {
                     uni.showLoading();
-                    let promise = this.isPrescription 
-                        ? confirmPrescriptionReceive({ orderId: this.orderId })
-                        : confirmReceive({ OrderId: this.orderId });
-
+                    let promise = this.isPrescription ? confirmPrescriptionReceive({ orderId: this.orderId }) : confirmReceive({ OrderId: this.orderId });
                     promise.then(res => {
                         uni.hideLoading();
                         const code = res.code !== undefined ? res.code : res.Code;
                         if(code === 200) {
                             uni.showToast({ title: '收货成功' });
                             this.loadDetail();
-                        } else {
-                            uni.showToast({ title: res.message || res.Message || '操作失败', icon: 'none' });
-                        }
+                        } else { uni.showToast({ title: res.message || res.Message || '操作失败', icon: 'none' }); }
                     }).catch(() => uni.hideLoading());
                 }
             }
@@ -270,19 +285,14 @@ export default {
             success: (r) => {
                 if(r.confirm) {
                     uni.showLoading();
-                    let promise = this.isPrescription
-                        ? cancelPrescriptionOrder({ orderId: this.orderId })
-                        : cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
-
+                    let promise = this.isPrescription ? cancelPrescriptionOrder({ orderId: this.orderId }) : cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
                     promise.then(res => {
                         uni.hideLoading();
                         const code = res.code !== undefined ? res.code : res.Code;
                         if(code === 200) {
                             uni.showToast({ title: '已取消' });
                             this.loadDetail(); 
-                        } else {
-                            uni.showToast({ title: res.message || res.Message || '取消失败', icon: 'none' });
-                        }
+                        } else { uni.showToast({ title: res.message || res.Message || '取消失败', icon: 'none' }); }
                     }).catch(() => uni.hideLoading());
                 }
             }
@@ -291,10 +301,7 @@ export default {
 
     handleApplyRefund() {
         uni.showModal({
-            title: '申请退款',
-            editable: true,
-            placeholderText: '请输入退款理由',
-            content: '确定要申请退款吗？',
+            title: '申请退款', editable: true, placeholderText: '请输入退款理由', content: '确定要申请退款吗？',
             success: (res) => {
                 if(res.confirm) {
                     const reason = res.content || '用户申请退款';
@@ -303,9 +310,7 @@ export default {
                         if(code === 200) {
                             uni.showToast({ title: '申请提交成功' });
                             this.loadDetail();
-                        } else {
-                            uni.showToast({ title: r.message || r.Message || '申请失败', icon: 'none' });
-                        }
+                        } else { uni.showToast({ title: r.message || r.Message || '申请失败', icon: 'none' }); }
                     });
                 }
             }
@@ -337,10 +342,10 @@ export default {
   &:last-child { margin-bottom: 0; }
   .thumb { width: 160rpx; height: 160rpx; border-radius: 12rpx; margin-right: 20rpx; background: #f9f9f9; }
   .content { flex: 1; display: flex; flex-direction: column; justify-content: space-between;
-    .title { font-size: 28rpx; color: #333; }
-    .spec { font-size: 24rpx; color: #999; }
-    .price-row { display: flex; justify-content: space-between; 
-      .price { color: #333; font-weight: bold; font-size: 30rpx; }
+    .title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4;}
+    .spec { font-size: 24rpx; color: #999; margin-top: 8rpx;}
+    .price-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12rpx;
+      .price { color: #ff3b30; font-weight: bold; font-size: 32rpx; }
       .num { color: #999; font-size: 26rpx; }
     }
   }
@@ -352,10 +357,10 @@ export default {
   .value { color: #333; max-width: 70%; text-align: right;}
 }
 
-.footer-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; height: 100rpx; display: flex; align-items: center; justify-content: flex-end; padding: 0 30rpx; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05);
-  .btn { width: 180rpx; height: 72rpx; line-height: 72rpx; text-align: center; border-radius: 36rpx; font-size: 28rpx; margin-left: 20rpx;
+.footer-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; height: 100rpx; display: flex; align-items: center; justify-content: flex-end; padding: 0 30rpx; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); z-index: 99;
+  .btn { width: 180rpx; height: 72rpx; line-height: 72rpx; text-align: center; border-radius: 36rpx; font-size: 28rpx; margin-left: 20rpx; font-weight: bold;
     &.plain { border: 1px solid #ccc; color: #666; }
-    &.primary { background: #2979ff; color: #fff; }
+    &.primary { background: linear-gradient(135deg, #007aff, #0055ff); color: #fff; border: none;}
   }
 }
 </style>

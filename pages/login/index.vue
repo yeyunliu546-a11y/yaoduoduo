@@ -64,6 +64,19 @@
         <view class="captcha-tip" @click="refreshCaptcha">看不清？点击换一张</view>
       </block>
 
+      <view class="agreement-box">
+        <view class="checkbox-wrap" @click="isAgree = !isAgree">
+          <u-icon v-if="isAgree" name="checkmark-circle-fill" color="#2979ff" size="36"></u-icon>
+          <view v-else class="circle-icon"></view>
+        </view>
+        <view class="agreement-text">
+          <text @click="isAgree = !isAgree">我已仔细阅读并同意</text>
+          <text class="link" @click.stop="goToAgreement('service')">《用户服务协议》</text>
+          <text @click="isAgree = !isAgree">与</text>
+          <text class="link" @click.stop="goToAgreement('privacy')">《隐私政策》</text>
+        </view>
+      </view>
+
       <button class="primary-btn" hover-class="btn-hover" @click="handleLogin">
         {{ loginMode === 'sms' ? '验证码登录' : '密 码 登 录' }}
       </button>
@@ -110,12 +123,12 @@ export default {
   data() {
     return {
       loginMode: 'sms', // 'sms' | 'password'
+      isAgree: false,   // 💡 新增：协议勾选状态
       
       mobile: '',
       smsCode: '',
       password: '',
       
-      // 图形验证码字段
       captchaCode: '',      
       captchaBase64: '',    
       captchaId: '',        
@@ -124,47 +137,45 @@ export default {
       isSending: false,
       countdown: 60,
 
-      // --- 客服组件相关数据 ---
       showService: false,
       serviceList: [
         { text: '在线客服 (工作日 9:00-18:00)', subText: '解答您的操作疑问' },
-        { text: '拨打热线电话: 400-XXX-XXXX', color: '#2979ff' } // TODO: 修改为真实的客服电话
+        { text: '拨打热线电话: 400-XXX-XXXX', color: '#2979ff' }
       ]
     }
   },
   computed: {
     canSend() {
-      // 简单校验手机号
       return /^1[3-9]\d{9}$/.test(this.mobile)
     }
   },
   onLoad() {
-    // 如果默认是密码登录，需要加载图形验证码
     if (this.loginMode === 'password') {
       this.refreshCaptcha();
     }
   },
   methods: {
-    // ----------------------------------------------------
-    // 客服列表点击处理
-    // ----------------------------------------------------
+    // 💡 新增：跳转到协议富文本页面
+   // 将原来的跳转方法替换为：
+       goToAgreement(type) {
+         uni.navigateTo({
+           url: `/pages/login/agreement?type=${type}` 
+         });
+       },
+
     handleServiceClick(index) {
         if (index === 0) {
-            // 在线客服逻辑 (可调整为跳转在线聊天页面)
             uni.showToast({ title: '请在小程序“我的”页面联系在线客服', icon: 'none' });
         } else if (index === 1) {
-            // 拨打电话
             uni.makePhoneCall({
-                phoneNumber: '400-123-4567' // TODO: 替换为实际客服电话
+                phoneNumber: '400-123-4567' 
             });
         }
     },
 
-    // 刷新/获取图形验证码
     async refreshCaptcha() {
       try {
         const res = await apiAuth.getImageCaptcha();
-        // 兼容大小写
         const result = res.Result || res.result; 
         if (res.Code === 200 || res.code === 200) {
           let base64 = result.Base64Str || result.base64Str;
@@ -187,10 +198,12 @@ export default {
       }
     },
 
-    // ----------------------------------------------------
-    // 1. 微信一键登录
-    // ----------------------------------------------------
     wechatLogin() {
+      // 💡 新增：严格阻断未勾选协议的用户
+      if (!this.isAgree) {
+        return uni.showToast({ title: '请先仔细阅读并勾选同意下方协议', icon: 'none' });
+      }
+
       // #ifdef MP-WEIXIN
       uni.showLoading({ title: '正在拉起微信授权' });
       
@@ -227,9 +240,6 @@ export default {
       // #endif
     },
 
-    // ----------------------------------------------------
-    // 2. 发送短信
-    // ----------------------------------------------------
     async handleSendSms() {
       if (!this.canSend) return uni.showToast({ title: '手机号格式不正确', icon: 'none' });
       
@@ -268,10 +278,12 @@ export default {
       }
     },
 
-    // ----------------------------------------------------
-    // 3. 账号/短信登录
-    // ----------------------------------------------------
     async handleLogin() {
+      // 💡 新增：严格阻断未勾选协议的用户
+      if (!this.isAgree) {
+        return uni.showToast({ title: '请先仔细阅读并勾选同意下方协议', icon: 'none' });
+      }
+
       if (!this.mobile) return uni.showToast({ title: '请输入账号/手机号', icon: 'none' });
       
       uni.showLoading({ title: '登录中...' });
@@ -319,9 +331,6 @@ export default {
       }
     },
 
-    // ----------------------------------------------------
-    // 4. 结果处理 & 智能跳转 (核心逻辑)
-    // ----------------------------------------------------
     processLoginResult(res) {
         uni.hideLoading();
         
@@ -376,7 +385,6 @@ export default {
 </script>
 
 <style lang="scss">
-/* 强行接管整个页面的背景色 */
 page {
   background-color: #ffffff;
   height: 100%;
@@ -391,7 +399,6 @@ page {
   position: relative;
 }
 
-/* 顶部装饰背景 */
 .top-bg {
   position: absolute;
   top: 0;
@@ -402,11 +409,10 @@ page {
   z-index: 0;
 }
 
-/* 标题区 */
 .header {
   position: relative;
   z-index: 1;
-  margin-top: 180rpx; /* 避开状态栏 */
+  margin-top: 180rpx; 
   margin-bottom: 80rpx;
   
   .title {
@@ -423,7 +429,6 @@ page {
   }
 }
 
-/* 核心表单区 */
 .form-box {
   position: relative;
   z-index: 1;
@@ -438,20 +443,9 @@ page {
   margin-bottom: 36rpx;
   padding: 0 30rpx;
   
-  .input-icon {
-    margin-right: 16rpx;
-  }
-  
-  .input-box {
-    flex: 1;
-    font-size: 30rpx;
-    color: #333;
-    height: 100%;
-  }
-  
-  .placeholder {
-    color: #c0c4cc;
-  }
+  .input-icon { margin-right: 16rpx; }
+  .input-box { flex: 1; font-size: 30rpx; color: #333; height: 100%; }
+  .placeholder { color: #c0c4cc; }
   
   .sms-btn {
     font-size: 28rpx;
@@ -460,10 +454,7 @@ page {
     border-left: 1px solid #e4e7ed;
     height: 40rpx;
     line-height: 40rpx;
-    
-    &.disabled {
-      color: #999;
-    }
+    &.disabled { color: #999; }
   }
   
   .captcha-img {
@@ -484,7 +475,41 @@ page {
   padding-right: 20rpx;
 }
 
-/* 主操作按钮 */
+/* 💡 新增：协议勾选区样式 */
+.agreement-box {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 20rpx;
+  margin-bottom: 40rpx;
+  padding: 0 10rpx;
+  
+  .checkbox-wrap {
+    padding-right: 12rpx;
+    padding-top: 4rpx;
+    
+    /* 未勾选时的空心圆圈 */
+    .circle-icon {
+      width: 34rpx;
+      height: 34rpx;
+      border: 2rpx solid #c0c4cc;
+      border-radius: 50%;
+      box-sizing: border-box;
+    }
+  }
+  
+  .agreement-text {
+    flex: 1;
+    font-size: 24rpx;
+    color: #999;
+    line-height: 1.6;
+    
+    .link {
+      color: #2979ff;
+      display: inline;
+    }
+  }
+}
+
 .primary-btn {
   width: 100%;
   height: 96rpx;
@@ -496,39 +521,23 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 60rpx;
+  margin-top: 20rpx; /* 微调间距 */
   box-shadow: 0 8rpx 20rpx rgba(41, 121, 255, 0.3);
   border: none;
-  
   &::after { border: none; }
 }
 
-.btn-hover {
-  opacity: 0.8;
-  transform: scale(0.98);
-}
+.btn-hover { opacity: 0.8; transform: scale(0.98); }
 
-/* 分割线 */
 .divider-box {
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 50rpx 0 10rpx;
-  
-  .line {
-    flex: 1;
-    height: 1px;
-    background-color: #f0f0f0;
-  }
-  
-  .text {
-    font-size: 24rpx;
-    color: #999;
-    margin: 0 30rpx;
-  }
+  .line { flex: 1; height: 1px; background-color: #f0f0f0; }
+  .text { font-size: 24rpx; color: #999; margin: 0 30rpx; }
 }
 
-/* 微信一键登录按钮 */
 .wechat-login-btn {
   width: 100%;
   height: 96rpx;
@@ -543,44 +552,28 @@ page {
   margin-top: 10rpx;
   box-shadow: 0 8rpx 20rpx rgba(7, 193, 96, 0.3);
   border: none;
-  
-  .text {
-    margin-left: 12rpx;
-  }
-  
+  .text { margin-left: 12rpx; }
   &::after { border: none; }
 }
 
-/* 账号切换区 */
 .action-row {
   display: flex;
   justify-content: center;
   margin-top: 40rpx;
-  
-  .toggle-mode {
-    font-size: 28rpx;
-    color: #666;
-  }
+  .toggle-mode { font-size: 28rpx; color: #666; }
 }
 
-/* 底部区域 */
 .footer-area {
   margin-top: auto;
   padding-bottom: env(safe-area-inset-bottom);
   margin-bottom: 60rpx;
   position: relative;
   z-index: 1;
-  
   .service-tip {
     text-align: center;
     font-size: 26rpx;
     color: #999;
-    
-    .link {
-      color: #2979ff;
-      margin-left: 8rpx;
-      font-weight: bold;
-    }
+    .link { color: #2979ff; margin-left: 8rpx; font-weight: bold; }
   }
 }
 </style>

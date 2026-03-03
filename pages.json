@@ -184,6 +184,7 @@
 				"navigationBarTitleText": "登录"
 			}
 		},
+		
 		{
 			"path": "pages/help/index",
 			"style": {
@@ -201,7 +202,15 @@
 			"style": {
 				"navigationBarTitleText": "认证状态"
 			}
-		}
+		},
+		{
+		      "path": "pages/login/agreement",
+		      "style": {
+		        "navigationBarTitleText": "协议详情",
+		        "navigationBarBackgroundColor": "#ffffff",
+		        "navigationBarTextStyle": "black"
+		      }
+		    }
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",

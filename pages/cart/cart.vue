@@ -62,6 +62,9 @@
                         <view class="spec-tag" v-if="item.packageType">
                           {{ item.packageType }}
                         </view>
+                        <view class="spec-tag" style="color: #ff6034; background: #fff0eb;" v-if="getMinQty(item) > 1">
+                          {{ getMinQty(item) }}件起批
+                        </view>
                       </view>
 
                       <view class="goods-bottom">
@@ -73,7 +76,7 @@
                         <view class="stepper-box">
                           <u-number-box 
                             v-model="item.goodsNum" 
-                            :min="1" 
+                            :min="getMinQty(item)" 
                             :max="9999" 
                             :index="idx"
                             @change="val => handleNumChange(val, item)"
@@ -139,10 +142,13 @@
                       <view class="price-row">
                           <text>单价: ￥{{ item.salePrice }}/g</text>
                       </view>
+                      <view v-if="getMinQty(item) > 1" style="font-size: 20rpx; color: #ff6034; margin-top: 4rpx;">
+                          {{ getMinQty(item) }}g起售
+                      </view>
                   </view>
                   <view class="weight-control">
                       <text class="label">单剂</text>
-                      <u-number-box v-model="item.goodsWeight" :min="1" :max="999" @change="val => handleWeightChange(val, item)"></u-number-box>
+                      <u-number-box v-model="item.goodsWeight" :min="getMinQty(item)" :max="999" @change="val => handleWeightChange(val, item)"></u-number-box>
                       <text class="unit">g</text>
                   </view>
                   <view class="delete-btn" @click="handleDeleteItem(item)">
@@ -231,27 +237,18 @@ export default {
       inArray,
       currentTab: 0, 
       isLoading: true,
-      procurementList: {}, // 采购车数据 (Tab 0)
-      dispensingList: [],  // 处方车数据 (Tab 1)
+      procurementList: {}, 
+      dispensingList: [],  
       checkedIds: [],
       prescriptionDays: 3, 
       prescriptionPacks: 2,
       doctorAdvice: '', 
       debounceTimers: {},
       
-      // 收藏相关
       showFavNameModal: false,
       favName: '',
       
-      // 左滑删除配置
-      swipeOptions: [
-        {
-          text: '删除',
-          style: {
-            backgroundColor: '#fa3534'
-          }
-        }
-      ]
+      swipeOptions: [{ text: '删除', style: { backgroundColor: '#fa3534' } }]
     }
   },
   computed: {
@@ -265,7 +262,6 @@ export default {
         });
         return total.toFixed(2);
     },
-    // 处方车单剂价格计算
     singleDosePrice() {
         let total = 0;
         this.dispensingList.forEach(item => {
@@ -282,6 +278,17 @@ export default {
     this.loadData();
   },
   methods: {
+    // 🌟 极限容错：安全提取商品起批量，强制转换为数值类型
+    getMinQty(item) {
+        if (!item) return 1;
+        // 暴力破解各种可能存在的嵌套结构和大小写
+        let qty = item.minOrderQuantity || item.MinOrderQuantity 
+                  || (item.sku && (item.sku.minOrderQuantity || item.sku.MinOrderQuantity))
+                  || (item.goods && (item.goods.minOrderQuantity || item.goods.MinOrderQuantity)) 
+                  || 1;
+        return Number(qty) > 0 ? Number(qty) : 1;
+    },
+
     switchTab(index) { 
         this.currentTab = index; 
         this.loadData(); 
@@ -302,7 +309,6 @@ export default {
                 }
             }).catch(() => { this.isLoading = false; });
         } else {
-            // Tab 1: 加载处方车
             getPrescriptionCartList().then(res => {
                 this.isLoading = false;
                 if(res.code === 200) {
@@ -328,100 +334,71 @@ export default {
         return groups;
     },
 
-    // 处理 SwipeAction 点击
     handleSwipeClick(index, item) {
-      if (index === 0) { // 索引0是删除按钮
-        this.handleDeleteItem(item);
-      }
+      if (index === 0) this.handleDeleteItem(item);
     },
 
-    // 采购车数量变更 (u-number-box)
+    // 🌟 强行拦截采购车数量修改
     handleNumChange(val, item) {
-      let rawVal = val;
-      if (typeof val === 'object' && val !== null && val.hasOwnProperty('value')) {
-          rawVal = val.value;
+      let rawVal = typeof val === 'object' && val !== null ? val.value : val;
+      let newNum = parseInt(rawVal);
+      const minQty = this.getMinQty(item);
+
+      // 如果用户输入的数量小于起批量，强行回弹！
+      if (isNaN(newNum) || newNum < minQty) {
+          uni.showToast({ title: `该商品最低${minQty}件起批`, icon: 'none' });
+          this.$nextTick(() => { item.goodsNum = minQty; });
+          newNum = minQty;
+      } else {
+          item.goodsNum = newNum;
       }
-      
-      const newNum = parseInt(rawVal);
-      if (isNaN(newNum) || newNum < 1) return;
-      
-      item.goodsNum = newNum;
 
       if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
         
       this.debounceTimers[item.id] = setTimeout(() => {
-          const params = {
-              goodsSkuId: item.goodsSkuId, 
-              goodsNum: Number(newNum)
-          };
-
-          updateCartNum(params).then(res => {
-             if (res.code !== 200) {
-                 uni.showToast({ title: res.message || '更新失败', icon: 'none' });
-             }
-          }).catch(() => { 
-             uni.showToast({ title: '网络请求异常', icon: 'none' });
-          }); 
+          updateCartNum({ goodsSkuId: item.goodsSkuId, goodsNum: Number(newNum) }).then(res => {
+             if (res.code !== 200) uni.showToast({ title: res.message || '更新失败', icon: 'none' });
+          }).catch(() => { uni.showToast({ title: '网络请求异常', icon: 'none' }); }); 
       }, 500);
     },
 
-    // 处方车克重变更
+    // 🌟 强行拦截处方车克重修改
     handleWeightChange(val, item) {
-      let rawVal = val;
-      if (typeof val === 'object' && val !== null && val.hasOwnProperty('value')) {
-          rawVal = val.value;
-      }
-      const newWeight = parseInt(rawVal);
-      if (isNaN(newWeight) || newWeight < 1) return;
+      let rawVal = typeof val === 'object' && val !== null ? val.value : val;
+      let newWeight = parseInt(rawVal);
+      const minQty = this.getMinQty(item);
 
-      item.goodsWeight = newWeight;
+      // 如果小于起批量，强行回弹！
+      if (isNaN(newWeight) || newWeight < minQty) {
+          uni.showToast({ title: `该药材最低${minQty}g起售`, icon: 'none' });
+          this.$nextTick(() => { item.goodsWeight = minQty; });
+          newWeight = minQty;
+      } else {
+          item.goodsWeight = newWeight;
+      }
 
       if (this.debounceTimers[item.id]) clearTimeout(this.debounceTimers[item.id]);
       
       this.debounceTimers[item.id] = setTimeout(() => {
-          updatePrescriptionCart({ 
-              id: item.id, 
-              goodsWeight: Number(newWeight)
-          }).catch(() => { this.loadData(); });
+          updatePrescriptionCart({ id: item.id, goodsWeight: Number(newWeight) }).catch(() => { this.loadData(); });
       }, 500);
     },
     
-    // 处方配置变更
-    updateDays(val) { 
-        let v = val;
-        if(typeof val === 'object') v = val.value;
-        this.prescriptionDays = Number(v); 
-    },
-    updatePacks(val) { 
-        let v = val;
-        if(typeof val === 'object') v = val.value;
-        this.prescriptionPacks = Number(v); 
-    },
+    updateDays(val) { this.prescriptionDays = Number(typeof val === 'object' ? val.value : val); },
+    updatePacks(val) { this.prescriptionPacks = Number(typeof val === 'object' ? val.value : val); },
 
-    // 删除商品
-    handleDeleteItem(item) { 
-        this.execDelete([item.id], '确定移除该商品吗？'); 
-    },
-    handleDeleteBrand(brandName, items) { 
-        this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); 
-    },
+    handleDeleteItem(item) { this.execDelete([item.id], '确定移除该商品吗？'); },
+    handleDeleteBrand(brandName, items) { this.execDelete(items.map(i => i.id), `确定删除 ${brandName} 吗？`); },
     
     execDelete(ids, content) {
         uni.showModal({
             title: '提示', content,
             success: ({ confirm }) => {
                 if (confirm) {
-                    let promise;
-                    if (this.currentTab === 0) {
-                        promise = deleteCart(ids);
-                    } else {
-                        promise = removePrescriptionCart({ ids });
-                    }
+                    let promise = this.currentTab === 0 ? deleteCart(ids) : removePrescriptionCart({ ids });
                     promise.then(res => {
                         if (res.code === 200) {
-                            if (this.currentTab === 0) {
-                                this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
-                            }
+                            if (this.currentTab === 0) this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
                             this.loadData();
                             uni.showToast({ title: '删除成功', icon: 'success' });
                         }
@@ -436,7 +413,6 @@ export default {
         this.execDelete(ids, '确定清空当前处方吗？');
     },
     
-    // 选中逻辑
     handleCheckItem(id) {
         const idx = this.checkedIds.indexOf(id);
         if (idx === -1) this.checkedIds.push(id); else this.checkedIds.splice(idx, 1);
@@ -447,94 +423,92 @@ export default {
     },
     handleCheckBrand(brandName, items) {
         const ids = items.map(i => i.id);
-        const allChecked = this.isBrandChecked(items);
-        if (allChecked) this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
+        if (this.isBrandChecked(items)) this.checkedIds = this.checkedIds.filter(id => !ids.includes(id));
         else this.checkedIds.push(...ids.filter(id => !this.checkedIds.includes(id)));
     },
     handleCheckAll() {
         if (this.isAllChecked) this.checkedIds = []; else this.checkedIds = [...this.allProcurementIds];
     },
 
-    // 【核心修复】下单/结算逻辑
-    handleOrder() {
-        // Tab 0: 普通采购结算
-        if (this.currentTab === 0) {
-            // 1. 基础非空校验
-            if (!this.checkedIds || this.checkedIds.length === 0) {
-                return uni.showToast({ title: '请先勾选要结算的商品', icon: 'none' });
-            }
-
-            // 2. 【关键修复】将 ID 列表保持为数组，并使用 JSON.stringify 转换为字符串
-            // 后端需要 JSON 数组格式 (["id1", "id2"]) 而不是逗号分隔字符串
-            const cartIds = this.checkedIds; // 保持数组
-            const cartIdsJson = JSON.stringify(cartIds);
-
-            // 3. 调试日志：确保参数是数组格式
-            console.log('【采购结算】请求参数:', { cartIds: cartIds });
-
-            // 4. 跳转时对 JSON 字符串进行编码，防止 URL 解析错误
-            // 下一页 (order/create) 需要解析这个 JSON 字符串回数组
-            uni.navigateTo({ 
-                url: `/pages/order/create?type=procurement&cartIds=${encodeURIComponent(cartIdsJson)}` 
-            });
-        } 
-        // Tab 1: 处方调剂结算
-        else {
-            // 1. 基础非空校验
-            if (!this.dispensingList || this.dispensingList.length === 0) {
-                return uni.showToast({ title: '处方清单不能为空', icon: 'none' });
-            }
-
-            // 2. 构造参数 - 同样使用 JSON 数组
-            const allIds = this.dispensingList.map(item => item.id);
-            const allIdsJson = JSON.stringify(allIds);
-            
-            // 3. 校验是否有有效 ID
-            if(!allIds || allIds.length === 0) {
-                 return uni.showToast({ title: '商品ID异常，无法结算', icon: 'none' });
-            }
-
-            const adviceEncoded = encodeURIComponent(this.doctorAdvice || '');
-            
-            // 4. 调试日志
-            console.log('【调剂结算】请求参数:', { 
-                cartIds: allIds, 
-                days: this.prescriptionDays, 
-                packs: this.prescriptionPacks 
-            });
-
-            // 5. 跳转 - 传递编码后的 JSON 数组
-            uni.navigateTo({
-                url: `/pages/order/create?type=dispensing&cartIds=${encodeURIComponent(allIdsJson)}&days=${this.prescriptionDays}&packs=${this.prescriptionPacks}&advice=${adviceEncoded}`
-            });
-        }
-    },
+   // 🌟 核心拦截：下单/结算逻辑
+       handleOrder() {
+           // Tab 0: 普通采购结算
+           if (this.currentTab === 0) {
+               if (!this.checkedIds || this.checkedIds.length === 0) {
+                   return uni.showToast({ title: '请先勾选要结算的商品', icon: 'none' });
+               }
+   
+               // 🛑 【新增】点击结算前的终极物理防御遍历
+               let errorMsg = '';
+               for (let brand in this.procurementList) {
+                   const items = this.procurementList[brand];
+                   for (let i = 0; i < items.length; i++) {
+                       const item = items[i];
+                       // 只校验被勾选的商品
+                       if (this.inArray(item.id, this.checkedIds)) {
+                           const minQty = this.getMinQty(item);
+                           // 如果当前数量小于起批量，立刻生成报错信息并打断
+                           if (item.goodsNum < minQty) {
+                               errorMsg = `商品【${item.goodsName}】最低需${minQty}件起批，当前仅${item.goodsNum}件，请修改数量`;
+                               break; 
+                           }
+                       }
+                   }
+                   if (errorMsg) break;
+               }
+   
+               // 发现错误，直接弹窗阻断，不发后端请求！
+               if (errorMsg) {
+                   return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
+               }
+   
+               // 校验全部通过，放行前往结算页
+               uni.navigateTo({ 
+                   url: `/pages/order/create?type=procurement&cartIds=${encodeURIComponent(JSON.stringify(this.checkedIds))}` 
+               });
+           } 
+           // Tab 1: 处方调剂结算
+           else {
+               if (!this.dispensingList || this.dispensingList.length === 0) {
+                   return uni.showToast({ title: '处方清单不能为空', icon: 'none' });
+               }
+   
+               // 🛑 【新增】处方车的终极物理防御遍历
+               let errorMsg = '';
+               for (let i = 0; i < this.dispensingList.length; i++) {
+                   const item = this.dispensingList[i];
+                   const minQty = this.getMinQty(item);
+                   if (item.goodsWeight < minQty) {
+                       errorMsg = `药材【${item.goodsName}】最低需${minQty}g起售，当前仅${item.goodsWeight}g，请修改克重`;
+                       break;
+                   }
+               }
+   
+               // 发现错误，直接弹窗阻断，不发后端请求！
+               if (errorMsg) {
+                   return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
+               }
+   
+               const allIds = this.dispensingList.map(item => item.id);
+               uni.navigateTo({
+                   url: `/pages/order/create?type=dispensing&cartIds=${encodeURIComponent(JSON.stringify(allIds))}&days=${this.prescriptionDays}&packs=${this.prescriptionPacks}&advice=${encodeURIComponent(this.doctorAdvice || '')}`
+               });
+           }
+       },
     onTargetIndex() { uni.switchTab({ url: '/pages/category/category' }); },
 
-    // 收藏弹窗
     openFavModal() {
         if (this.dispensingList.length === 0) return uni.showToast({ title: '处方为空', icon: 'none' });
-        this.favName = '';
-        this.showFavNameModal = true;
+        this.favName = ''; this.showFavNameModal = true;
     },
     confirmFavorite() {
         if (!this.favName.trim()) return uni.showToast({ title: '请输入名称', icon: 'none' });
-        
         uni.showLoading({ title: '收藏中...' });
-        const items = this.dispensingList.map(item => ({
-            goodsId: item.goodsId, 
-            goodsSkuId: item.goodsSkuId,
-            goodsWeight: item.goodsWeight 
-        }));
-
+        const items = this.dispensingList.map(item => ({ goodsId: item.goodsId, goodsSkuId: item.goodsSkuId, goodsWeight: item.goodsWeight }));
         addFavorite({ name: this.favName, items: items }).then(res => {
             uni.hideLoading();
-            if(res.code === 200) {
-                uni.showToast({ title: '收藏成功', icon: 'success' });
-                this.showFavNameModal = false;
-            } else {
-                uni.showToast({ title: res.message || '收藏失败', icon: 'none' });
-            }
+            if(res.code === 200) { uni.showToast({ title: '收藏成功', icon: 'success' }); this.showFavNameModal = false; } 
+            else uni.showToast({ title: res.message || '收藏失败', icon: 'none' });
         }).catch(() => uni.hideLoading());
     }
   }
@@ -542,410 +516,19 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式，本次只修复了 script 逻辑 */
-.container {
-  min-height: 100vh;
-  padding-bottom: 220rpx;
-  background-color: #f5f5f5;
-}
-
-/* Tab Header */
-.tab-header {
-  display: flex;
-  background: #fff;
-  height: 88rpx;
-  line-height: 88rpx;
-  position: sticky;
-  top: 0;
-  z-index: 99;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
-
-  .tab-item {
-    flex: 1;
-    text-align: center;
-    font-size: 30rpx;
-    color: #666;
-    position: relative;
-    font-weight: 500;
-    transition: all 0.3s;
-
-    &.active {
-      color: #ee0a24;
-      font-weight: bold;
-      font-size: 32rpx;
-    }
-
-    .tab-line {
-      position: absolute;
-      bottom: 8rpx;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 40rpx;
-      height: 6rpx;
-      background: linear-gradient(90deg, #ff6034, #ee0a24);
-      border-radius: 3rpx;
-    }
-  }
-}
-
-.cart-container {
-  padding: 24rpx;
-}
-
-/* Brand Group */
-.brand-group {
-  background: #fff;
-  border-radius: 20rpx;
-  margin-bottom: 24rpx;
-  overflow: hidden;
-  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04);
-}
-
-.brand-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24rpx;
-  border-bottom: 1rpx solid #f5f5f5;
-
-  .brand-left {
-    display: flex;
-    align-items: center;
-    
-    .brand-title {
-      font-size: 30rpx;
-      font-weight: bold;
-      color: #333;
-      margin: 0 10rpx 0 16rpx;
-    }
-  }
-
-  .clear-btn {
-    font-size: 24rpx;
-    color: #999;
-  }
-}
-
-/* Checkbox Style */
-.checkbox-icon {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 50%;
-  border: 2rpx solid #c8c9cc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  background: #fff;
-
-  &.checked {
-    background: #ee0a24;
-    border-color: #ee0a24;
-  }
-}
-
-/* Goods List Item */
-.swipe-wrapper {
-  margin-bottom: 2rpx; // 分割线效果
-}
-
-.goods-item {
-  display: flex;
-  padding: 24rpx;
-  background: #fff;
-
-  .checkbox-area {
-    display: flex;
-    align-items: center;
-    padding-right: 20rpx;
-  }
-
-  .goods-image {
-    flex-shrink: 0;
-    margin-right: 20rpx;
-    border-radius: 12rpx;
-    overflow: hidden;
-    border: 1rpx solid #f0f0f0;
-  }
-
-  .goods-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-
-    .goods-title {
-      font-size: 28rpx;
-      color: #333;
-      font-weight: bold;
-      line-height: 40rpx;
-      margin-bottom: 10rpx;
-    }
-
-    .goods-specs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10rpx;
-      margin-bottom: 16rpx;
-
-      .spec-tag {
-        font-size: 22rpx;
-        color: #909399;
-        background: #f4f4f5;
-        padding: 4rpx 12rpx;
-        border-radius: 6rpx;
-      }
-    }
-
-    .goods-bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-
-      .price-box {
-        color: #ee0a24;
-        font-weight: bold;
-        line-height: 1;
-        
-        .symbol { font-size: 24rpx; }
-        .number { font-size: 36rpx; }
-      }
-    }
-  }
-}
-
-/* Empty State */
-.empty-cart {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding-top: 120rpx;
-}
-
-/* Footer Bar */
-.footer-wrapper {
-  position: fixed;
-  bottom: 0; 
-  bottom: var(--window-bottom);
-  left: 0;
-  right: 0;
-  z-index: 999;
-  background: #fff;
-  box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05);
-}
-
-.footer-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 100rpx;
-  padding: 0 24rpx;
-
-  .footer-left {
-    display: flex;
-    align-items: center;
-    height: 100%;
-    
-    .select-text {
-      margin-left: 12rpx;
-      font-size: 28rpx;
-      color: #666;
-    }
-  }
-
-  .footer-right {
-    display: flex;
-    align-items: center;
-
-    .total-info {
-      display: flex;
-      align-items: baseline;
-      margin-right: 24rpx;
-      
-      .label {
-        font-size: 26rpx;
-        color: #333;
-      }
-      .price-box {
-        color: #ee0a24;
-        font-weight: bold;
-        .unit { font-size: 24rpx; }
-        .num { font-size: 36rpx; }
-      }
-    }
-
-    .checkout-btn {
-      width: 200rpx;
-      height: 76rpx;
-      line-height: 76rpx;
-      text-align: center;
-      background: linear-gradient(90deg, #ff6034, #ee0a24);
-      color: #fff;
-      font-size: 30rpx;
-      font-weight: bold;
-      border-radius: 38rpx;
-      box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3);
-      
-      &:active { opacity: 0.9; }
-    }
-  }
-}
-
-/* Prescription Footer Specifics */
-.dispensing-footer {
-  .summary-info {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    
-    .main-total {
-      font-size: 28rpx;
-      color: #333;
-      .price-symbol { color: #ee0a24; font-size: 24rpx; }
-      .price-val { color: #ee0a24; font-size: 40rpx; font-weight: bold; }
-    }
-    
-    .sub-total {
-      font-size: 22rpx;
-      color: #999;
-      margin-top: 4rpx;
-      .fee-tag { 
-        margin-left: 6rpx;
-        &.free { color: #19be6b; }
-      }
-    }
-  }
-  
-  .btn-group {
-    display: flex;
-    gap: 20rpx;
-    
-    .action-btn {
-      height: 72rpx;
-      line-height: 72rpx;
-      padding: 0 30rpx;
-      border-radius: 36rpx;
-      font-size: 28rpx;
-      font-weight: 500;
-      
-      &.outline {
-        border: 2rpx solid #ff9900;
-        color: #ff9900;
-        background: #fff;
-      }
-      &.fill {
-        background: linear-gradient(90deg, #ff9900, #ff6034);
-        color: #fff;
-        box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3);
-      }
-    }
-  }
-}
-
-/* Prescription Styles */
-.prescription-config-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx;
-  margin-bottom: 24rpx;
-  
-  .config-title {
-    font-size: 30rpx;
-    font-weight: bold;
-    margin-bottom: 20rpx;
-    border-left: 8rpx solid #ff9900;
-    padding-left: 16rpx;
-    line-height: 1;
-  }
-  
-  .config-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 20rpx;
-    
-    .config-item {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #f9f9f9;
-      padding: 16rpx;
-      border-radius: 12rpx;
-      
-      .label { font-size: 26rpx; color: #666; }
-      .unit { font-size: 24rpx; color: #999; margin-left: 10rpx; }
-    }
-  }
-  
-  .advice-box {
-    position: relative;
-    .advice-input {
-      width: 100%;
-      height: 140rpx;
-      background: #f9f9f9;
-      border-radius: 12rpx;
-      padding: 16rpx;
-      font-size: 28rpx;
-      color: #333;
-      box-sizing: border-box;
-    }
-    .word-count {
-      position: absolute;
-      bottom: 16rpx;
-      right: 16rpx;
-      font-size: 22rpx;
-      color: #ccc;
-    }
-  }
-}
-
-.dispensing-list {
-  background: #fff;
-  border-radius: 20rpx;
-  overflow: hidden;
-  margin-bottom: 24rpx;
-
-  .list-title {
-    display: flex;
-    justify-content: space-between;
-    padding: 24rpx;
-    background: #fff7eb;
-    color: #d48806;
-    font-size: 28rpx;
-    font-weight: 500;
-  }
-
-  .herb-item {
-    display: flex;
-    align-items: center;
-    padding: 24rpx;
-    border-bottom: 1rpx solid #f5f5f5;
-    
-    .herb-info {
-      flex: 1;
-      .name-row {
-        margin-bottom: 8rpx;
-        .name { font-size: 30rpx; font-weight: bold; margin-right: 12rpx; }
-        .factory { font-size: 20rpx; color: #909399; background: #f4f4f5; padding: 2rpx 8rpx; border-radius: 4rpx; }
-      }
-      .price-row {
-        font-size: 24rpx;
-        color: #999;
-      }
-    }
-    
-    .weight-control {
-      display: flex;
-      align-items: center;
-      margin-right: 20rpx;
-      .label { font-size: 24rpx; color: #666; margin-right: 10rpx; }
-      .unit { font-size: 24rpx; color: #333; margin-left: 10rpx; }
-    }
-    
-    .delete-btn {
-      padding: 10rpx;
-    }
-  }
-}
+/* 保持原有样式完全不变 */
+.container { min-height: 100vh; padding-bottom: 220rpx; background-color: #f5f5f5; }
+.tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 99; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05); .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; font-weight: 500; transition: all 0.3s; &.active { color: #ee0a24; font-weight: bold; font-size: 32rpx; } .tab-line { position: absolute; bottom: 8rpx; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: linear-gradient(90deg, #ff6034, #ee0a24); border-radius: 3rpx; } } }
+.cart-container { padding: 24rpx; }
+.brand-group { background: #fff; border-radius: 20rpx; margin-bottom: 24rpx; overflow: hidden; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04); }
+.brand-header { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .brand-left { display: flex; align-items: center; .brand-title { font-size: 30rpx; font-weight: bold; color: #333; margin: 0 10rpx 0 16rpx; } } .clear-btn { font-size: 24rpx; color: #999; } }
+.checkbox-icon { width: 40rpx; height: 40rpx; border-radius: 50%; border: 2rpx solid #c8c9cc; display: flex; align-items: center; justify-content: center; transition: all 0.2s; background: #fff; &.checked { background: #ee0a24; border-color: #ee0a24; } }
+.swipe-wrapper { margin-bottom: 2rpx; }
+.goods-item { display: flex; padding: 24rpx; background: #fff; .checkbox-area { display: flex; align-items: center; padding-right: 20rpx; } .goods-image { flex-shrink: 0; margin-right: 20rpx; border-radius: 12rpx; overflow: hidden; border: 1rpx solid #f0f0f0; } .goods-content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .goods-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 40rpx; margin-bottom: 10rpx; } .goods-specs { display: flex; flex-wrap: wrap; gap: 10rpx; margin-bottom: 16rpx; .spec-tag { font-size: 22rpx; color: #909399; background: #f4f4f5; padding: 4rpx 12rpx; border-radius: 6rpx; } } .goods-bottom { display: flex; justify-content: space-between; align-items: flex-end; .price-box { color: #ee0a24; font-weight: bold; line-height: 1; .symbol { font-size: 24rpx; } .number { font-size: 36rpx; } } } } }
+.empty-cart { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 120rpx; }
+.footer-wrapper { position: fixed; bottom: 0; bottom: var(--window-bottom); left: 0; right: 0; z-index: 999; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
+.footer-bar { display: flex; justify-content: space-between; align-items: center; height: 100rpx; padding: 0 24rpx; .footer-left { display: flex; align-items: center; height: 100%; .select-text { margin-left: 12rpx; font-size: 28rpx; color: #666; } } .footer-right { display: flex; align-items: center; .total-info { display: flex; align-items: baseline; margin-right: 24rpx; .label { font-size: 26rpx; color: #333; } .price-box { color: #ee0a24; font-weight: bold; .unit { font-size: 24rpx; } .num { font-size: 36rpx; } } } .checkout-btn { width: 200rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: linear-gradient(90deg, #ff6034, #ee0a24); color: #fff; font-size: 30rpx; font-weight: bold; border-radius: 38rpx; box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3); &:active { opacity: 0.9; } } } }
+.dispensing-footer { .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ee0a24; font-size: 24rpx; } .price-val { color: #ee0a24; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #999; margin-top: 4rpx; .fee-tag { margin-left: 6rpx; &.free { color: #19be6b; } } } } .btn-group { display: flex; gap: 20rpx; .action-btn { height: 72rpx; line-height: 72rpx; padding: 0 30rpx; border-radius: 36rpx; font-size: 28rpx; font-weight: 500; &.outline { border: 2rpx solid #ff9900; color: #ff9900; background: #fff; } &.fill { background: linear-gradient(90deg, #ff9900, #ff6034); color: #fff; box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3); } } } }
+.prescription-config-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 24rpx; .config-title { font-size: 30rpx; font-weight: bold; margin-bottom: 20rpx; border-left: 8rpx solid #ff9900; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; gap: 20rpx; .config-item { flex: 1; display: flex; align-items: center; justify-content: space-between; background: #f9f9f9; padding: 16rpx; border-radius: 12rpx; .label { font-size: 26rpx; color: #666; } .unit { font-size: 24rpx; color: #999; margin-left: 10rpx; } } } .advice-box { position: relative; .advice-input { width: 100%; height: 140rpx; background: #f9f9f9; border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box; } .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
+.dispensing-list { background: #fff; border-radius: 20rpx; overflow: hidden; margin-bottom: 24rpx; .list-title { display: flex; justify-content: space-between; padding: 24rpx; background: #fff7eb; color: #d48806; font-size: 28rpx; font-weight: 500; } .herb-item { display: flex; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .herb-info { flex: 1; .name-row { margin-bottom: 8rpx; .name { font-size: 30rpx; font-weight: bold; margin-right: 12rpx; } .factory { font-size: 20rpx; color: #909399; background: #f4f4f5; padding: 2rpx 8rpx; border-radius: 4rpx; } } .price-row { font-size: 24rpx; color: #999; } } .weight-control { display: flex; align-items: center; margin-right: 20rpx; .label { font-size: 24rpx; color: #666; margin-right: 10rpx; } .unit { font-size: 24rpx; color: #333; margin-left: 10rpx; } } .delete-btn { padding: 10rpx; } } }
 </style>

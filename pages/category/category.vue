@@ -37,7 +37,8 @@
 					<text class="u-line-1">{{ item }}</text>
 				</view>
 			</block>
-			<view style="height: 100rpx;"></view> </scroll-view>
+			<view style="height: 100rpx;"></view> 
+		</scroll-view>
 
 		<view class="right-tools-fixed">
 			<view class="safe-filter-bar">
@@ -93,7 +94,8 @@
 						</view>
 						<view class="item-tags">
 							<u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
-							<u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType"/>
+							<u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType" class="mr-10"/>
+							<u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity}${businessType === 'dispensing' ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
 						</view>
 						<view class="item-price-row">
 							<view class="price-box">
@@ -130,7 +132,6 @@
 				keyword: '', 
 				filterOptions: { manufacturers: [] },
 				
-				// 安全选择器的数据
 				showPkgSelect: false,
 				showStdSelect: false,
 				packageOptions: [{label: '全部包装', value: ''}],
@@ -160,7 +161,6 @@
                 app.globalData.categoryType = null;
             }
         },
-		// 【重要修复】利用原生触底事件代替 scroll-view 的 @scrolltolower
 		onReachBottom() {
 			if(this.loadStatus === 'nomore') return;
 			this.page++;
@@ -199,7 +199,6 @@
 				}).catch(err => { console.error("加载筛选条件失败", err); });
 			},
 
-			// 选择器回调
 			onPkgConfirm(arr) {
 				this.selectedFilter.packageType = arr[0].value;
 				this.loadGoodsData(true);
@@ -272,7 +271,7 @@
                 uni.navigateTo({ url: `/pages/good/detail?id=${id}` }); 
             },
             
-            // 加入购物车逻辑
+            // 🌟 智能加购逻辑 (支持起批量解析)
             addToCart(item) {
                 uni.showLoading({ title: '添加中...' });
                 
@@ -284,43 +283,57 @@
                     return uni.showToast({ title: '商品数据异常', icon: 'none' });
                 }
 
+                // 先去请求详情，以拿到精准的规格与起批量
                 if (GoodsApi && typeof GoodsApi.getGoodsDetail === 'function') {
                     GoodsApi.getGoodsDetail(targetId).then(res => {
+                        let baseInfo = res.result || {};
+                        
                         if (res.code === 200 && res.result && res.result.listSku) {
                             const skus = res.result.listSku;
+                            
+                            // 只有1个规格时，直接按起批量加购
                             if (skus.length === 1) {
-                                this.executeAddCart(skus[0].id);
+                                this.executeAddCart(skus[0].id, skus[0], baseInfo);
                             } else if (skus.length > 1) {
+                                // 多个规格，跳转到详情页让用户自己选
                                 uni.hideLoading();
                                 uni.navigateTo({ url: `/pages/good/detail?id=${targetId}` });
                             } else {
-                                this.executeAddCart(targetSkuId);
+                                this.executeAddCart(targetSkuId, {}, baseInfo);
                             }
                         } else {
-                            this.executeAddCart(targetSkuId);
+                            this.executeAddCart(targetSkuId, {}, baseInfo);
                         }
                     }).catch(err => {
-                        this.executeAddCart(targetSkuId);
+                        // 兜底处理
+                        this.executeAddCart(targetSkuId, {}, {});
                     });
                 } else {
-                    this.executeAddCart(targetSkuId);
+                    this.executeAddCart(targetSkuId, {}, {});
                 }
             },
 
-            executeAddCart(skuId) {
+            // 🌟 执行加购 (带起批量判定)
+            executeAddCart(skuId, skuData = {}, baseInfo = {}) {
+                // 优先取 sku 层级的起批量，若无则取外层商品层级的，默认值为 1
+                const minQty = skuData.minOrderQuantity || skuData.MinOrderQuantity || baseInfo.minOrderQuantity || baseInfo.MinOrderQuantity || 1;
+                
                 if (this.businessType === 'dispensing') {
-                    addPrescriptionCart({ goodsSkuId: skuId, goodsWeight: 10 }).then(res => {
+                    // 处方药比较起批量和10g，取最大值
+                    const finalWeight = Math.max(10, minQty);
+                    addPrescriptionCart({ goodsSkuId: skuId, goodsWeight: finalWeight }).then(res => {
                         uni.hideLoading();
-                        if(res.code === 200 || res.Code === 200) uni.showToast({ title: '已加10g', icon: 'success' });
+                        if(res.code === 200 || res.Code === 200) uni.showToast({ title: `已加${finalWeight}g`, icon: 'success' });
                         else uni.showToast({ title: res.message || res.Message || '添加失败', icon: 'none' });
                     }).catch(err => {
                         uni.hideLoading();
                         uni.showToast({ title: '网络异常', icon: 'none' });
                     });
                 } else {
-                    addCart({ goodsSkuId: skuId, goodsNum: 1 }).then(res => {
+                    // 普通药品直接加购起批量的件数
+                    addCart({ goodsSkuId: skuId, goodsNum: minQty }).then(res => {
                         uni.hideLoading();
-                        if(res.code === 200 || res.Code === 200) uni.showToast({ title: '已加入', icon: 'success' });
+                        if(res.code === 200 || res.Code === 200) uni.showToast({ title: `已加${minQty}件`, icon: 'success' });
                         else uni.showToast({ title: res.message || res.Message || '添加失败', icon: 'none' });
                     }).catch(err => {
                         uni.hideLoading();
@@ -333,31 +346,13 @@
 </script>
 
 <style lang="scss" scoped>
-	/* ========================================================
-	   🛠️ 终极稳健布局：原生页面滚动 + 绝对固定定位
-	   ======================================================== */
-	page {
-		background-color: #f8f8f8;
-	}
+	page { background-color: #f8f8f8; }
+	.page-container { min-height: 100vh; background-color: #f8f8f8; }
 
-	.page-container {
-		min-height: 100vh;
-		background-color: #f8f8f8;
-	}
-
-	/* 1. 顶部全局区域：像钉子一样固定在最上面 */
 	.global-header-fixed {
-		position: fixed;
-		top: 0;
-		/* #ifdef H5 */
-		top: var(--window-top);
-		/* #endif */
-		left: 0;
-		right: 0;
-		height: 180rpx; /* 明确高度 */
-		background-color: #fff;
-		z-index: 100;
-		border-bottom: 1px solid #f2f2f2;
+		position: fixed; top: 0;
+		/* #ifdef H5 */ top: var(--window-top); /* #endif */
+		left: 0; right: 0; height: 180rpx; background-color: #fff; z-index: 100; border-bottom: 1px solid #f2f2f2;
 	}
 	
 	.custom-search-area { padding: 16rpx 24rpx; display: flex; align-items: center; }
@@ -371,61 +366,27 @@
 			.switch-item { flex: 1; height: 64rpx; line-height: 64rpx; text-align: center; font-size: 28rpx; color: #666; border-radius: 32rpx; transition: all 0.3s; 
 				&.active { background-color: #2979ff; color: #fff; font-weight: bold; box-shadow: 0 2rpx 8rpx rgba(41, 121, 255, 0.3); } } } }
 
-	/* 2. 左侧菜单：固定在左边，独立滚动 */
 	.left-menu-fixed {
-		position: fixed;
-		top: 180rpx; /* 避开顶部 */
-		/* #ifdef H5 */
-		top: calc(var(--window-top) + 180rpx);
-		/* #endif */
-		left: 0;
-		bottom: 0;
-		width: 180rpx; /* 明确宽度 */
-		background-color: #f6f6f6;
-		z-index: 90;
+		position: fixed; top: 180rpx;
+		/* #ifdef H5 */ top: calc(var(--window-top) + 180rpx); /* #endif */
+		left: 0; bottom: 0; width: 180rpx; background-color: #f6f6f6; z-index: 90;
 	}
 	
 	.u-tab-item { height: 100rpx; background: #f6f6f6; display: flex; align-items: center; justify-content: center; font-size: 26rpx; color: #444; border-bottom: 1px solid #f0f0f0; padding: 0 10rpx; }
 	.u-tab-item-active { position: relative; color: #2979ff; font-size: 28rpx; font-weight: 600; background: #fff; }
 	.u-tab-item-active::before { content: ""; position: absolute; border-left: 4px solid #2979ff; height: 32rpx; left: 0; top: 34rpx; }
-	.empty-manufacturer { height: 100rpx; display: flex; align-items: center; justify-content: center; color: #999; font-size: 24rpx; }
-
-	/* 3. 右侧顶部工具栏：固定在右上方 */
+	
 	.right-tools-fixed {
-		position: fixed;
-		top: 180rpx;
-		/* #ifdef H5 */
-		top: calc(var(--window-top) + 180rpx);
-		/* #endif */
-		left: 180rpx; /* 避开左侧菜单 */
-		right: 0;
-		height: 150rpx; /* 明确高度 */
-		background-color: #fff;
-		z-index: 90;
-		box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.02);
+		position: fixed; top: 180rpx;
+		/* #ifdef H5 */ top: calc(var(--window-top) + 180rpx); /* #endif */
+		left: 180rpx; right: 0; height: 150rpx; background-color: #fff; z-index: 90; box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.02);
 	}
 	
-	/* 安全的简约版过滤栏 */
-	.safe-filter-bar {
-		display: flex;
-		height: 80rpx;
-		border-bottom: 1px solid #f8f8f8;
-		
-		.filter-item {
-			flex: 1;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			font-size: 28rpx;
-			color: #333;
-			
-			/* 增加点击反馈 */
-			&:active { background-color: #f5f5f5; }
-		}
+	.safe-filter-bar { display: flex; height: 80rpx; border-bottom: 1px solid #f8f8f8;
+		.filter-item { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 28rpx; color: #333; &:active { background-color: #f5f5f5; } }
 	}
 
-    .sort-toolbar { 
-		display: flex; justify-content: space-around; align-items: center; height: 70rpx; background: #fff; 
+    .sort-toolbar { display: flex; justify-content: space-around; align-items: center; height: 70rpx; background: #fff; 
         .sort-btn { font-size: 28rpx; color: #666; display: flex; align-items: center; height: 100%;
             &.active { color: #2979ff; font-weight: bold; }
             .css-icon-box { display: flex; flex-direction: column; justify-content: center; margin-left: 8rpx; height: 100%; }
@@ -437,18 +398,11 @@
 		} 
 	}
 
-	/* 4. 右侧商品列表区：原生滚动，极致丝滑 */
 	.right-list-native {
-		/* 利用 padding 把内容推到固定区域的下面和右边 */
-		padding-top: 330rpx; /* 180 + 150 */
-		padding-left: 180rpx;
-		min-height: 100vh;
-		box-sizing: border-box;
-		background-color: #fff;
+		padding-top: 330rpx; padding-left: 180rpx; min-height: 100vh; box-sizing: border-box; background-color: #fff;
 	}
 	
-	/* 商品卡片 UI */
 	.page-view { padding: 16rpx; }
-	.class-item { display: flex; margin-bottom: 30rpx; background-color: #fff; padding: 20rpx; border-radius: 12rpx; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.04); border-bottom: 1px solid #f8f8f8; .item-img { width: 140rpx; height: 140rpx; border-radius: 8rpx; overflow: hidden; border: 1px solid #f0f0f0; margin-right: 20rpx; flex-shrink: 0; } .item-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; .item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4; .type-tag { display: inline-block; font-size: 20rpx; color: #fff; background: #ff9900; padding: 0 6rpx; border-radius: 4rpx; margin-right: 8rpx; vertical-align: middle; } } .item-desc { font-size: 22rpx; color: #999; margin-top: 6rpx; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; .ml-10 { margin-left: 10rpx; } } .item-tags { margin-top: 8rpx; height: 36rpx; overflow: hidden; .mr-10 { margin-right: 10rpx; } } .item-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx; .price-box { display: flex; align-items: baseline; .price-symbol { color: #ff3b30; font-size: 24rpx; } .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; } .unit-text { font-size: 22rpx; color: #999; margin-left: 2rpx; } } .cart-box { display: flex; align-items: center; .sales { font-size: 20rpx; color: #ccc; } .add-btn-circle { width: 50rpx; height: 50rpx; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 12rpx; box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3); color: #fff; font-size: 40rpx; font-weight: bold; line-height: 1; padding-bottom: 4rpx; &.dispensing-btn { background: #ff9900; box-shadow: 0 2rpx 6rpx rgba(255, 153, 0, 0.3); } } } } } }
+	.class-item { display: flex; margin-bottom: 30rpx; background-color: #fff; padding: 20rpx; border-radius: 12rpx; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.04); border-bottom: 1px solid #f8f8f8; .item-img { width: 140rpx; height: 140rpx; border-radius: 8rpx; overflow: hidden; border: 1px solid #f0f0f0; margin-right: 20rpx; flex-shrink: 0; } .item-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; .item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4; .type-tag { display: inline-block; font-size: 20rpx; color: #fff; background: #ff9900; padding: 0 6rpx; border-radius: 4rpx; margin-right: 8rpx; vertical-align: middle; } } .item-desc { font-size: 22rpx; color: #999; margin-top: 6rpx; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; .ml-10 { margin-left: 10rpx; } } .item-tags { margin-top: 8rpx; height: 40rpx; overflow: hidden; .mr-10 { margin-right: 10rpx; } } .item-price-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx; .price-box { display: flex; align-items: baseline; .price-symbol { color: #ff3b30; font-size: 24rpx; } .price-num { color: #ff3b30; font-size: 32rpx; font-weight: bold; } .unit-text { font-size: 22rpx; color: #999; margin-left: 2rpx; } } .cart-box { display: flex; align-items: center; .sales { font-size: 20rpx; color: #ccc; } .add-btn-circle { width: 50rpx; height: 50rpx; background: #2979ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 12rpx; box-shadow: 0 2rpx 6rpx rgba(41, 121, 255, 0.3); color: #fff; font-size: 40rpx; font-weight: bold; line-height: 1; padding-bottom: 4rpx; &.dispensing-btn { background: #ff9900; box-shadow: 0 2rpx 6rpx rgba(255, 153, 0, 0.3); } } } } } }
 	.loading-center { padding: 50rpx; display: flex; justify-content: center; }
 </style>

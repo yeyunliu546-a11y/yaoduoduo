@@ -40,6 +40,12 @@
               <text class="label">库存：</text>
               <text class="value">{{ currentSku.stockNum || goodsInfo.stockTotal || 0 }}件</text>
             </view>
+            <view class="meta-item" v-if="(currentSku.minOrderQuantity || currentSku.MinOrderQuantity || goodsInfo.minOrderQuantity || goodsInfo.MinOrderQuantity) > 1">
+              <text class="label">起批量：</text>
+              <text class="value" style="color: #ff4400; font-weight: bold;">
+                {{ currentSku.minOrderQuantity || currentSku.MinOrderQuantity || goodsInfo.minOrderQuantity || goodsInfo.MinOrderQuantity }}{{ isPrescription ? 'g' : '件' }}起售
+              </text>
+            </view>
           </view>
           
           <view class="remark" v-if="goodsInfo.subTitle">
@@ -154,21 +160,22 @@
         uni.showLoading({ title: '加入中' });
         
         let promise;
+        // 🌟 获取起批量，兼容大小写驼峰，默认为 1
+        let minQty = this.currentSku.minOrderQuantity || this.currentSku.MinOrderQuantity || this.goodsInfo.minOrderQuantity || this.goodsInfo.MinOrderQuantity || 1;
 
         // 【修复2】根据商品类型调用不同的加购接口
         if (this.isPrescription) {
-          // 调剂药品 -> 处方购物车
-          // 注意：文档要求传入 goodsWeight (克重)。此处默认给 10g，后续在购物车可调整。
+          // 调剂药品 -> 处方购物车，如果有起批量则采用起批量，否则默认 10g
           const params = {
             goodsSkuId: this.currentSku.id,
-            goodsWeight: 10 
+            goodsWeight: Math.max(10, minQty) 
           };
           promise = addPrescriptionCart(params);
         } else {
-          // 普通药品 -> 采购购物车
+          // 普通药品 -> 采购购物车，默认数量为起批量
           const params = {
             goodsSkuId: this.currentSku.id,
-            goodsNum: 1
+            goodsNum: minQty
           };
           promise = addCart(params);
         }

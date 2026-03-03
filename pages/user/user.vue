@@ -92,7 +92,6 @@
 import AvatarImage from '@/components/avatar-image/avatar-image.vue'
 import Recommend from '@/pages/good/components/Recommend'
 import request from '@/utils/request/request.js'
-// 【修改点1】移除 assets 引用，仅保留 getDetail
 import { getDetail } from '@/api/user/user.js'
 
 const orderNavbar = [{
@@ -107,6 +106,7 @@ const orderNavbar = [{
 	id: 'countWaitComment', name: '待评价', bigOrderStatus: 4, icon: 'daipingjia', count: 0
 }]
 
+// 【核心修复区域】
 const service = [
     { id: 'address', name: '收货地址', icon: 'dizhi', type: 'link', url: '/pages/address/index' },
     { id: 'fav', name: '调剂收藏夹', icon: 'star', type: 'link', url: '/pages/favorite/index' },
@@ -114,7 +114,10 @@ const service = [
     { id: 'myCoupon', name: '优惠券', icon: 'youhuiquan', type: 'link', url: '/pages/my-coupon/index' },
     { id: 'points', name: '我的积分', icon: 'jifen', type: 'link', url: '/pages/points/log' },
     { id: 'Refund', name: '退换/售后', icon: 'shouhou', type: 'link', url: '/pages/refund/index' },
-    { id: 'orderCenter', name: '订单中心', icon: 'dingdanzhongxin', type: 'link', url: '/pages/order/center' },
+    
+    // 👇 修复点：将原来的 /pages/order/center 替换为了真正的订单列表 /pages/order/order?status=0
+    { id: 'orderCenter', name: '订单中心', icon: 'dingdanzhongxin', type: 'link', url: '/pages/order/order?status=0' },
+    
     { id: 'help', name: '我的帮助', icon: 'bangzhu', type: 'link', url: '/pages/help/index' },
     { id: 'contact', name: '在线客服', icon: 'kefu1', type: 'button', openType: 'contact' }
 ]
@@ -126,7 +129,6 @@ export default {
 			platform: 'H5',
 			service,
 			setting: { pointsName: '积分' },
-            // 【修改点2】默认数据设为空或默认值，不写死假数据
 			userInfo: {
 				urlAvater: '/static/default-avatar.png',
 				nickName: '点击登录',
@@ -145,11 +147,9 @@ export default {
         this.platform = info.uniPlatform;
     },
 	onShow() {
-        // 【修改点3】页面显示时，刷新用户数据
         this.initData();
 	},
 	methods: {
-        // 【新增方法】初始化所有数据
         initData() {
             const token = uni.getStorageSync('token');
             if (!token) {
@@ -157,33 +157,24 @@ export default {
                 return;
             }
             
-            // 1. 获取用户信息 (合并了原 assets 接口的资产数据)
             getDetail().then(res => {
                 if(res.code === 200 && res.result) {
                     const info = res.result;
-                    // 字段兼容处理，防止后端字段名不一致
                     this.userInfo.nickName = info.nickName || info.nickname || '微信用户';
                     this.userInfo.urlAvater = info.avatar || info.urlAvater || info.avatarUrl || '/static/default-avatar.png';
                     this.userInfo.grade_id = info.grade_id || 0;
                     this.userInfo.grade = info.grade || null;
                     this.userInfo.phone = info.mobile || info.phone || '';
 					
-					// 【修改点4】直接从个人信息接口中映射资产数据
-					// 兼容常见的后端命名 (camelCase 或 PascalCase)
 					this.userInfo.balance = info.balance || info.Balance || '0.00';
 					this.userInfo.points = info.points || info.Points || 0;
-					// 优惠券数量兼容
 					this.userInfo.countCoupon = info.coupon || info.countCoupon || info.CouponCount || info.coupon_num || 0;
                 }
             });
 
-            // 【已移除】原 assets() 调用已删除，避免 404 错误
-
-            // 3. 获取订单数量
             this.loadOrderCounts();
         },
 
-        // 重置为未登录状态
         resetUserInfo() {
              this.userInfo = {
                 urlAvater: '/static/default-avatar.png',
@@ -195,7 +186,6 @@ export default {
                 points: 0,
                 countCoupon: 0,
             };
-            // 清空订单角标
             this.orderNavbar.forEach(item => item.count = 0);
         },
 
@@ -263,7 +253,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式不变 */
 .main-header { background-color: #fff; position: relative; width: 100%; height: 280rpx; display: flex; align-items: center; padding-left: 30rpx;
 	.user-info { display: flex; height: 100rpx; z-index: 1;
 		.user-content { display: flex; flex-direction: column; justify-content: center; margin-left: 30rpx; color: #c59a46;
