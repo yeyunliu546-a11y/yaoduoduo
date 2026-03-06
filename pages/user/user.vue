@@ -82,6 +82,10 @@
 			</view>
 		</view>
 
+        <view class="logout-section" v-if="hasLogin">
+			<button class="logout-btn" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
+		</view>
+
 		<view class="recommend-section">
 		  <Recommend title="店铺推荐" />
 		</view>  
@@ -106,7 +110,6 @@ const orderNavbar = [{
 	id: 'countWaitComment', name: '待评价', bigOrderStatus: 4, icon: 'daipingjia', count: 0
 }]
 
-// 【核心修复区域】
 const service = [
     { id: 'address', name: '收货地址', icon: 'dizhi', type: 'link', url: '/pages/address/index' },
     { id: 'fav', name: '调剂收藏夹', icon: 'star', type: 'link', url: '/pages/favorite/index' },
@@ -114,10 +117,7 @@ const service = [
     { id: 'myCoupon', name: '优惠券', icon: 'youhuiquan', type: 'link', url: '/pages/my-coupon/index' },
     { id: 'points', name: '我的积分', icon: 'jifen', type: 'link', url: '/pages/points/log' },
     { id: 'Refund', name: '退换/售后', icon: 'shouhou', type: 'link', url: '/pages/refund/index' },
-    
-    // 👇 修复点：将原来的 /pages/order/center 替换为了真正的订单列表 /pages/order/order?status=0
     { id: 'orderCenter', name: '订单中心', icon: 'dingdanzhongxin', type: 'link', url: '/pages/order/order?status=0' },
-    
     { id: 'help', name: '我的帮助', icon: 'bangzhu', type: 'link', url: '/pages/help/index' },
     { id: 'contact', name: '在线客服', icon: 'kefu1', type: 'button', openType: 'contact' }
 ]
@@ -129,6 +129,7 @@ export default {
 			platform: 'H5',
 			service,
 			setting: { pointsName: '积分' },
+			hasLogin: false, // 🌟 新增：当前是否已登录的状态标记
 			userInfo: {
 				urlAvater: '/static/default-avatar.png',
 				nickName: '点击登录',
@@ -153,10 +154,13 @@ export default {
         initData() {
             const token = uni.getStorageSync('token');
             if (!token) {
+                this.hasLogin = false; // 未登录隐藏退出按钮
                 this.resetUserInfo();
                 return;
             }
             
+            this.hasLogin = true; // 已登录显示退出按钮
+
             getDetail().then(res => {
                 if(res.code === 200 && res.result) {
                     const info = res.result;
@@ -187,6 +191,26 @@ export default {
                 countCoupon: 0,
             };
             this.orderNavbar.forEach(item => item.count = 0);
+        },
+
+        // 🌟 新增：执行退出登录逻辑
+        handleLogout() {
+            uni.showModal({
+                title: '系统提示',
+                content: '确定要退出当前登录账号吗？',
+                confirmColor: '#fa3534',
+                success: (res) => {
+                    if (res.confirm) {
+                        // 调用 Vuex 中 user 模块写好的 Logout 方法清空缓存
+                        this.$store.dispatch('Logout').then(() => {
+                            uni.showToast({ title: '已安全退出', icon: 'success' });
+                            // 重置页面状态
+                            this.hasLogin = false;
+                            this.resetUserInfo();
+                        });
+                    }
+                }
+            });
         },
 
 		handlePersonal() { 
@@ -305,5 +329,34 @@ export default {
         .service-item-btn { background: transparent; border: none; padding: 0; line-height: 1.35; outline: none; &::after { border: none; } }
 	}
 }
+
+/* 🌟 新增：退出登录按钮样式 */
+.logout-section {
+    margin: 30rpx auto;
+    width: 94%;
+    
+    .logout-btn {
+        background-color: #fff;
+        color: #fa3534;
+        font-size: 30rpx;
+        font-weight: bold;
+        height: 96rpx;
+        line-height: 96rpx;
+        border-radius: 12rpx;
+        box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03);
+        border: 1px solid #f9f9f9;
+        
+        &::after {
+            border: none;
+        }
+    }
+    
+    /* 按钮按下的反馈状态 */
+    .logout-hover {
+        background-color: #f5f5f5;
+        color: #e3302f;
+    }
+}
+
 .recommend-section { margin-top: 20rpx; width: 94%; margin: 20rpx auto; }
 </style>
