@@ -237,7 +237,6 @@ export default {
               this.loadCoupons();
           } else {
               uni.showToast({ title: res.message || '结算失败', icon: 'none', duration: 2500 });
-              // 🌟 核心防御 1：如果起批量校验失败，强制退回购物车，绝不允许停留！
               setTimeout(() => { uni.navigateBack(); }, 2000);
           }
       }).catch(() => { 
@@ -326,50 +325,114 @@ export default {
     },
 
     submitOrder() {
-          // 🌟 核心防御 2：如果没有商品，严禁提交订单，防止后端制造幽灵订单！
-          if (this.goodsList.length === 0) {
-              return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
-          }
+        // 🌟 防线：如果没有商品，严禁提交订单
+        if (this.goodsList.length === 0) {
+            return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
+        }
 
-          if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
-    
-          this.submitting = true;
-          const idsStr = this.getIdsString();
-          const commonPayload = { addressId: this.address.id, buyerRemark: this.buyerRemark, payType: 20, appKey: 'MP-WEIXIN' };
-    
-          let promise;
-          
-          if (this.isDispensing) {
-              const payload = { ...commonPayload, cartIds: idsStr, dosageDays: Number(this.prescription.days), dailyPackages: Number(this.prescription.packs), medicalAdvice: this.doctorAdvice };
-              if (this.currentCouponId) payload.CouponId = this.currentCouponId;
-              promise = createPrescriptionOrder(payload);
-          } else {
-              const payload = { ...commonPayload, cartIds: idsStr, StrCartIds: idsStr, orderType: 1 };
-              if (this.currentCouponId) payload.UserCouponId = this.currentCouponId;
-              promise = createOrder(payload);
-          }
-    
-          promise.then(res => {
+        if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
+
+        this.submitting = true;
+        const idsStr = this.getIdsString();
+        const commonPayload = { addressId: this.address.id, buyerRemark: this.buyerRemark, payType: 20, appKey: 'MP-WEIXIN' };
+
+        let promise;
+        
+        if (this.isDispensing) {
+            const payload = { ...commonPayload, cartIds: idsStr, dosageDays: Number(this.prescription.days), dailyPackages: Number(this.prescription.packs), medicalAdvice: this.doctorAdvice };
+            if (this.currentCouponId) payload.CouponId = this.currentCouponId;
+            promise = createPrescriptionOrder(payload);
+        } else {
+            const payload = { ...commonPayload, cartIds: idsStr, StrCartIds: idsStr, orderType: 1 };
+            if (this.currentCouponId) payload.UserCouponId = this.currentCouponId;
+            promise = createOrder(payload);
+        }
+
+        promise.then(res => {
             this.submitting = false;
             if (res.code === 200 || res.Code === 200) {
-              const result = res.result || res.data || res.Result || {};
-              if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+                const result = res.result || res.data || res.Result || {};
+                if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
+                    return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+                }
+
+                const orderId = result.orderId || result.OrderId;
+                // 🌟 获取支付参数（全面兼容后端的大小写及嵌套情况）
+                const wxPayParams = result.PayParams || result.payParams || result.wxPayParams || result.WxPayParams || result;
+                const detailUrl = this.isDispensing ? `/pages/order/detail?id=${orderId}&type=2` : `/pages/order/detail?id=${orderId}&type=1`;
+
+                // 🌟 B2B 支付通道判定 (通过检查 signData)
+                if (wxPayParams && (wxPayParams.signData || wxPayParams.SignData)) {
+                    this.callB2BWechatPay(wxPayParams, detailUrl);
+                } 
+                // 传统 JSAPI 支付通道判定 (通过检查 timeStamp)
+                else if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+                    this.callWechatPay(wxPayParams, detailUrl);
+                } 
+                // 0元订单或其他直接成功的情况
+                else { 
+                    uni.showToast({ title: '下单成功', icon: 'success' }); 
+                    setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+                }
+            } else { 
+                uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' }); 
+            }
+        }).catch(() => { 
+            this.submitting = false; 
+        });
+    },
+
+    // 🌟 新增：B2B 专用微信支付方法
+    callB2BWechatPay(params, detailUrl) {
+        console.log('前端发起B2B支付，参数：', params);
+        
+        // 必须直接使用原生 wx 对象，uni.requestPayment 不支持 B2B 参数
+        wx.requestCommonPayment({
+            signData: params.signData || params.SignData,
+            mode: params.mode || params.Mode || 'retail_pay_goods',
+            paySig: params.paySig || params.PaySig,
+            signature: params.signature || params.Signature,
+            
+            success: (res) => { 
+                console.log('B2B支付成功回调', res);
+                uni.showToast({ title: '支付成功', icon: 'success' }); 
+                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+            },
+            fail: (err) => { 
+                console.error('B2B支付失败或取消回调', err);
+                if (err.errMsg && err.errMsg.includes('cancel')) {
+                    uni.showToast({ title: '已取消支付', icon: 'none' });
+                } else {
+                    uni.showModal({
+                        title: '支付失败',
+                        content: err.errMsg || '唤起微信支付异常',
+                        showCancel: false
+                    });
+                }
+                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+            }
+        });
+    },
     
-              const orderId = result.orderId || result.OrderId;
-              const wxPayParams = result.payParams || result.wxPayParams || result.WxPayParams;
-              const detailUrl = this.isDispensing ? `/pages/order/detail?id=${orderId}&type=2` : `/pages/order/detail?id=${orderId}&type=1`;
-    
-              if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) this.callWechatPay(wxPayParams, detailUrl);
-              else { uni.showToast({ title: '下单成功', icon: 'success' }); setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); }
-            } else { uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' }); }
-          }).catch(() => { this.submitting = false; });
-        },
-    
+    // 传统普通微信支付方法（保留以作平滑过渡兜底）
     callWechatPay(params, detailUrl) {
+        console.log('发起普通微信支付，参数：', params);
         uni.requestPayment({
-            provider: 'wxpay', timeStamp: String(params.timeStamp || params.TimeStamp), nonceStr: params.nonceStr || params.NonceStr, package: params.package || params.Package, signType: params.signType || params.SignType || 'MD5', paySign: params.paySign || params.PaySign,
-            success: () => { uni.showToast({ title: '支付成功', icon: 'success' }); setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); },
-            fail: (err) => { console.log('支付取消', err); uni.showToast({ title: '取消支付', icon: 'none' }); setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); }
+            provider: 'wxpay', 
+            timeStamp: String(params.timeStamp || params.TimeStamp), 
+            nonceStr: params.nonceStr || params.NonceStr, 
+            package: params.package || params.Package, 
+            signType: params.signType || params.SignType || 'MD5', 
+            paySign: params.paySign || params.PaySign,
+            success: () => { 
+                uni.showToast({ title: '支付成功', icon: 'success' }); 
+                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+            },
+            fail: (err) => { 
+                console.log('普通支付取消或失败', err); 
+                uni.showToast({ title: '取消支付', icon: 'none' }); 
+                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+            }
         });
     }
   }
@@ -377,7 +440,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 样式保留 */
+/* 样式保持不变 */
 .container { padding-bottom: 120rpx; background-color: #f5f5f5; min-height: 100vh; }
 .address-section { background: #fff; padding: 30rpx; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; .user-row { font-size: 30rpx; font-weight: bold; margin-bottom: 10rpx; .mobile { margin-left: 20rpx; color: #666; font-weight: normal; font-size: 26rpx; } } .addr-text { font-size: 26rpx; color: #333; line-height: 1.4; } .addr-empty { display: flex; align-items: center; color: #333; font-size: 28rpx; .icon-box { width: 40rpx; height: 40rpx; background: #2979ff; color: #fff; text-align: center; line-height: 36rpx; border-radius: 8rpx; margin-right: 12rpx; font-weight: bold;} } }
 .goods-section { background: #fff; margin-bottom: 20rpx; .prescription-header { padding: 20rpx 30rpx; border-bottom: 1px solid #f8f8f8; display: flex; align-items: center; .tag { background: #e6f1fc; color: #2979ff; font-size: 22rpx; padding: 4rpx 10rpx; border-radius: 6rpx; margin-right: 16rpx;} .usage-info { font-size: 26rpx; color: #333; font-weight: bold; } } .goods-item { display: flex; padding: 20rpx 30rpx; background: #fff; border-bottom: 1px solid #f8f8f8; .thumb { width: 140rpx; height: 140rpx; border-radius: 8rpx; margin-right: 20rpx; background: #f5f5f5;} .content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .title { font-size: 28rpx; color: #333; } .spec { font-size: 24rpx; color: #999; margin-top: 8rpx; } .price-row { display: flex; justify-content: space-between; margin-top: 10rpx; .price { color: #ff3b30; font-size: 30rpx; font-weight: bold; } .num { color: #999; font-size: 26rpx; } } } } }

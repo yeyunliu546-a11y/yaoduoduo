@@ -1,64 +1,99 @@
 <template>
   <view class="container">
     <block v-if="orderInfo.id">
-      <view class="status-header">
-        <view class="status-text">{{ orderInfo.orderStatusName }}</view>
-        <view class="status-desc" v-if="orderInfo.orderStatus===10">请尽快完成支付</view>
-        <view class="status-desc" v-if="orderInfo.expressNo">快递单号: {{ orderInfo.expressNo }}</view>
-      </view>
-
-      <view class="address-card">
-        <view class="user-row">
-          <text class="name">{{ orderInfo.receiverName }}</text>
-          <text class="phone">{{ orderInfo.receiverPhone }}</text>
-        </view>
-        <view class="addr-text">{{ orderInfo.receiverAddress }}</view>
-      </view>
-
-      <view class="goods-card">
-        <view class="prescription-info" v-if="isPrescription">
-            <text class="tag">处方调剂</text>
-            <text>{{ orderInfo.dosageDesc }}</text>
-        </view>
-        
-        <view class="goods-item" v-for="(item, index) in orderInfo.goodsList" :key="index">
-          <image :src="item.imageUrl" mode="aspectFill" class="thumb"></image>
-          <view class="content">
-            <view class="title u-line-2">{{ item.goodsName }}</view>
-            <view class="spec">{{ item.spec }}</view>
-            <view class="price-row">
-              <text class="price">¥{{ item.salePrice }}</text>
-              <text class="num">x{{ item.goodsNum }}</text>
+      
+      <view class="header-bg">
+        <view class="status-wrap">
+          <u-icon :name="statusIcon" color="#fff" size="56" class="status-icon"></u-icon>
+          <view class="status-text-box">
+            <view class="status-name">{{ orderInfo.orderStatusName }}</view>
+            <view class="status-desc" v-if="orderInfo.orderStatus === 10">
+              需付款: ¥{{ orderInfo.payPrice }}，请尽快支付
+            </view>
+            <view class="status-desc" v-else-if="orderInfo.expressNo">
+              快递单号: {{ orderInfo.expressNo }}
+            </view>
+            <view class="status-desc" v-else>
+              感谢您对药多多YDD的支持
             </view>
           </view>
         </view>
-        
-        <view v-if="!orderInfo.goodsList || orderInfo.goodsList.length === 0" style="text-align:center; padding: 40rpx 0; color:#999; font-size:24rpx; background: #f9f9f9; border-radius: 12rpx;">
-            <view>⚠️ 该订单缺乏商品详细数据</view>
-            <view style="font-size: 20rpx; margin-top: 8rpx;">请联系后端排查详情接口返回值</view>
-        </view>
       </view>
 
-      <view class="info-card">
-        <view class="cell">
-          <text class="label">订单编号</text>
-          <text class="value">{{ orderInfo.orderNo }}</text>
+      <view class="main-content">
+        
+        <view class="card address-card">
+          <view class="loc-icon-box">
+             <u-icon name="map-fill" color="#fff" size="30"></u-icon>
+          </view>
+          <view class="addr-info">
+            <view class="user-row">
+              <text class="name">{{ orderInfo.receiverName }}</text>
+              <text class="phone">{{ orderInfo.receiverPhone }}</text>
+            </view>
+            <view class="addr-text">{{ orderInfo.receiverAddress }}</view>
+          </view>
         </view>
-        <view class="cell">
-          <text class="label">下单时间</text>
-          <text class="value">{{ orderInfo.createTime }}</text>
+
+        <view class="card goods-card">
+          <view class="shop-header">
+             <u-icon name="home" color="#333" size="34"></u-icon>
+             <text class="shop-name">药多多 {{ isPrescription ? '调剂中心' : '自营商城' }}</text>
+          </view>
+
+          <view class="prescription-info" v-if="isPrescription">
+              <text class="tag">处方调剂</text>
+              <text class="usage">{{ orderInfo.dosageDesc }}</text>
+          </view>
+          
+          <view class="goods-item" v-for="(item, index) in orderInfo.goodsList" :key="index">
+            <image :src="item.imageUrl" mode="aspectFill" class="thumb"></image>
+            <view class="content">
+              <view class="title u-line-2">{{ item.goodsName }}</view>
+              <view class="spec">{{ item.spec }}</view>
+              <view class="price-row">
+                <text class="price"><text class="symbol">¥</text>{{ item.salePrice }}</text>
+                <text class="num">x{{ item.goodsNum }}</text>
+              </view>
+            </view>
+          </view>
+          
+          <view v-if="!orderInfo.goodsList || orderInfo.goodsList.length === 0" class="empty-goods">
+              <view>⚠️ 该订单缺乏商品详细数据</view>
+              <view class="sub-tip">请联系后端排查详情接口返回值</view>
+          </view>
+
+          <view class="total-row" v-if="orderInfo.payPrice">
+             <text class="label">实付款</text>
+             <text class="total-price"><text class="symbol">¥</text>{{ orderInfo.payPrice }}</text>
+          </view>
         </view>
-        <view class="cell" v-if="orderInfo.payTime">
-          <text class="label">支付时间</text>
-          <text class="value">{{ orderInfo.payTime }}</text>
-        </view>
-        <view class="cell" v-if="isPrescription && orderInfo.medicalAdvice">
-          <text class="label">医嘱备注</text>
-          <text class="value">{{ orderInfo.medicalAdvice }}</text>
-        </view>
-        <view class="cell" v-if="orderInfo.buyerRemark">
-          <text class="label">买家留言</text>
-          <text class="value">{{ orderInfo.buyerRemark }}</text>
+
+        <view class="card info-card">
+          <view class="card-title">订单信息</view>
+          <view class="cell">
+            <text class="label">订单编号</text>
+            <view class="value-box">
+               <text class="value">{{ orderInfo.orderNo }}</text>
+               <text class="copy-btn" @click="copyText(orderInfo.orderNo)">复制</text>
+            </view>
+          </view>
+          <view class="cell">
+            <text class="label">下单时间</text>
+            <text class="value">{{ orderInfo.createTime }}</text>
+          </view>
+          <view class="cell" v-if="orderInfo.payTime">
+            <text class="label">支付时间</text>
+            <text class="value">{{ orderInfo.payTime }}</text>
+          </view>
+          <view class="cell" v-if="isPrescription && orderInfo.medicalAdvice">
+            <text class="label">医嘱备注</text>
+            <text class="value">{{ orderInfo.medicalAdvice }}</text>
+          </view>
+          <view class="cell" v-if="orderInfo.buyerRemark">
+            <text class="label">买家留言</text>
+            <text class="value">{{ orderInfo.buyerRemark }}</text>
+          </view>
         </view>
       </view>
 
@@ -93,7 +128,18 @@ export default {
     };
   },
   computed: {
-      isPrescription() { return parseInt(this.orderType) === 2; }
+      isPrescription() { return parseInt(this.orderType) === 2; },
+      
+      // 动态匹配头部大图标
+      statusIcon() {
+          const status = this.orderInfo?.orderStatus;
+          if (status === 10) return 'clock-fill'; // 待付款
+          if (status === 20) return 'car-fill';   // 待发货
+          if (status === 30) return 'gift-fill';  // 待收货
+          if (status === 80) return 'checkmark-circle-fill'; // 已完成
+          if (status === -20 || status === -30) return 'close-circle-fill'; // 取消/退款
+          return 'order';
+      }
   },
   onLoad(options) {
     if (options.id) {
@@ -106,6 +152,16 @@ export default {
     }
   },
   methods: {
+    // 复制订单号到剪贴板
+    copyText(text) {
+        uni.setClipboardData({
+            data: String(text),
+            success: () => {
+                uni.showToast({ title: '复制成功', icon: 'none' });
+            }
+        });
+    },
+
     loadDetail() {
       this.loading = true;
       const api = this.isPrescription ? getPrescriptionDetail(this.orderId) : getOrderDetail(this.orderId);
@@ -115,10 +171,6 @@ export default {
         const code = res.code !== undefined ? res.code : res.Code;
         if (code === 200) {
           const data = res.result || res.data || res.Result;
-          
-          // 🚨 这一行非常重要！如果订单不显示商品，立刻打开控制台看打印出来的这个 data 里面到底有没有商品数组！
-          console.log('【后端返回的订单详细原始数据】', data);
-          
           this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
             uni.showToast({ title: res.message || res.Message || '获取详情失败', icon: 'none' });
@@ -126,29 +178,23 @@ export default {
       }).catch(() => this.loading = false);
     },
     
-    // 【新增核心功能】：前端智能合并相同商品
     aggregateGoods(rawGoodsList, defaultSpec) {
         const grouped = [];
         const map = {};
         
         rawGoodsList.forEach(g => {
             const sku = g.sku || g.goods || g;
-            
-            // 提取基础信息
             const name = sku.GoodsName || sku.goodsName || g.goodsName || g.GoodsName || '未知商品';
             const spec = sku.SkuName || sku.skuName || sku.spec || g.specification || g.spec || defaultSpec;
             const imageUrl = sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/default-goods.png';
             const salePrice = sku.SalePrice || sku.PayPrice || sku.unitPrice || sku.salePrice || sku.price || g.unitPrice || g.salePrice || g.price || 0;
             const num = Number(sku.Quantity || sku.quantity || g.quantity || g.goodsNum || g.buyNum || 1);
             
-            // 用 商品名+规格 作为合并的唯一 Key
             const uniqueKey = `${name}_${spec}`;
             
             if (map[uniqueKey]) {
-                // 如果已经存在，单纯把数量累加起来
                 map[uniqueKey].goodsNum += num;
             } else {
-                // 如果是新商品，存入字典并添加到结果数组
                 map[uniqueKey] = {
                     goodsName: name,
                     spec: spec,
@@ -159,60 +205,85 @@ export default {
                 grouped.push(map[uniqueKey]);
             }
         });
-        
         return grouped;
     },
 
-    handlePrescriptionData(data) {
-        if(!data) return;
-        const rawGoods = data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [];
+    // 处理处方单详情数据
+        handlePrescriptionData(data) {
+            if(!data) return;
+            const rawGoods = data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [];
+            
+            // 🌟 暴力兼容地址对象
+            const addr = data.address || data.AddressInfo || data;
+            let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
+            if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
+                fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
+            }
+            
+            this.orderInfo = {
+                id: data.id || data.Id,
+                orderNo: data.orderNo || data.OrderNo,
+                orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
+                orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
+                createTime: data.createTime || data.CreateTime,
+                payTime: data.payTime || data.PayTime,
+                payPrice: data.payPrice || data.PayPrice || 0,
+                expressNo: data.expressNo || data.ExpressNo,
+                dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
+                medicalAdvice: data.medicalAdvice || data.MedicalAdvice,
+                buyerRemark: data.buyerRemark || data.BuyerRemark,
+                
+                // 🌟 极限提取收货人信息
+                receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
+                receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
+                receiverAddress: fullAddress,
+                
+                goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
+            };
+        },
         
-        this.orderInfo = {
-            id: data.id || data.Id,
-            orderNo: data.orderNo || data.OrderNo,
-            orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
-            orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
-            createTime: data.createTime || data.CreateTime,
-            payTime: data.payTime || data.PayTime,
-            expressNo: data.expressNo || data.ExpressNo,
-            dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
-            medicalAdvice: data.medicalAdvice || data.MedicalAdvice,
-            buyerRemark: data.buyerRemark || data.BuyerRemark,
-            receiverName: data.address?.name || data.AddressInfo?.Name || '',
-            receiverPhone: data.address?.phone || data.AddressInfo?.Phone || '',
-            receiverAddress: data.address?.fullAddress || data.AddressInfo?.FullAddress || '',
-            // 调用合并方法
-            goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
-        };
-    },
-    
-    handleProcurementData(data) {
-        if(!data) return;
-        const rawGoods = data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || [];
-        const addr = data.AddressInfo || data.OrderAddressInfo || data.address || {};
-        
-        this.orderInfo = {
-            id: data.Id || data.id,
-            orderNo: data.OrderNo || data.orderNo,
-            orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
-            orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
-            createTime: data.CreateTime || data.createTime,
-            payTime: data.PayTime || data.payTime,
-            expressNo: data.ExpressNo || data.expressNo,
-            buyerRemark: data.BuyerRemark || data.buyerRemark,
-            receiverName: addr.Name || addr.name || addr.receiverName || '',
-            receiverPhone: addr.Phone || addr.phone || addr.receiverPhone || '',
-            receiverAddress: addr.FullAddress || addr.fullAddress || addr.receiverAddress || '',
-            // 调用合并方法
-            goodsList: this.aggregateGoods(rawGoods, '默认规格')
-        };
-    },
+        // 处理采购单详情数据
+            handleProcurementData(data) {
+                if(!data) return;
+                const rawGoods = data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || [];
+                
+                // 🌟 破案关键：加上首字母小写的 addressInfo 和 orderAddressInfo 兼容
+                const addr = data.addressInfo || data.orderAddressInfo || data.AddressInfo || data.OrderAddressInfo || data.address || data;
+                
+                // 拼装详细地址
+                let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
+                if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
+                    fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
+                }
+                
+                this.orderInfo = {
+                    id: data.Id || data.id,
+                    orderNo: data.OrderNo || data.orderNo,
+                    orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
+                    orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
+                    createTime: data.CreateTime || data.createTime,
+                    payTime: data.PayTime || data.payTime,
+                    payPrice: data.payPrice || data.PayPrice || data.orderPayPrice || 0, 
+                    expressNo: data.ExpressNo || data.expressNo,
+                    buyerRemark: data.BuyerRemark || data.buyerRemark,
+                    
+                    // 提取人名和手机号
+                    receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
+                    receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
+                    receiverAddress: fullAddress,
+                    
+                    goodsList: this.aggregateGoods(rawGoods, '默认规格')
+                };
+            },
     
     getStatusName(status) {
         const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
         return map[String(status)] || '未知状态';
     },
     
+    // ======================================
+    // 原封不动保留的操作功能区（双通道支付等）
+    // ======================================
     handlePay() {
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
@@ -229,27 +300,49 @@ export default {
             
             if(code === 200) {
                 const result = res.result || res.Result || res.data || {};
-                const wxPayParams = result.payParams || result.wxPayParams || result;
+                const wxPayParams = result.PayParams || result.payParams || result.wxPayParams || result.WxPayParams || result;
                 
-                if (!wxPayParams.timeStamp && !wxPayParams.TimeStamp) {
-                    return uni.showToast({ title: '支付参数不完整', icon: 'none' });
+                // 1️⃣ 优先走 B2B 支付通道
+                if (wxPayParams && (wxPayParams.signData || wxPayParams.SignData)) {
+                    wx.requestCommonPayment({
+                        signData: wxPayParams.signData || wxPayParams.SignData,
+                        mode: wxPayParams.mode || wxPayParams.Mode || 'retail_pay_goods',
+                        paySig: wxPayParams.paySig || wxPayParams.PaySig,
+                        signature: wxPayParams.signature || wxPayParams.Signature,
+                        success: (payRes) => {
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.loadDetail(); }, 1500); 
+                        },
+                        fail: (err) => {
+                            console.error('B2B支付异常', err);
+                            if (err.errMsg && err.errMsg.includes('cancel')) {
+                                uni.showToast({ title: '已取消支付', icon: 'none' });
+                            } else {
+                                uni.showModal({ title: '支付失败', content: err.errMsg || '唤起微信支付异常', showCancel: false });
+                            }
+                        }
+                    });
+                } 
+                // 2️⃣ 兼容传统老版 JSAPI 通道
+                else if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+                    uni.requestPayment({
+                        provider: 'wxpay',
+                        timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
+                        nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
+                        package: wxPayParams.package || wxPayParams.Package,
+                        signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
+                        paySign: wxPayParams.paySign || wxPayParams.PaySign,
+                        success: (payRes) => {
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.loadDetail(); }, 1500);
+                        },
+                        fail: (err) => {
+                            uni.showToast({ title: '已取消支付', icon: 'none' });
+                        }
+                    });
+                } else {
+                    uni.showToast({ title: '支付参数不完整', icon: 'none' });
                 }
-                
-                uni.requestPayment({
-                    provider: 'wxpay',
-                    timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
-                    nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
-                    package: wxPayParams.package || wxPayParams.Package,
-                    signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
-                    paySign: wxPayParams.paySign || wxPayParams.PaySign,
-                    success: (payRes) => {
-                        uni.showToast({ title: '支付成功', icon: 'success' });
-                        setTimeout(() => { this.loadDetail(); }, 1500);
-                    },
-                    fail: (err) => {
-                        uni.showToast({ title: '已取消支付', icon: 'none' });
-                    }
-                });
             } else {
                 uni.showToast({ title: res.message || res.Message || '获取参数失败', icon: 'none' });
             }
@@ -321,46 +414,253 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.container { background-color: #f5f5f5; min-height: 100vh; padding-bottom: 120rpx; }
-.status-header { background: #2979ff; color: #fff; padding: 40rpx 30rpx; 
-  .status-text { font-size: 36rpx; font-weight: bold; margin-bottom: 10rpx; }
-  .status-desc { font-size: 26rpx; opacity: 0.8; }
-}
-.address-card, .goods-card, .info-card { background: #fff; margin: 20rpx; padding: 30rpx; border-radius: 16rpx; }
-.user-row { font-size: 30rpx; font-weight: bold; margin-bottom: 10rpx; 
-  .phone { margin-left: 20rpx; font-weight: normal; color: #666; font-size: 26rpx; }
-}
-.addr-text { color: #666; font-size: 26rpx; line-height: 1.4; }
-
-.prescription-info {
-    padding-bottom: 20rpx; margin-bottom: 20rpx; border-bottom: 1px solid #f8f8f8;
-    .tag { background: #e6f1fc; color: #2979ff; font-size: 22rpx; padding: 4rpx 10rpx; border-radius: 6rpx; margin-right: 16rpx;}
-    font-size: 26rpx; color: #333; font-weight: bold;
+.container { 
+  background-color: #f5f7fa; 
+  min-height: 100vh; 
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-.goods-item { display: flex; margin-bottom: 30rpx; 
-  &:last-child { margin-bottom: 0; }
-  .thumb { width: 160rpx; height: 160rpx; border-radius: 12rpx; margin-right: 20rpx; background: #f9f9f9; }
-  .content { flex: 1; display: flex; flex-direction: column; justify-content: space-between;
-    .title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 1.4;}
-    .spec { font-size: 24rpx; color: #999; margin-top: 8rpx;}
-    .price-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12rpx;
-      .price { color: #ff3b30; font-weight: bold; font-size: 32rpx; }
-      .num { color: #999; font-size: 26rpx; }
-    }
+/* 渐变头部背景 */
+.header-bg { 
+  background: linear-gradient(135deg, #2979ff 0%, #518cff 100%); 
+  height: 280rpx;
+  padding: 40rpx 40rpx 0; 
+  box-sizing: border-box;
+}
+
+.status-wrap {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+  
+  .status-icon {
+      margin-right: 20rpx;
+      opacity: 0.9;
+  }
+  
+  .status-text-box {
+      color: #fff;
+      .status-name { 
+          font-size: 38rpx; 
+          font-weight: bold; 
+          margin-bottom: 8rpx; 
+          letter-spacing: 2rpx;
+      }
+      .status-desc { 
+          font-size: 24rpx; 
+          opacity: 0.85; 
+      }
   }
 }
 
-.cell { display: flex; justify-content: space-between; margin-bottom: 20rpx; font-size: 26rpx;
-  &:last-child { margin-bottom: 0; }
-  .label { color: #999; }
-  .value { color: #333; max-width: 70%; text-align: right;}
+/* 核心内容区：利用负边距上浮，营造空间感 */
+.main-content {
+    position: relative;
+    z-index: 2;
+    margin-top: -80rpx; 
+    padding: 0 24rpx;
+    padding-bottom: 120rpx; /* 给底部按钮留出空间 */
 }
 
-.footer-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; height: 100rpx; display: flex; align-items: center; justify-content: flex-end; padding: 0 30rpx; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); z-index: 99;
-  .btn { width: 180rpx; height: 72rpx; line-height: 72rpx; text-align: center; border-radius: 36rpx; font-size: 28rpx; margin-left: 20rpx; font-weight: bold;
-    &.plain { border: 1px solid #ccc; color: #666; }
-    &.primary { background: linear-gradient(135deg, #007aff, #0055ff); color: #fff; border: none;}
+/* 统一卡片基础样式 */
+.card { 
+  background: #fff; 
+  border-radius: 20rpx; 
+  padding: 30rpx; 
+  margin-bottom: 24rpx; 
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.03); 
+}
+
+/* 地址卡片细节 */
+.address-card {
+    display: flex;
+    align-items: center;
+    
+    .loc-icon-box {
+        width: 60rpx;
+        height: 60rpx;
+        background: linear-gradient(135deg, #2979ff, #629eff);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 24rpx;
+        flex-shrink: 0;
+        box-shadow: 0 4rpx 10rpx rgba(41, 121, 255, 0.3);
+    }
+    
+    .addr-info {
+        flex: 1;
+        .user-row { 
+            font-size: 30rpx; 
+            font-weight: bold; 
+            margin-bottom: 8rpx; 
+            color: #333;
+            .phone { 
+                margin-left: 20rpx; 
+                font-weight: normal; 
+                color: #666; 
+                font-size: 26rpx; 
+            }
+        }
+        .addr-text { 
+            color: #666; 
+            font-size: 26rpx; 
+            line-height: 1.5; 
+        }
+    }
+}
+
+/* 商品卡片细节 */
+.goods-card {
+    .shop-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 24rpx;
+        padding-bottom: 20rpx;
+        border-bottom: 1px solid #f5f5f5;
+        
+        .shop-name {
+            font-size: 28rpx;
+            font-weight: bold;
+            color: #333;
+            margin-left: 12rpx;
+        }
+    }
+
+    .prescription-info {
+        padding-bottom: 20rpx; margin-bottom: 20rpx; border-bottom: 1px dotted #f0f0f0;
+        .tag { background: #e6f1fc; color: #2979ff; font-size: 20rpx; padding: 4rpx 12rpx; border-radius: 8rpx; margin-right: 16rpx;}
+        .usage { font-size: 26rpx; color: #333; font-weight: bold;}
+    }
+
+    .goods-item { 
+      display: flex; 
+      margin-bottom: 30rpx; 
+      &:last-child { margin-bottom: 20rpx; }
+      
+      .thumb { 
+          width: 160rpx; 
+          height: 160rpx; 
+          border-radius: 12rpx; 
+          margin-right: 24rpx; 
+          background: #f9f9f9; 
+          border: 1px solid #f0f0f0;
+      }
+      
+      .content { 
+          flex: 1; 
+          display: flex; 
+          flex-direction: column; 
+          justify-content: space-between;
+          padding: 4rpx 0;
+          
+        .title { font-size: 28rpx; color: #333; font-weight: 500; line-height: 1.4;}
+        .spec { font-size: 24rpx; color: #999; margin-top: 8rpx; background: #f5f7fa; align-self: flex-start; padding: 2rpx 12rpx; border-radius: 6rpx;}
+        .price-row { 
+            display: flex; justify-content: space-between; align-items: baseline; margin-top: 12rpx;
+            .price { 
+                color: #fa3534; font-weight: bold; font-size: 32rpx; 
+                .symbol { font-size: 24rpx; margin-right: 4rpx; font-weight: normal; }
+            }
+            .num { color: #999; font-size: 26rpx; }
+        }
+      }
+    }
+    
+    .empty-goods {
+        text-align: center; padding: 40rpx 0; color:#999; font-size:24rpx; background: #f9f9f9; border-radius: 12rpx; margin-bottom: 20rpx;
+        .sub-tip { font-size: 20rpx; margin-top: 8rpx; }
+    }
+    
+    /* 订单总计 */
+    .total-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: baseline;
+        padding-top: 24rpx;
+        border-top: 1px solid #f5f5f5;
+        
+        .label { font-size: 26rpx; color: #333; margin-right: 12rpx; }
+        .total-price {
+            color: #fa3534; font-size: 36rpx; font-weight: bold;
+            .symbol { font-size: 24rpx; margin-right: 4rpx;}
+        }
+    }
+}
+
+/* 订单信息卡片细节 */
+.info-card {
+    .card-title {
+        font-size: 30rpx;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 24rpx;
+        border-left: 6rpx solid #2979ff;
+        padding-left: 16rpx;
+        line-height: 1;
+    }
+    
+    .cell { 
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 24rpx; font-size: 26rpx;
+      &:last-child { margin-bottom: 0; }
+      .label { color: #999; flex-shrink: 0; }
+      .value-box { display: flex; align-items: center; }
+      .value { color: #333; max-width: 450rpx; text-align: right; word-break: break-all; }
+      
+      .copy-btn {
+          margin-left: 16rpx;
+          font-size: 20rpx;
+          color: #2979ff;
+          background: #e6f1fc;
+          padding: 4rpx 16rpx;
+          border-radius: 20rpx;
+      }
+    }
+}
+
+/* 底部操作栏 */
+.footer-bar { 
+  position: fixed; 
+  bottom: 0; 
+  left: 0; 
+  right: 0; 
+  background: rgba(255, 255, 255, 0.98); 
+  backdrop-filter: blur(10px);
+  height: 110rpx; 
+  display: flex; 
+  align-items: center; 
+  justify-content: flex-end; 
+  padding: 0 30rpx; 
+  box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04); 
+  z-index: 99;
+  
+  /* 适配苹果底部安全区 */
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+  
+  .btn { 
+      width: 180rpx; 
+      height: 72rpx; 
+      line-height: 72rpx; 
+      text-align: center; 
+      border-radius: 36rpx; 
+      font-size: 28rpx; 
+      margin-left: 20rpx; 
+      font-weight: 500;
+      
+    &.plain { 
+        border: 1px solid #dcdfe6; 
+        color: #606266; 
+        background: #fff;
+    }
+    
+    &.primary { 
+        background: linear-gradient(135deg, #2979ff 0%, #4792ff 100%); 
+        color: #fff; 
+        box-shadow: 0 4rpx 12rpx rgba(41, 121, 255, 0.3);
+    }
   }
 }
 </style>

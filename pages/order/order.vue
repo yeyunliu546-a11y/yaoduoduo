@@ -194,6 +194,7 @@ export default {
       uni.navigateTo({ url: `/pages/order/detail?id=${item.id}&type=${item.orderType}` });
     },
     
+    // 🌟 核心修改：双通道支付逻辑
     handlePay(item) {
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
@@ -207,7 +208,6 @@ export default {
                 appKey: 'MP-WEIXIN' 
             });
         } else {
-            // 双管齐下，大写小写都传，兼容老接口
             payApi = payOrder({ 
                 OrderId: item.id,
                 PayType: 20,
@@ -224,28 +224,50 @@ export default {
             
             if(code === 200) {
                 const result = res.result || res.Result || res.data || {};
-                const wxPayParams = result.payParams || result.wxPayParams || result;
+                const wxPayParams = result.PayParams || result.payParams || result.wxPayParams || result.WxPayParams || result;
                 
-                if (!wxPayParams.timeStamp && !wxPayParams.TimeStamp) {
-                    return uni.showToast({ title: '支付参数不完整', icon: 'none' });
+                // 1️⃣ 优先走 B2B 支付通道
+                if (wxPayParams && (wxPayParams.signData || wxPayParams.SignData)) {
+                    wx.requestCommonPayment({
+                        signData: wxPayParams.signData || wxPayParams.SignData,
+                        mode: wxPayParams.mode || wxPayParams.Mode || 'retail_pay_goods',
+                        paySig: wxPayParams.paySig || wxPayParams.PaySig,
+                        signature: wxPayParams.signature || wxPayParams.Signature,
+                        success: (payRes) => {
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.refreshList(); }, 1500);
+                        },
+                        fail: (err) => {
+                            console.error('B2B支付异常', err);
+                            if (err.errMsg && err.errMsg.includes('cancel')) {
+                                uni.showToast({ title: '已取消支付', icon: 'none' });
+                            } else {
+                                uni.showModal({ title: '支付失败', content: err.errMsg || '唤起微信支付异常', showCancel: false });
+                            }
+                        }
+                    });
+                } 
+                // 2️⃣ 兼容传统老版 JSAPI 通道
+                else if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
+                    uni.requestPayment({
+                        provider: 'wxpay',
+                        timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
+                        nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
+                        package: wxPayParams.package || wxPayParams.Package,
+                        signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
+                        paySign: wxPayParams.paySign || wxPayParams.PaySign,
+                        success: (payRes) => {
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.refreshList(); }, 1500);
+                        },
+                        fail: (err) => {
+                            console.log('支付取消或失败', err);
+                            uni.showToast({ title: '已取消支付', icon: 'none' });
+                        }
+                    });
+                } else {
+                    uni.showToast({ title: '支付参数不完整', icon: 'none' });
                 }
-                
-                uni.requestPayment({
-                    provider: 'wxpay',
-                    timeStamp: String(wxPayParams.timeStamp || wxPayParams.TimeStamp),
-                    nonceStr: wxPayParams.nonceStr || wxPayParams.NonceStr,
-                    package: wxPayParams.package || wxPayParams.Package,
-                    signType: wxPayParams.signType || wxPayParams.SignType || 'MD5',
-                    paySign: wxPayParams.paySign || wxPayParams.PaySign,
-                    success: (payRes) => {
-                        uni.showToast({ title: '支付成功', icon: 'success' });
-                        setTimeout(() => { this.refreshList(); }, 1500);
-                    },
-                    fail: (err) => {
-                        console.log('支付取消或失败', err);
-                        uni.showToast({ title: '已取消支付', icon: 'none' });
-                    }
-                });
             } else {
                 uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
             }
@@ -262,20 +284,14 @@ export default {
                 if(res.confirm) {
                     let promise;
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
-                    
-                    if (isPrescription) {
-                        promise = confirmPrescriptionReceive({ orderId: item.id });
-                    } else {
-                        promise = confirmReceive({ OrderId: item.id });
-                    }
+                    if (isPrescription) promise = confirmPrescriptionReceive({ orderId: item.id });
+                    else promise = confirmReceive({ OrderId: item.id });
 
                     promise.then(r => {
                         if(r.code === 200) {
                             uni.showToast({ title: '收货成功' });
                             this.refreshList();
-                        } else {
-                            uni.showToast({ title: r.message || '操作失败', icon: 'none' });
-                        }
+                        } else uni.showToast({ title: r.message || '操作失败', icon: 'none' });
                     });
                 }
             }
@@ -284,26 +300,19 @@ export default {
     
     handleCancel(item) {
         uni.showModal({
-            title: '提示',
-            content: '确定要取消订单吗？',
+            title: '提示', content: '确定要取消订单吗？',
             success: (res) => {
                 if(res.confirm) {
                     let promise;
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
-
-                    if (isPrescription) {
-                        promise = cancelPrescriptionOrder({ orderId: item.id });
-                    } else {
-                        promise = cancelOrder({ OrderId: item.id, Reason: '用户主动取消' });
-                    }
+                    if (isPrescription) promise = cancelPrescriptionOrder({ orderId: item.id });
+                    else promise = cancelOrder({ OrderId: item.id, Reason: '用户主动取消' });
 
                     promise.then(r => {
                         if(r.code === 200) {
                             uni.showToast({ title: '取消成功' });
                             this.refreshList();
-                        } else {
-                            uni.showToast({ title: r.message || '取消失败', icon: 'none' });
-                        }
+                        } else uni.showToast({ title: r.message || '取消失败', icon: 'none' });
                     });
                 }
             }
@@ -312,10 +321,7 @@ export default {
 
     handleApplyRefund(item) {
         uni.showModal({
-            title: '申请退款',
-            editable: true,
-            placeholderText: '请输入退款理由',
-            content: '确定要申请退款吗？',
+            title: '申请退款', editable: true, placeholderText: '请输入退款理由', content: '确定要申请退款吗？',
             success: (res) => {
                 if(res.confirm) {
                     const reason = res.content || '用户申请退款';
@@ -323,9 +329,7 @@ export default {
                         if(r.code === 200) {
                             uni.showToast({ title: '申请提交成功' });
                             this.refreshList();
-                        } else {
-                            uni.showToast({ title: r.message || '申请失败', icon: 'none' });
-                        }
+                        } else uni.showToast({ title: r.message || '申请失败', icon: 'none' });
                     });
                 }
             }
@@ -334,8 +338,7 @@ export default {
 
     handleDelete(item) {
         uni.showModal({
-            title: '提示',
-            content: '确定要删除该订单吗？删除后不可恢复。',
+            title: '提示', content: '确定要删除该订单吗？删除后不可恢复。',
             success: (res) => {
                 if(res.confirm) {
                     uni.showLoading({ title: '删除中' });
@@ -345,9 +348,7 @@ export default {
                             uni.showToast({ title: '删除成功' });
                             const idx = this.orderList.findIndex(o => o.id === item.id);
                             if(idx > -1) this.orderList.splice(idx, 1);
-                        } else {
-                            uni.showToast({ title: r.message || '删除失败', icon: 'none' });
-                        }
+                        } else uni.showToast({ title: r.message || '删除失败', icon: 'none' });
                     }).catch(() => uni.hideLoading());
                 }
             }
@@ -358,6 +359,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+/* 样式保留不变 */
 .container { background-color: #f5f5f5; min-height: 100vh; }
 .tabs-box { background: #fff; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #f5f5f5; }
 .order-list { padding: 20rpx; }
@@ -391,7 +393,6 @@ export default {
     .btn { width: 160rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; margin-left: 20rpx;
       &.plain { border: 1px solid #ccc; color: #666; }
       &.primary { background: #2979ff; color: #fff; border: 1px solid #2979ff; }
-      
       &.icon-btn { display: flex; align-items: center; justify-content: center; width: auto; padding: 0 30rpx;}
     }
   }
