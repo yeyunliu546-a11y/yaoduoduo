@@ -27,65 +27,62 @@
             </view>
 
             <view class="goods-list">
-              <view v-for="(item, idx) in items" :key="item.id" class="swipe-wrapper">
-                <u-swipe-action 
-                  :options="swipeOptions" 
-                  @click="handleSwipeClick($event, item)"
-                  :key="item.id"
-                >
-                  <view class="goods-item">
-                    <view class="checkbox-area" @click.stop="handleCheckItem(item.id)">
-                      <view class="checkbox-icon" :class="{ checked: inArray(item.id, checkedIds) }">
-                        <u-icon name="checkbox-mark" color="#fff" size="24" v-if="inArray(item.id, checkedIds)"></u-icon>
-                      </view>
+              <view v-for="(item, idx) in items" :key="item.id" class="goods-item">
+                <view class="checkbox-area" @click.stop="handleCheckItem(item.id)">
+                  <view class="checkbox-icon" :class="{ checked: inArray(item.id, checkedIds) }">
+                    <u-icon name="checkbox-mark" color="#fff" size="24" v-if="inArray(item.id, checkedIds)"></u-icon>
+                  </view>
+                </view>
+
+                <view class="goods-image" @click="goGoodsDetail(item.goodsId)">
+                  <u-image 
+                    width="180rpx" 
+                    height="180rpx" 
+                    border-radius="12" 
+                    :src="item.urlImg || item.goodsCover || '/static/default-goods.png'" 
+                    mode="aspectFill"
+                  ></u-image>
+                </view>
+
+                <view class="goods-content">
+                  <view class="title-row">
+                    <view class="goods-title u-line-2" @click="goGoodsDetail(item.goodsId)">
+                      {{ item.goodsName }}
                     </view>
-
-                    <view class="goods-image" @click="goGoodsDetail(item.goodsId)">
-                      <u-image 
-                        width="180rpx" 
-                        height="180rpx" 
-                        border-radius="12" 
-                        :src="item.urlImg || item.goodsCover || '/static/default-goods.png'" 
-                        mode="aspectFill"
-                      ></u-image>
-                    </view>
-
-                    <view class="goods-content">
-                      <view class="goods-title u-line-2" @click="goGoodsDetail(item.goodsId)">
-                        {{ item.goodsName }}
-                      </view>
-
-                      <view class="goods-specs">
-                        <view class="spec-tag" v-if="item.standard || item.spec || item.skuName">
-                          {{ item.spec || item.skuName || item.standard }}
-                        </view>
-                        <view class="spec-tag" v-if="item.packageType">
-                          {{ item.packageType }}
-                        </view>
-                        <view class="spec-tag" style="color: #ff6034; background: #fff0eb;" v-if="getMinQty(item) > 1">
-                          {{ getMinQty(item) }}件起批
-                        </view>
-                      </view>
-
-                      <view class="goods-bottom">
-                        <view class="price-box">
-                          <text class="symbol">¥</text>
-                          <text class="number">{{ item.salePrice }}</text>
-                        </view>
-                        
-                        <view class="stepper-box">
-                          <u-number-box 
-                            v-model="item.goodsNum" 
-                            :min="getMinQty(item)" 
-                            :max="9999" 
-                            :index="idx"
-                            @change="val => handleNumChange(val, item)"
-                          ></u-number-box>
-                        </view>
-                      </view>
+                    <view class="delete-icon" @click.stop="handleDeleteItem(item)">
+                      <u-icon name="trash" color="#c0c4cc" size="36"></u-icon>
                     </view>
                   </view>
-                </u-swipe-action>
+
+                  <view class="goods-specs">
+                    <view class="spec-tag" v-if="item.standard || item.spec || item.skuName">
+                      {{ item.spec || item.skuName || item.standard }}
+                    </view>
+                    <view class="spec-tag" v-if="item.packageType">
+                      {{ item.packageType }}
+                    </view>
+                    <view class="spec-tag" style="color: #ff6034; background: #fff0eb;" v-if="getMinQty(item) > 1">
+                      {{ getMinQty(item) }}件起批
+                    </view>
+                  </view>
+
+                  <view class="goods-bottom">
+                    <view class="price-box">
+                      <text class="symbol">¥</text>
+                      <text class="number">{{ item.salePrice }}</text>
+                    </view>
+                    
+                    <view class="stepper-box">
+                      <u-number-box 
+                        v-model="item.goodsNum" 
+                        :min="getMinQty(item)" 
+                        :max="9999" 
+                        :index="idx"
+                        @change="val => handleNumChange(val, item)"
+                      ></u-number-box>
+                    </view>
+                  </view>
+                </view>
               </view>
             </view>
           </view>
@@ -246,9 +243,7 @@ export default {
       debounceTimers: {},
       
       showFavNameModal: false,
-      favName: '',
-      
-      swipeOptions: [{ text: '删除', style: { backgroundColor: '#fa3534' } }]
+      favName: ''
     }
   },
   computed: {
@@ -278,10 +273,8 @@ export default {
     this.loadData();
   },
   methods: {
-    // 🌟 极限容错：安全提取商品起批量，强制转换为数值类型
     getMinQty(item) {
         if (!item) return 1;
-        // 暴力破解各种可能存在的嵌套结构和大小写
         let qty = item.minOrderQuantity || item.MinOrderQuantity 
                   || (item.sku && (item.sku.minOrderQuantity || item.sku.MinOrderQuantity))
                   || (item.goods && (item.goods.minOrderQuantity || item.goods.MinOrderQuantity)) 
@@ -324,27 +317,27 @@ export default {
         }
     },
     
+    // 🌟 优化：全方位暴力提取“厂家名称”，防止因为嵌套找不到
     groupCartByBrand(list) {
         const groups = {};
         list.forEach(item => {
-            const brand = item.manufacturer || '其他';
+            let brand = item.manufacturer || item.Manufacturer || 
+                       (item.goods && (item.goods.manufacturer || item.goods.Manufacturer)) || 
+                       (item.sku && (item.sku.manufacturer || item.sku.Manufacturer)) || 
+                       item.brandName || item.BrandName || 
+                       '平台自营 / 其他厂家';
+            
             if (!groups[brand]) groups[brand] = [];
             groups[brand].push(item);
         });
         return groups;
     },
 
-    handleSwipeClick(index, item) {
-      if (index === 0) this.handleDeleteItem(item);
-    },
-
-    // 🌟 强行拦截采购车数量修改
     handleNumChange(val, item) {
       let rawVal = typeof val === 'object' && val !== null ? val.value : val;
       let newNum = parseInt(rawVal);
       const minQty = this.getMinQty(item);
 
-      // 如果用户输入的数量小于起批量，强行回弹！
       if (isNaN(newNum) || newNum < minQty) {
           uni.showToast({ title: `该商品最低${minQty}件起批`, icon: 'none' });
           this.$nextTick(() => { item.goodsNum = minQty; });
@@ -362,13 +355,11 @@ export default {
       }, 500);
     },
 
-    // 🌟 强行拦截处方车克重修改
     handleWeightChange(val, item) {
       let rawVal = typeof val === 'object' && val !== null ? val.value : val;
       let newWeight = parseInt(rawVal);
       const minQty = this.getMinQty(item);
 
-      // 如果小于起批量，强行回弹！
       if (isNaN(newWeight) || newWeight < minQty) {
           uni.showToast({ title: `该药材最低${minQty}g起售`, icon: 'none' });
           this.$nextTick(() => { item.goodsWeight = minQty; });
@@ -430,24 +421,18 @@ export default {
         if (this.isAllChecked) this.checkedIds = []; else this.checkedIds = [...this.allProcurementIds];
     },
 
-   // 🌟 核心拦截：下单/结算逻辑
-       handleOrder() {
-           // Tab 0: 普通采购结算
+    handleOrder() {
            if (this.currentTab === 0) {
                if (!this.checkedIds || this.checkedIds.length === 0) {
                    return uni.showToast({ title: '请先勾选要结算的商品', icon: 'none' });
                }
-   
-               // 🛑 【新增】点击结算前的终极物理防御遍历
                let errorMsg = '';
                for (let brand in this.procurementList) {
                    const items = this.procurementList[brand];
                    for (let i = 0; i < items.length; i++) {
                        const item = items[i];
-                       // 只校验被勾选的商品
                        if (this.inArray(item.id, this.checkedIds)) {
                            const minQty = this.getMinQty(item);
-                           // 如果当前数量小于起批量，立刻生成报错信息并打断
                            if (item.goodsNum < minQty) {
                                errorMsg = `商品【${item.goodsName}】最低需${minQty}件起批，当前仅${item.goodsNum}件，请修改数量`;
                                break; 
@@ -456,24 +441,15 @@ export default {
                    }
                    if (errorMsg) break;
                }
-   
-               // 发现错误，直接弹窗阻断，不发后端请求！
-               if (errorMsg) {
-                   return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
-               }
-   
-               // 校验全部通过，放行前往结算页
+               if (errorMsg) return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
                uni.navigateTo({ 
                    url: `/pages/order/create?type=procurement&cartIds=${encodeURIComponent(JSON.stringify(this.checkedIds))}` 
                });
            } 
-           // Tab 1: 处方调剂结算
            else {
                if (!this.dispensingList || this.dispensingList.length === 0) {
                    return uni.showToast({ title: '处方清单不能为空', icon: 'none' });
                }
-   
-               // 🛑 【新增】处方车的终极物理防御遍历
                let errorMsg = '';
                for (let i = 0; i < this.dispensingList.length; i++) {
                    const item = this.dispensingList[i];
@@ -483,11 +459,7 @@ export default {
                        break;
                    }
                }
-   
-               // 发现错误，直接弹窗阻断，不发后端请求！
-               if (errorMsg) {
-                   return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
-               }
+               if (errorMsg) return uni.showToast({ title: errorMsg, icon: 'none', duration: 3000 });
    
                const allIds = this.dispensingList.map(item => item.id);
                uni.navigateTo({
@@ -516,15 +488,33 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 保持原有样式完全不变 */
 .container { min-height: 100vh; padding-bottom: 220rpx; background-color: #f5f5f5; }
 .tab-header { display: flex; background: #fff; height: 88rpx; line-height: 88rpx; position: sticky; top: 0; z-index: 99; box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05); .tab-item { flex: 1; text-align: center; font-size: 30rpx; color: #666; position: relative; font-weight: 500; transition: all 0.3s; &.active { color: #ee0a24; font-weight: bold; font-size: 32rpx; } .tab-line { position: absolute; bottom: 8rpx; left: 50%; transform: translateX(-50%); width: 40rpx; height: 6rpx; background: linear-gradient(90deg, #ff6034, #ee0a24); border-radius: 3rpx; } } }
 .cart-container { padding: 24rpx; }
 .brand-group { background: #fff; border-radius: 20rpx; margin-bottom: 24rpx; overflow: hidden; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04); }
 .brand-header { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .brand-left { display: flex; align-items: center; .brand-title { font-size: 30rpx; font-weight: bold; color: #333; margin: 0 10rpx 0 16rpx; } } .clear-btn { font-size: 24rpx; color: #999; } }
 .checkbox-icon { width: 40rpx; height: 40rpx; border-radius: 50%; border: 2rpx solid #c8c9cc; display: flex; align-items: center; justify-content: center; transition: all 0.2s; background: #fff; &.checked { background: #ee0a24; border-color: #ee0a24; } }
-.swipe-wrapper { margin-bottom: 2rpx; }
-.goods-item { display: flex; padding: 24rpx; background: #fff; .checkbox-area { display: flex; align-items: center; padding-right: 20rpx; } .goods-image { flex-shrink: 0; margin-right: 20rpx; border-radius: 12rpx; overflow: hidden; border: 1rpx solid #f0f0f0; } .goods-content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .goods-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 40rpx; margin-bottom: 10rpx; } .goods-specs { display: flex; flex-wrap: wrap; gap: 10rpx; margin-bottom: 16rpx; .spec-tag { font-size: 22rpx; color: #909399; background: #f4f4f5; padding: 4rpx 12rpx; border-radius: 6rpx; } } .goods-bottom { display: flex; justify-content: space-between; align-items: flex-end; .price-box { color: #ee0a24; font-weight: bold; line-height: 1; .symbol { font-size: 24rpx; } .number { font-size: 36rpx; } } } } }
+
+/* 🌟 新增：标题与删除按钮并排样式 */
+.title-row { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    .goods-title { 
+        flex: 1; 
+        font-size: 28rpx; 
+        color: #333; 
+        font-weight: bold; 
+        line-height: 40rpx; 
+        margin-bottom: 10rpx; 
+        margin-right: 16rpx; 
+    } 
+    .delete-icon { 
+        padding: 4rpx; 
+    } 
+}
+
+.goods-item { display: flex; padding: 24rpx; background: #fff; border-bottom: 1px solid #f9f9f9; .checkbox-area { display: flex; align-items: center; padding-right: 20rpx; } .goods-image { flex-shrink: 0; margin-right: 20rpx; border-radius: 12rpx; overflow: hidden; border: 1rpx solid #f0f0f0; } .goods-content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .goods-specs { display: flex; flex-wrap: wrap; gap: 10rpx; margin-bottom: 16rpx; .spec-tag { font-size: 22rpx; color: #909399; background: #f4f4f5; padding: 4rpx 12rpx; border-radius: 6rpx; } } .goods-bottom { display: flex; justify-content: space-between; align-items: flex-end; .price-box { color: #ee0a24; font-weight: bold; line-height: 1; .symbol { font-size: 24rpx; } .number { font-size: 36rpx; } } } } }
 .empty-cart { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 120rpx; }
 .footer-wrapper { position: fixed; bottom: 0; bottom: var(--window-bottom); left: 0; right: 0; z-index: 999; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
 .footer-bar { display: flex; justify-content: space-between; align-items: center; height: 100rpx; padding: 0 24rpx; .footer-left { display: flex; align-items: center; height: 100%; .select-text { margin-left: 12rpx; font-size: 28rpx; color: #666; } } .footer-right { display: flex; align-items: center; .total-info { display: flex; align-items: baseline; margin-right: 24rpx; .label { font-size: 26rpx; color: #333; } .price-box { color: #ee0a24; font-weight: bold; .unit { font-size: 24rpx; } .num { font-size: 36rpx; } } } .checkout-btn { width: 200rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: linear-gradient(90deg, #ff6034, #ee0a24); color: #fff; font-size: 30rpx; font-weight: bold; border-radius: 38rpx; box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3); &:active { opacity: 0.9; } } } }

@@ -145,6 +145,8 @@
 <script>
 import { getOrderSettlement, getPrescriptionSettlement, createOrder, createPrescriptionOrder } from '@/api/order/order.js';
 import { getAvailableCoupons } from '@/api/user/coupon.js';
+// 🌟 核心：引入购物车清理接口
+import { deleteCart, removePrescriptionCart } from '@/api/goods/cart.js'; 
 
 export default {
   data() {
@@ -325,7 +327,6 @@ export default {
     },
 
     submitOrder() {
-        // 🌟 防线：如果没有商品，严禁提交订单
         if (this.goodsList.length === 0) {
             return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
         }
@@ -356,20 +357,27 @@ export default {
                     return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
                 }
 
+                // 🌟🌟 核心清车逻辑：下单一旦成功，立刻把已经买过的商品从购物车里“超度”掉 🌟🌟
+                try {
+                    if (this.parsedCartIds && this.parsedCartIds.length > 0) {
+                        if (this.isDispensing) {
+                            removePrescriptionCart({ ids: this.parsedCartIds }).catch(()=>{});
+                        } else {
+                            deleteCart(this.parsedCartIds).catch(()=>{});
+                        }
+                    }
+                } catch(e) { console.error('清理购物车静默异常', e) }
+
                 const orderId = result.orderId || result.OrderId;
-                // 🌟 获取支付参数（全面兼容后端的大小写及嵌套情况）
                 const wxPayParams = result.PayParams || result.payParams || result.wxPayParams || result.WxPayParams || result;
                 const detailUrl = this.isDispensing ? `/pages/order/detail?id=${orderId}&type=2` : `/pages/order/detail?id=${orderId}&type=1`;
 
-                // 🌟 B2B 支付通道判定 (通过检查 signData)
                 if (wxPayParams && (wxPayParams.signData || wxPayParams.SignData)) {
                     this.callB2BWechatPay(wxPayParams, detailUrl);
                 } 
-                // 传统 JSAPI 支付通道判定 (通过检查 timeStamp)
                 else if (wxPayParams && (wxPayParams.timeStamp || wxPayParams.TimeStamp)) {
                     this.callWechatPay(wxPayParams, detailUrl);
                 } 
-                // 0元订单或其他直接成功的情况
                 else { 
                     uni.showToast({ title: '下单成功', icon: 'success' }); 
                     setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
@@ -382,17 +390,13 @@ export default {
         });
     },
 
-    // 🌟 新增：B2B 专用微信支付方法
     callB2BWechatPay(params, detailUrl) {
         console.log('前端发起B2B支付，参数：', params);
-        
-        // 必须直接使用原生 wx 对象，uni.requestPayment 不支持 B2B 参数
         wx.requestCommonPayment({
             signData: params.signData || params.SignData,
             mode: params.mode || params.Mode || 'retail_pay_goods',
             paySig: params.paySig || params.PaySig,
             signature: params.signature || params.Signature,
-            
             success: (res) => { 
                 console.log('B2B支付成功回调', res);
                 uni.showToast({ title: '支付成功', icon: 'success' }); 
@@ -414,7 +418,6 @@ export default {
         });
     },
     
-    // 传统普通微信支付方法（保留以作平滑过渡兜底）
     callWechatPay(params, detailUrl) {
         console.log('发起普通微信支付，参数：', params);
         uni.requestPayment({
