@@ -42,16 +42,15 @@
 
 		<view class="right-tools-fixed">
 			<view class="safe-filter-bar">
-				<view class="filter-item" @click="showPkgSelect = true">
-					<text class="u-line-1">{{ selectedFilter.packageType || '全部包装' }}</text>
-					<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
-				</view>
-				<view class="filter-item" @click="showStdSelect = true">
-					<text class="u-line-1">{{ selectedFilter.standard || '全部标准' }}</text>
-					<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
-				</view>
-			</view>
-
+							<view class="filter-item" @click="showPkgSelect = true" v-if="businessType === 'procurement'">
+								<text class="u-line-1">{{ selectedFilter.packageType || '全部包装' }}</text>
+								<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
+							</view>
+							<view class="filter-item" @click="showStdSelect = true">
+								<text class="u-line-1">{{ selectedFilter.standard || '全部标准' }}</text>
+								<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
+							</view>
+						</view>
 			<view class="sort-toolbar">
 				<view class="sort-btn" :class="{active: currentSort === 'default'}" @click="onSort('default')">综合</view>
 				<view class="sort-btn" :class="{active: currentSort === 'sales'}" @click="onSort('sales')">
@@ -93,9 +92,9 @@
 							<text class="ml-10">厂家: {{ item.manufacturer }}</text>
 						</view>
 						<view class="item-tags">
-							<u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
-							<u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType" class="mr-10"/>
-							<u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity}${businessType === 'dispensing' ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
+						    <u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
+						    <u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType && businessType === 'procurement'" class="mr-10"/>
+						    <u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity}${businessType === 'dispensing' ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
 						</view>
 						<view class="item-price-row">
 							<view class="price-box">
