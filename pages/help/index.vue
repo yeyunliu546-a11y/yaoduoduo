@@ -1,40 +1,52 @@
 <template>
 	<view class="container">
-		<mescroll-body ref="mescrollRef" :sticky="true" @init="mescrollInit" :down="{ use: false }" :up="upOption"
-			@up="upCallback">
-			<view class="help cont-box b-f" v-for="(item, index) in list.data" :key="index">
-				<view class="title">
-					<text>{{ item.title }}</text>
-				</view>
-				<view class="content">
-					<text>{{ item.content }}</text>
-				</view>
+		<view class="header-bg">
+			<view class="header-content">
+				<text class="title">常见问题解答</text>
+				<text class="subtitle">Hi~ 请问有什么可以帮您？</text>
 			</view>
-		</mescroll-body>
+		</view>
+
+		<view class="main-content">
+			<mescroll-body ref="mescrollRef" :sticky="false" @init="mescrollInit" :down="downOption" :up="upOption"
+				@down="downCallback" @up="upCallback">
+				
+				<view class="faq-card" v-if="list.length > 0">
+					<view class="card-header">
+						<u-icon name="question-circle-fill" color="#2979ff" size="38"></u-icon>
+						<text class="header-title">热门问题</text>
+					</view>
+					
+					<u-collapse accordion :item-style="collapseItemStyle">
+						<u-collapse-item 
+							:title="item.question || item.Question" 
+							v-for="(item, index) in list" 
+							:key="item.id || item.Id || index"
+						>
+							<view class="answer-box">
+								<text class="answer-text">{{ item.answer || item.Answer }}</text>
+							</view>
+						</u-collapse-item>
+					</u-collapse>
+				</view>
+				
+			</mescroll-body>
+		</view>
+
+		<view class="contact-footer" v-if="list.length > 0">
+			<text class="tips">没有找到想要的答案？</text>
+			<button class="contact-btn" open-type="contact">
+				<u-icon name="server-fill" color="#fff" size="32" margin-right="8"></u-icon>
+				咨询在线客服
+			</button>
+		</view>
 	</view>
 </template>
 
 <script>
 	import MescrollBody from '@/components/mescroll-uni/mescroll-body.vue'
 	import MescrollMixin from '@/components/mescroll-uni/mescroll-mixins'
-	// import * as HelpApi from '@/api/help' // [模拟修改]
-	import {
-		getEmptyPaginateObj,
-		getMoreListData
-	} from '@/core/app'
-
-	const pageSize = 15
-
-    // [模拟修改] 模拟帮助中心数据
-    const mockHelpList = [
-        { id: 1, title: '如何修改收货地址？', content: '您可以在“个人中心-收货地址”中进行修改或添加新的地址。在订单未发货前，联系客服也可以尝试修改。' },
-        { id: 2, title: '退换货规则是怎样的？', content: '商品签收后7天内支持无理由退货（需保持商品完好），质量问题15天内包换。具体请查看售后服务条款。' },
-        { id: 3, title: '发货需要多久？', content: '通常情况下，订单会在24小时内发货。大促期间或预售商品发货时间请以页面提示为准。' },
-        { id: 4, title: '积分有什么用？', content: '积分可以在下单时抵扣现金，也可以在积分商城兑换优惠券或实物礼品。' },
-        { id: 5, title: '如何查看物流信息？', content: '在“我的订单”中找到对应订单，点击“查看物流”即可实时追踪包裹状态。' },
-        { id: 6, title: '忘记密码怎么办？', content: '在登录页面点击“忘记密码”，通过手机号验证码即可重置新密码。' },
-        { id: 7, title: '支持哪些支付方式？', content: '目前支持微信支付、余额支付等多种方式，具体以结算页面显示为准。' },
-    ]
+	import request from '@/utils/request/request.js'
 
 	export default {
 		components: {
@@ -43,85 +55,184 @@
 		mixins: [MescrollMixin],
 		data() {
 			return {
-				list: getEmptyPaginateObj(),
-				// 上拉加载配置
+				list: [], 
+				collapseItemStyle: {
+					padding: '10rpx 0',
+					fontSize: '30rpx',
+					fontWeight: 'bold',
+					color: '#333'
+				},
+				downOption: {
+					use: true,
+					auto: false
+				},
 				upOption: {
 					auto: true,
-					page: {
-						size: pageSize
-					},
-					noMoreSize: 5, // 数据少于5条时不显示无更多
+					noMoreSize: 1, 
 					empty: {
-						tip: '亲，暂无相关数据'
-					}
+						tip: '暂无常见问题',
+						icon: '/static/empty.png'
+					},
+					textNoMore: '没有更多问题了'
 				}
 			}
 		},
 
 		methods: {
-
 			upCallback(page) {
-				const _this = this
-				// 设置列表数据
-				_this.getHelpList(page.num)
-					.then(list => {
-						const curlimit = list.data.length
-						_this.mescroll.endBySize(curlimit, list.count)
-					})
-					.catch(() => _this.mescroll.endErr())
-			},
-
-			// [模拟修改] 获取帮助列表
-			getHelpList(pageNo = 1) {
-				const _this = this
-				return new Promise((resolve, reject) => {
-                    setTimeout(() => {
-                        // 模拟分页
-                        const total = mockHelpList.length
-                        const start = (pageNo - 1) * pageSize
-                        const end = start + pageSize
-                        const pageData = mockHelpList.slice(start, end)
-                        
-                        const res = {
-                            result: pageData,
-                            count: total
-                        }
-                        
-                        // 合并新数据
-                        _this.list.count = res.count
-                        _this.list.data = getMoreListData(res.result, _this.list, pageNo)
-                        resolve(_this.list)
-                    }, 500)
-				})
+				if (page.num > 1) {
+					this.mescroll.endSuccess(0, false);
+					return;
+				}
+				
+				request({
+					url: '/api/Faq/GetList',
+					method: 'GET'
+				}).then(res => {
+					const code = res.Code !== undefined ? res.Code : res.code;
+					if (code === 200) {
+						let result = res.Result || res.result || [];
+						if (page.num === 1) this.list = [];
+						
+						this.list = result;
+						this.mescroll.endSuccess(result.length, false);
+					} else {
+						this.mescroll.endErr();
+					}
+				}).catch(() => {
+					this.mescroll.endErr();
+				});
 			}
-
 		}
 	}
 </script>
 
 <style lang="scss" scoped>
-	.help {
-		border-bottom: 1rpx solid #f6f6f9;
-        padding: 30rpx; /* 增加内边距优化显示 */
+	.container {
+		background-color: #f5f7fa;
+		min-height: 100vh;
+		padding-bottom: 140rpx; /* 给底部客服悬浮栏留出空间 */
+	}
 
+	/* 顶部沉浸式渐变 */
+	.header-bg {
+		background: linear-gradient(135deg, #2979ff 0%, #518cff 100%);
+		height: 320rpx;
+		padding: 60rpx 40rpx 0;
+		box-sizing: border-box;
+		border-bottom-left-radius: 40rpx;
+		border-bottom-right-radius: 40rpx;
+	}
+
+	.header-content {
+		display: flex;
+		flex-direction: column;
+		color: #fff;
+		
 		.title {
-			font-size: 32rpx;
-			color: #333;
-			margin-bottom: 15rpx;
-            font-weight: bold;
+			font-size: 44rpx;
+			font-weight: 800;
+			letter-spacing: 2rpx;
+			margin-bottom: 16rpx;
 		}
-
-		.content {
-			font-size: 28rpx;
-			color: #666;
-            line-height: 1.6;
-            text-align: justify; /* 两端对齐 */
+		
+		.subtitle {
+			font-size: 26rpx;
+			opacity: 0.9;
 		}
 	}
-    
-    /* 增加容器背景色 */
-    .container {
-        background-color: #fff;
-        min-height: 100vh;
-    }
+
+	/* 悬浮卡片主体 */
+	.main-content {
+		position: relative;
+		z-index: 2;
+		margin-top: -100rpx; /* 向上偏移形成悬浮效果 */
+		padding: 0 24rpx;
+	}
+
+	.faq-card {
+		background: #fff;
+		border-radius: 24rpx;
+		padding: 10rpx 30rpx 30rpx;
+		box-shadow: 0 6rpx 20rpx rgba(41, 121, 255, 0.05);
+		
+		.card-header {
+			display: flex;
+			align-items: center;
+			padding: 30rpx 0 20rpx;
+			border-bottom: 1px solid #f5f5f5;
+			margin-bottom: 10rpx;
+			
+			.header-title {
+				font-size: 34rpx;
+				font-weight: 800;
+				color: #333;
+				margin-left: 14rpx;
+			}
+		}
+	}
+
+	/* 答案区域气泡样式 */
+	.answer-box {
+		padding: 24rpx;
+		background-color: #f8f9fa;
+		border-radius: 12rpx;
+		margin-top: 10rpx;
+		margin-bottom: 10rpx;
+		border-left: 6rpx solid #2979ff; /* 左侧加入品牌色点缀 */
+	}
+
+	.answer-text {
+		font-size: 28rpx;
+		color: #666;
+		line-height: 1.8;
+		white-space: pre-wrap; 
+		text-align: justify;
+	}
+
+	/* 底部悬浮客服工具栏 */
+	.contact-footer {
+		position: fixed;
+		bottom: 0;
+		bottom: env(safe-area-inset-bottom); /* 兼容苹果底部小黑条 */
+		left: 0;
+		right: 0;
+		height: 110rpx;
+		background: #fff;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 40rpx;
+		box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04);
+		z-index: 99;
+		
+		.tips {
+			font-size: 26rpx;
+			color: #999;
+		}
+		
+		.contact-btn {
+			margin: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			height: 72rpx;
+			padding: 0 36rpx;
+			background: linear-gradient(135deg, #ff9900, #ff6034); /* 温暖的橙色系，引导点击 */
+			color: #fff;
+			font-size: 28rpx;
+			font-weight: bold;
+			border-radius: 36rpx;
+			box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3);
+			border: none;
+			
+			&::after {
+				border: none;
+			}
+			
+			&:active {
+				transform: scale(0.96);
+			}
+		}
+	}
 </style>

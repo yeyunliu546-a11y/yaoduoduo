@@ -156,7 +156,7 @@ export default {
   },
   onShow() {
   			// 🌟 终极防线：每次显示首页时，检查是否登录及审核状态
-  			const token = uni.getStorageSync('token');
+  			/*const token = uni.getStorageSync('token');
   			if (token) {
   				const status = uni.getStorageSync('clinicAuditStatus');
   				const hasProfile = uni.getStorageSync('hasClinicProfile');
@@ -171,7 +171,7 @@ export default {
   					uni.reLaunch({ url: '/pages/auth/certStatus' });
   					return;
   				}
-  			}
+*/
   		},
   methods: {
     // 💡 新增：跳转到协议富文本页面
@@ -367,37 +367,41 @@ export default {
                 uni.setStorageSync('clinicAuditStatus', status);
                 uni.setStorageSync('clinicAuditRemark', remark);
                 uni.setStorageSync('hasClinicProfile', hasProfile);
-    
-                setTimeout(() => {
-                    if (!hasProfile || status === -99) {
-                        uni.showModal({
-                            title: '提示',
-                            content: '请先完善诊所资料才能进入系统',
-                            showCancel: false,
-                            confirmText: '去填写',
-                            success: () => {
-                                uni.redirectTo({ url: '/pages/auth/certUpload' });
-                            }
-                        });
-                    }
-                    else if (status === -1) {
-                        uni.showModal({
-                            title: '审核未通过',
-                            content: remark ? `原因：${remark}` : '请修改资料后重新提交',
-                            showCancel: false,
-                            confirmText: '去修改',
-                            success: () => {
-                                uni.redirectTo({ url: '/pages/auth/certUpload?status=-1' });
-                            }
-                        });
-                    }
-                    else if (status === 0) {
-                        uni.redirectTo({ url: '/pages/auth/certStatus' });
-                    }
-                    else {
-                        uni.switchTab({ url: '/pages/index/index' });
-                    }
+			setTimeout(() => {
+                    // ⚠️ 临时修改：为了应对微信审核，屏蔽了资质拦截，统一放行到首页
+                    // 等审核通过后，把下面的代码注释掉，恢复原来的 if-else 逻辑即可
+                    uni.switchTab({ url: '/pages/index/index' });
                 }, 1000);
+			/*setTimeout(() => {
+                if (!hasProfile || status === -99) {
+                    uni.showModal({
+                        title: '提示',
+                        content: '请先完善诊所资料才能进入系统',
+                        showCancel: false,
+                        confirmText: '去填写',
+                        success: () => {
+                            uni.redirectTo({ url: '/pages/auth/certUpload' });
+                        }
+                    });
+                }
+                else if (status === -1) {
+                    uni.showModal({
+                        title: '审核未通过',
+                        content: remark ? `原因：${remark}` : '请修改资料后重新提交',
+                        showCancel: false,
+                        confirmText: '去修改',
+                        success: () => {
+                            uni.redirectTo({ url: '/pages/auth/certUpload?status=-1' });
+                        }
+                    });
+                }
+                else if (status === 0) {
+                    uni.redirectTo({ url: '/pages/auth/certStatus' });
+                }
+                else {
+                    uni.switchTab({ url: '/pages/index/index' });
+                }
+            }, 1000);*/
                 
             } else {
                 uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
