@@ -154,6 +154,25 @@ export default {
       this.refreshCaptcha();
     }
   },
+  onShow() {
+  			// 🌟 终极防线：每次显示首页时，检查是否登录及审核状态
+  			const token = uni.getStorageSync('token');
+  			if (token) {
+  				const status = uni.getStorageSync('clinicAuditStatus');
+  				const hasProfile = uni.getStorageSync('hasClinicProfile');
+  				
+  				// 状态 -99 或 没有填资料，踢回上传页
+  				if (status === -99 || !hasProfile) {
+  					uni.reLaunch({ url: '/pages/auth/certUpload' });
+  					return;
+  				}
+  				// 状态 0(待审核) 或 -1(驳回)，踢回状态页
+  				if (status === 0 || status === -1) {
+  					uni.reLaunch({ url: '/pages/auth/certStatus' });
+  					return;
+  				}
+  			}
+  		},
   methods: {
     // 💡 新增：跳转到协议富文本页面
    // 将原来的跳转方法替换为：
@@ -332,54 +351,59 @@ export default {
     },
 
     processLoginResult(res) {
-        uni.hideLoading();
-        
-        const code = res.Code !== undefined ? res.Code : res.code;
-        const result = res.Result || res.result;
-
-        if (code === 200 && result) {
-            uni.showToast({ title: '登录成功', icon: 'success' });
+            uni.hideLoading();
             
-            const hasProfile = result.HasClinicProfile !== undefined ? result.HasClinicProfile : result.hasClinicProfile;
-            const status = result.ClinicAuditStatus !== undefined ? result.ClinicAuditStatus : result.clinicAuditStatus;
-            const remark = result.AuditRemark || result.auditRemark || '';
-
-            setTimeout(() => {
-                if (!hasProfile || status === -99) {
-                    uni.showModal({
-                        title: '提示',
-                        content: '请先完善诊所资料才能下单',
-                        showCancel: false,
-                        confirmText: '去填写',
-                        success: () => {
-                            uni.redirectTo({ url: '/pages/auth/certUpload' });
-                        }
-                    });
-                }
-                else if (status === -1) {
-                    uni.showModal({
-                        title: '审核未通过',
-                        content: remark ? `原因：${remark}` : '请修改资料后重新提交',
-                        showCancel: false,
-                        confirmText: '去修改',
-                        success: () => {
-                            uni.redirectTo({ url: '/pages/auth/certUpload?status=-1' });
-                        }
-                    });
-                }
-                else if (status === 0) {
-                    uni.redirectTo({ url: '/pages/auth/certStatus' });
-                }
-                else {
-                    uni.switchTab({ url: '/pages/index/index' });
-                }
-            }, 1000);
-            
-        } else {
-            uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
-            if (this.loginMode === 'password') this.refreshCaptcha();
+            const code = res.Code !== undefined ? res.Code : res.code;
+            const result = res.Result || res.result;
+    
+            if (code === 200 && result) {
+                uni.showToast({ title: '登录成功', icon: 'success' });
+                
+                const hasProfile = result.HasClinicProfile !== undefined ? result.HasClinicProfile : result.hasClinicProfile;
+                const status = result.ClinicAuditStatus !== undefined ? result.ClinicAuditStatus : result.clinicAuditStatus;
+                const remark = result.AuditRemark || result.auditRemark || '';
+    
+                // 🌟 核心拦截支持：把状态存入 Storage，供全避拦截器判断
+                uni.setStorageSync('clinicAuditStatus', status);
+                uni.setStorageSync('clinicAuditRemark', remark);
+                uni.setStorageSync('hasClinicProfile', hasProfile);
+    
+                setTimeout(() => {
+                    if (!hasProfile || status === -99) {
+                        uni.showModal({
+                            title: '提示',
+                            content: '请先完善诊所资料才能进入系统',
+                            showCancel: false,
+                            confirmText: '去填写',
+                            success: () => {
+                                uni.redirectTo({ url: '/pages/auth/certUpload' });
+                            }
+                        });
+                    }
+                    else if (status === -1) {
+                        uni.showModal({
+                            title: '审核未通过',
+                            content: remark ? `原因：${remark}` : '请修改资料后重新提交',
+                            showCancel: false,
+                            confirmText: '去修改',
+                            success: () => {
+                                uni.redirectTo({ url: '/pages/auth/certUpload?status=-1' });
+                            }
+                        });
+                    }
+                    else if (status === 0) {
+                        uni.redirectTo({ url: '/pages/auth/certStatus' });
+                    }
+                    else {
+                        uni.switchTab({ url: '/pages/index/index' });
+                    }
+                }, 1000);
+                
+            } else {
+                uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
+                if (this.loginMode === 'password') this.refreshCaptcha();
+            }
         }
-    }
   }
 }
 </script>
