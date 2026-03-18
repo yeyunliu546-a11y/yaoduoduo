@@ -50,6 +50,11 @@
             <text class="ml-10">厂家: {{ item.manufacturer || '--' }}</text>
           </view>
           <view class="item-tags">
+            <u-tag 
+                :text="item.standard" 
+                :type="item.standard === '国标' ? 'success' : (item.standard === '省标' ? 'warning' : 'primary')" 
+                size="mini" mode="light" v-if="item.standard" class="mr-10"
+            />
             <u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType && item.goodsType !== 2" class="mr-10"/>
             <u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity || 1}${item.goodsType === 2 ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
           </view>
@@ -69,7 +74,6 @@
 </template>
 
 <script>
-// 🌟 修复 Bug: 引入正确的 getGoodsList 方法
 import { getGoodsList } from '@/api/goods/goods.js';
 
 export default {
@@ -118,7 +122,6 @@ export default {
         sortType = this.priceSort === 'asc' ? 30 : 20;
       }
 
-      // 🌟 修复 Bug: 修正搜索参数，兼容多字段
       const params = {
         page: this.page,
         limit: this.limit,
@@ -129,7 +132,6 @@ export default {
         bigStatus: 10      
       };
 
-      // 🌟 修复 Bug: 使用全局通用的列表接口
       getGoodsList(params).then(res => {
         const curList = res.result || res.data?.list || [];
         

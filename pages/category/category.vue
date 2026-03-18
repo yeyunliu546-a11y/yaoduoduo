@@ -42,15 +42,15 @@
 
 		<view class="right-tools-fixed">
 			<view class="safe-filter-bar">
-							<view class="filter-item" @click="showPkgSelect = true" v-if="businessType === 'procurement'">
-								<text class="u-line-1">{{ selectedFilter.packageType || '全部包装' }}</text>
-								<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
-							</view>
-							<view class="filter-item" @click="showStdSelect = true">
-								<text class="u-line-1">{{ selectedFilter.standard || '全部标准' }}</text>
-								<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
-							</view>
-						</view>
+				<view class="filter-item" @click="showPkgSelect = true" v-if="businessType === 'procurement'">
+					<text class="u-line-1">{{ selectedFilter.packageType || '全部包装' }}</text>
+					<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
+				</view>
+				<view class="filter-item" @click="showStdSelect = true">
+					<text class="u-line-1">{{ selectedFilter.standard || '全部标准' }}</text>
+					<u-icon name="arrow-down" color="#999" size="24" margin-left="6"></u-icon>
+				</view>
+			</view>
 			<view class="sort-toolbar">
 				<view class="sort-btn" :class="{active: currentSort === 'default'}" @click="onSort('default')">综合</view>
 				<view class="sort-btn" :class="{active: currentSort === 'sales'}" @click="onSort('sales')">
@@ -76,11 +76,11 @@
 
 				<view class="class-item" v-for="(item, index) in goodsList" :key="index" @click="goToDetail(item.id)">
 					<view class="item-img">
-							<u-image width="140rpx" height="140rpx" :src="item.imageUrl || item.urlImageMain || item.ImageUrl || item.image || '/static/empty.png'" mode="aspectFill">
-									<template v-slot:error>
-											<image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
-									</template>
-							</u-image>
+						<u-image width="140rpx" height="140rpx" :src="item.imageUrl || item.urlImageMain || item.ImageUrl || item.image || '/static/empty.png'" mode="aspectFill">
+							<template v-slot:error>
+								<image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
+							</template>
+						</u-image>
 					</view>
 					<view class="item-info">
 						<view class="item-title u-line-2">
@@ -92,7 +92,11 @@
 							<text class="ml-10">厂家: {{ item.manufacturer }}</text>
 						</view>
 						<view class="item-tags">
-						    <u-tag :text="item.standard" type="success" size="mini" mode="light" v-if="item.standard" class="mr-10"/>
+							<u-tag 
+								:text="item.standard" 
+								:type="item.standard === '国标' ? 'success' : (item.standard === '省标' ? 'warning' : 'primary')" 
+								size="mini" mode="light" v-if="item.standard" class="mr-10"
+							/>
 						    <u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType && businessType === 'procurement'" class="mr-10"/>
 						    <u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity}${businessType === 'dispensing' ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
 						</view>
@@ -134,7 +138,14 @@
 				showPkgSelect: false,
 				showStdSelect: false,
 				packageOptions: [{label: '全部包装', value: ''}],
-				standardOptions: [{label: '全部标准', value: ''}],
+				
+				// 🌟 按照对接文档，默认硬编码加入省标选项（防止后端接口未下发时缺失）
+				standardOptions: [
+					{ label: '全部标准', value: '' },
+					{ label: '国标', value: '国标' },
+					{ label: '企标', value: '企标' },
+					{ label: '省标', value: '省标' } 
+				],
 				selectedFilter: { manufacturer: '', packageType: '', standard: '' },
 				
                 currentSort: 'default',
@@ -189,9 +200,14 @@
 						}
 						this.packageOptions = pkgTypes;
 
-						let stds = [{label: '全部标准', value: ''}];
+						// 🌟 如果后端正常返回了 standards，将它们与前端固定的国省企标去重合并
+						let stds = [...this.standardOptions];
 						if(res.result.standards) {
-							res.result.standards.forEach(item => { stds.push({label: item, value: item}); });
+							res.result.standards.forEach(item => { 
+								if (!stds.find(s => s.value === item)) {
+									stds.push({label: item, value: item}); 
+								}
+							});
 						}
 						this.standardOptions = stds;
 					}

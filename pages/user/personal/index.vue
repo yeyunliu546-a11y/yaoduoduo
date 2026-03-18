@@ -134,6 +134,12 @@ export default {
 		}
 	},
 	onShow() { this.loadUserInfo(); },
+	// 🌟 新增：离开页面时清理定时器，防止内存泄漏
+		beforeDestroy() {
+			if (this.intervalId) {
+				clearInterval(this.intervalId);
+			}
+		},
 	methods: {
 		loadUserInfo() {
 			getDetail().then(res => {
@@ -189,36 +195,50 @@ export default {
 		},
 
 		handleAvatarEdit() {
-			uni.chooseImage({
-				count: 1,
-				success: (chooseRes) => {
-					uni.showLoading({ title: '上传中...' });
-					uni.uploadFile({
-						url: 'https://你的域名/api/Upload/Image', // TODO: 替换为实际上传URL
-						filePath: chooseRes.tempFilePaths[0],
-						name: 'file',
-						header: { 'Token': uni.getStorageSync('token'), 'StoreId': uni.getStorageSync('storeId') },
-						success: (uploadRes) => {
-							const data = JSON.parse(uploadRes.data);
-							if (data.code === 200) {
-								const newAvatarUrl = data.result.url || data.result; 
-								// 🌟 使用封装好的 API
-								changeUserInfo({ urlAvater: newAvatarUrl }).then(res => {
-									uni.hideLoading();
-									if (res.code === 200) {
-										this.userInfo.urlAvater = newAvatarUrl;
-										uni.showToast({ title: '头像修改成功' });
+					uni.chooseImage({
+						count: 1,
+						success: (chooseRes) => {
+							uni.showLoading({ title: '上传中...' });
+							
+							// 🌟 已加上你们代码中的正式后端域名
+							const uploadApi = 'https://www.yaoduoduo.top/api/Upload/Image'; 
+							
+							uni.uploadFile({
+								url: uploadApi, 
+								filePath: chooseRes.tempFilePaths[0],
+								name: 'file', // 通常后端接收图片文件的字段名为 file
+								header: { 
+									// 🌟 严格对齐你 request.js 中的自定义头部配置
+									'X-Token': uni.getStorageSync('token') || '', 
+									'platform': 'MP-WEIXIN',
+									'storeId': uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945'
+								},
+								success: (uploadRes) => {
+									const data = JSON.parse(uploadRes.data);
+									if (data.code === 200) {
+										const newAvatarUrl = data.result.url || data.result; 
+										
+										// 调用我们在 user.js 里封装好的 API 更新头像
+										changeUserInfo({ urlAvater: newAvatarUrl }).then(res => {
+											uni.hideLoading();
+											if (res.code === 200) {
+												this.userInfo.urlAvater = newAvatarUrl;
+												uni.showToast({ title: '头像修改成功', icon: 'success' });
+											}
+										});
+									} else {
+										uni.hideLoading();
+										uni.showToast({ title: data.message || '上传失败', icon: 'none' });
 									}
-								});
-							} else {
-								uni.hideLoading();
-								uni.showToast({ title: '上传失败', icon: 'none' });
-							}
+								},
+								fail: () => {
+									uni.hideLoading();
+									uni.showToast({ title: '网络异常', icon: 'none' });
+								}
+							});
 						}
 					});
-				}
-			});
-		},
+				},
 		submitChangeName() {
 			if (!this.editForm.name.trim()) return uni.showToast({ title: '机构名称不能为空', icon: 'none' });
 			// 🌟 使用封装好的 API
