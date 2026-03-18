@@ -20,7 +20,7 @@
                 <view class="checkbox-icon" :class="{ checked: isBrandChecked(items) }">
                   <u-icon name="checkbox-mark" color="#fff" size="24" v-if="isBrandChecked(items)"></u-icon>
                 </view>
-                <text class="brand-title">🏭 {{ brandName }}</text>
+                <text class="brand-title"> {{ brandName }}</text>
                 <u-icon name="arrow-right" size="24" color="#999"></u-icon>
               </view>
               <text class="clear-btn" @click="handleDeleteBrand(brandName, items)">清空厂家</text>
@@ -100,19 +100,53 @@
         </view>
       </view>
 
-      <view v-show="currentTab === 1">
+<view v-show="currentTab === 1">
+          
+          <view class="dispensing-list" v-if="dispensingList.length > 0">
+              <view class="list-title">
+                  <view class="title-left" @click="isListExpanded = !isListExpanded">
+                      <text>药品清单 ({{ dispensingList.length }}味)</text>
+                      <u-icon :name="isListExpanded ? 'arrow-up' : 'arrow-down'" color="#d48806" size="28" style="margin-left: 10rpx;"></u-icon>
+                  </view>
+                  <text class="clear-btn" @click="clearDispensingCart">清空处方</text>
+              </view>
+              
+              <view v-show="isListExpanded" class="herb-list-wrapper">
+                  <view v-for="(item, index) in dispensingList" :key="item.id" class="herb-item">
+                      <view class="herb-info">
+                          <view class="name-row">
+                              <text class="name">{{ item.goodsName }}</text>
+                              <text class="factory">{{ item.manufacturer }}</text>
+                          </view>
+                          <view class="price-row">
+                              <text>单价: ￥{{ item.salePrice }}/g</text>
+                          </view>
+                          <view v-if="getMinQty(item) > 1" style="font-size: 20rpx; color: #ff6034; margin-top: 4rpx;">
+                              {{ getMinQty(item) }}g起售
+                          </view>
+                      </view>
+                      <view class="weight-control">
+                          <text class="label">单剂</text>
+                          <u-number-box v-model="item.goodsWeight" :min="getMinQty(item)" :max="999" @change="val => handleWeightChange(val, item)"></u-number-box>
+                          <text class="unit">g</text>
+                      </view>
+                      <view class="delete-btn" @click="handleDeleteItem(item)">
+                          <u-icon name="trash" color="#fa3534" size="36"></u-icon>
+                      </view>
+                  </view>
+              </view>
+          </view>
+
           <view class="prescription-config-card" v-if="dispensingList.length > 0">
               <view class="config-title">处方用法配置</view>
               <view class="config-row">
                   <view class="config-item">
-                      <text class="label">服用天数</text>
+                      <text class="label-top">服用天数 (天)</text>
                       <u-number-box v-model="prescriptionDays" :min="1" :max="99" @change="updateDays"></u-number-box>
-                      <text class="unit">天</text>
                   </view>
                   <view class="config-item">
-                      <text class="label">每日包数</text>
+                      <text class="label-top">每日包数 (包)</text>
                       <u-number-box v-model="prescriptionPacks" :min="1" :max="5" @change="updatePacks"></u-number-box>
-                      <text class="unit">包</text>
                   </view>
               </view>
           </view>
@@ -125,34 +159,6 @@
               </view>
           </view>
 
-          <view class="dispensing-list" v-if="dispensingList.length > 0">
-              <view class="list-title">
-                  <text>药品清单 ({{ dispensingList.length }}味)</text>
-                  <text class="clear-btn" @click="clearDispensingCart">清空处方</text>
-              </view>
-              <view v-for="(item, index) in dispensingList" :key="item.id" class="herb-item">
-                  <view class="herb-info">
-                      <view class="name-row">
-                          <text class="name">{{ item.goodsName }}</text>
-                          <text class="factory">{{ item.manufacturer }}</text>
-                      </view>
-                      <view class="price-row">
-                          <text>单价: ￥{{ item.salePrice }}/g</text>
-                      </view>
-                      <view v-if="getMinQty(item) > 1" style="font-size: 20rpx; color: #ff6034; margin-top: 4rpx;">
-                          {{ getMinQty(item) }}g起售
-                      </view>
-                  </view>
-                  <view class="weight-control">
-                      <text class="label">单剂</text>
-                      <u-number-box v-model="item.goodsWeight" :min="getMinQty(item)" :max="999" @change="val => handleWeightChange(val, item)"></u-number-box>
-                      <text class="unit">g</text>
-                  </view>
-                  <view class="delete-btn" @click="handleDeleteItem(item)">
-                      <u-icon name="trash" color="#fa3534" size="36"></u-icon>
-                  </view>
-              </view>
-          </view>
           <view v-else-if="!isLoading" class="empty-cart">
                <u-empty text="暂无处方药品" mode="list"></u-empty>
                <u-button 
@@ -241,7 +247,8 @@ export default {
       prescriptionPacks: 2,
       doctorAdvice: '', 
       debounceTimers: {},
-      
+      isListExpanded: true, // 🌟 新增：控制药品清单展开折叠
+	  
       showFavNameModal: false,
       favName: ''
     }
@@ -519,6 +526,9 @@ export default {
 .footer-wrapper { position: fixed; bottom: 0; bottom: var(--window-bottom); left: 0; right: 0; z-index: 999; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
 .footer-bar { display: flex; justify-content: space-between; align-items: center; height: 100rpx; padding: 0 24rpx; .footer-left { display: flex; align-items: center; height: 100%; .select-text { margin-left: 12rpx; font-size: 28rpx; color: #666; } } .footer-right { display: flex; align-items: center; .total-info { display: flex; align-items: baseline; margin-right: 24rpx; .label { font-size: 26rpx; color: #333; } .price-box { color: #ee0a24; font-weight: bold; .unit { font-size: 24rpx; } .num { font-size: 36rpx; } } } .checkout-btn { width: 200rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: linear-gradient(90deg, #ff6034, #ee0a24); color: #fff; font-size: 30rpx; font-weight: bold; border-radius: 38rpx; box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3); &:active { opacity: 0.9; } } } }
 .dispensing-footer { .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ee0a24; font-size: 24rpx; } .price-val { color: #ee0a24; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #999; margin-top: 4rpx; .fee-tag { margin-left: 6rpx; &.free { color: #19be6b; } } } } .btn-group { display: flex; gap: 20rpx; .action-btn { height: 72rpx; line-height: 72rpx; padding: 0 30rpx; border-radius: 36rpx; font-size: 28rpx; font-weight: 500; &.outline { border: 2rpx solid #ff9900; color: #ff9900; background: #fff; } &.fill { background: linear-gradient(90deg, #ff9900, #ff6034); color: #fff; box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3); } } } }
-.prescription-config-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 24rpx; .config-title { font-size: 30rpx; font-weight: bold; margin-bottom: 20rpx; border-left: 8rpx solid #ff9900; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; gap: 20rpx; .config-item { flex: 1; display: flex; align-items: center; justify-content: space-between; background: #f9f9f9; padding: 16rpx; border-radius: 12rpx; .label { font-size: 26rpx; color: #666; } .unit { font-size: 24rpx; color: #999; margin-left: 10rpx; } } } .advice-box { position: relative; .advice-input { width: 100%; height: 140rpx; background: #f9f9f9; border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box; } .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
-.dispensing-list { background: #fff; border-radius: 20rpx; overflow: hidden; margin-bottom: 24rpx; .list-title { display: flex; justify-content: space-between; padding: 24rpx; background: #fff7eb; color: #d48806; font-size: 28rpx; font-weight: 500; } .herb-item { display: flex; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .herb-info { flex: 1; .name-row { margin-bottom: 8rpx; .name { font-size: 30rpx; font-weight: bold; margin-right: 12rpx; } .factory { font-size: 20rpx; color: #909399; background: #f4f4f5; padding: 2rpx 8rpx; border-radius: 4rpx; } } .price-row { font-size: 24rpx; color: #999; } } .weight-control { display: flex; align-items: center; margin-right: 20rpx; .label { font-size: 24rpx; color: #666; margin-right: 10rpx; } .unit { font-size: 24rpx; color: #333; margin-left: 10rpx; } } .delete-btn { padding: 10rpx; } } }
+/* 🌟 更新后的处方用法配置与医嘱卡片样式 */
+.prescription-config-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 24rpx; .config-title { font-size: 30rpx; font-weight: bold; margin-bottom: 20rpx; border-left: 8rpx solid #ff9900; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; gap: 20rpx; .config-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9f9f9; padding: 30rpx 16rpx; border-radius: 12rpx; .label-top { font-size: 28rpx; color: #666; margin-bottom: 24rpx; font-weight: 500; } } } .advice-box { position: relative; .advice-input { width: 100%; height: 140rpx; background: #f9f9f9; border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box; } .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
+
+/* 🌟 更新后的药品清单卡片样式 */
+.dispensing-list { background: #fff; border-radius: 20rpx; overflow: hidden; margin-bottom: 24rpx; .list-title { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; background: #fff7eb; color: #d48806; font-size: 28rpx; font-weight: 500; .title-left { display: flex; align-items: center; } } .herb-item { display: flex; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .herb-info { flex: 1; .name-row { margin-bottom: 8rpx; .name { font-size: 30rpx; font-weight: bold; margin-right: 12rpx; } .factory { font-size: 20rpx; color: #909399; background: #f4f4f5; padding: 2rpx 8rpx; border-radius: 4rpx; } } .price-row { font-size: 24rpx; color: #999; } } .weight-control { display: flex; align-items: center; margin-right: 20rpx; .label { font-size: 24rpx; color: #666; margin-right: 10rpx; } .unit { font-size: 24rpx; color: #333; margin-left: 10rpx; } } .delete-btn { padding: 10rpx; } } }
 </style>

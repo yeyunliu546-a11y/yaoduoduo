@@ -1,25 +1,36 @@
 <template>
 	<view class="container">
-		<view class="search-box">
-			<view class="search-input">
-				<text class="icon-search">🔍</text>
-				<input v-model="searchValue" type="text" placeholder="请输入您需要的药材" @confirm="onSearch"
-					@focus="showHistory = true" />
-				<text v-if="searchValue" class="clear-btn" @click="clearSearch">✕</text>
-			</view>
-			<button class="btn-search" @click="onSearch">搜索</button>
-		</view>
-
-		<view v-if="showHistory && searchHistory.length > 0" class="search-history">
-			<view class="history-title">搜索历史</view>
-			<view class="history-list">
-				<view v-for="(item, index) in searchHistory" :key="index" class="history-item"
-					@click="selectHistory(item)">
-					{{ item }}
+		<view class="modern-search-wrapper">
+					<u-search 
+						v-model="searchValue" 
+						placeholder="请输入您需要的药材名称" 
+						shape="round"
+						bg-color="#ffffff"
+						action-text="搜索"
+						:action-style="{ color: '#2979ff', fontWeight: 'bold' }"
+						@search="onSearch" 
+						@custom="onSearch"
+						@focus="showHistory = true"
+						@clear="clearSearch"
+					></u-search>
 				</view>
-				<view class="clear-history" @click="clearAllHistory">清空</view>
-			</view>
-		</view>
+		
+				<view v-if="showHistory && searchHistory.length > 0" class="modern-history-box">
+					<view class="history-header">
+						<text class="title">搜索历史</text>
+						<u-icon name="trash" color="#999" size="32" @click="clearAllHistory"></u-icon>
+					</view>
+					<view class="history-tags">
+						<view 
+							v-for="(item, index) in searchHistory" 
+							:key="index" 
+							class="tag-item u-line-1"
+							@click="selectHistory(item)"
+						>
+							{{ item }}
+						</view>
+					</view>
+				</view>
 
 		<view class="primary-entrances">
 					<view class="entrance-card orange-card" @click="jumpToCategory('procurement')">
@@ -118,7 +129,7 @@
 				// 搜索
 				searchValue: '',
 				showHistory: false,
-				searchHistory: uni.getStorageSync('searchHistory') || ['青皮', '大蓟'],
+				searchHistory: uni.getStorageSync('searchHistory') || [],
 				
 				// 数据
 				recommendList: [],
@@ -259,19 +270,62 @@
 <style lang="scss">
 	/* --- 基础样式 --- */
 	.container { width: 100%; min-height: 100vh; background-color: #f5f7fa; font-size: 14px; color: #333; padding-bottom: 20rpx; }
-	.search-box { display: flex; align-items: center; margin: 20rpx; height: 72rpx; border-radius: 36rpx; background-color: #2979ff; padding: 2rpx; overflow: hidden; box-shadow: 0 4rpx 10rpx rgba(41,121,255,0.2);}
-	.search-input { flex: 1; display: flex; align-items: center; padding-left: 24rpx; height: 100%; background-color: #fff; border-top-left-radius: 34rpx; border-bottom-left-radius: 34rpx; }
-	.search-input input { flex: 1; font-size: 28rpx; background: transparent; }
-	.btn-search { width: 140rpx; height: 100%; background-color: #2979ff; color: white; font-size: 28rpx; border-radius: 0; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; font-weight: bold;}
-	.btn-search::after { border: none; }
-	.icon-search { margin-right: 10rpx; font-size: 28rpx; color: #999; }
-	.clear-btn { color: #999; font-size: 16px; margin-left: 10rpx; }
-	.search-history { background-color: #fff; border-radius: 10rpx; margin: 10rpx 20rpx; box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.1); }
-	.history-title { font-size: 16px; padding: 10rpx 20rpx; color: #333; border-bottom: 1px solid #eee; }
-	.history-list { display: flex; flex-wrap: wrap; gap: 10rpx; padding: 10rpx 20rpx; }
-	.history-item { background-color: #f0f0f0; border-radius: 6rpx; padding: 5rpx 10rpx; font-size: 14px; color: #333; }
-	.clear-history { color: #2979ff; font-size: 14px; margin-top: 10rpx; text-align: center; padding: 10rpx; }
-
+	/* ======================================= */
+		/* 👇 升级后的首页搜索与历史记录样式 👇 */
+		/* ======================================= */
+		/* ======================================= */
+			/* 👇 升级后的首页搜索与历史记录样式 👇 */
+			/* ======================================= */
+			.modern-search-wrapper {
+				/* 🌟 修改：移除蓝底，改为透明，移除吸顶效果以保持自然流动 */
+				background-color: transparent; 
+				padding: 20rpx 24rpx;
+				z-index: 100;
+			}
+			
+			/* 🌟 新增：为了在透明背景下让搜索框更有质感，可以稍微加一点极轻微的阴影或边框（可选） */
+			.modern-search-wrapper ::v-deep .u-search {
+				box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+			}
+		
+		.modern-history-box {
+			background-color: #fff;
+			margin: 0 0 20rpx 0;
+			padding: 30rpx 24rpx;
+			border-bottom-left-radius: 24rpx;
+			border-bottom-right-radius: 24rpx;
+			box-shadow: 0 10rpx 20rpx rgba(0,0,0,0.03);
+			position: relative;
+			z-index: 99;
+		}
+		
+		.history-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 24rpx;
+			
+			.title {
+				font-size: 30rpx;
+				font-weight: bold;
+				color: #333;
+			}
+		}
+		
+		.history-tags {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 20rpx;
+			
+			.tag-item {
+				background-color: #f5f6f8;
+				color: #666;
+				font-size: 26rpx;
+				padding: 10rpx 24rpx;
+				border-radius: 30rpx;
+				max-width: 100%;
+			}
+		}
 	/* ======================================= */
 	/* 👇 优化后的双排入口卡片样式 👇 */
 	/* ======================================= */

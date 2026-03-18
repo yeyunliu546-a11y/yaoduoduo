@@ -25,38 +25,40 @@
       </view>
     </view>
 
-    <view class="goods-list">
+    <view class="page-view">
       <view v-if="isLoading && list.length === 0" class="loading-center">
-        <u-loading mode="flower"></u-loading>
+        <u-loading mode="flower" size="60"></u-loading>
       </view>
       
       <u-empty v-if="!isLoading && list.length === 0" mode="search" text="暂无搜索结果" margin-top="100"></u-empty>
 
-      <view 
-        class="goods-item" 
-        v-for="(item, index) in list" 
-        :key="index"
-        @click="goToDetail(item.id)"
-      >
-        <view class="image-wrapper">
-          <u-image width="100%" height="100%" :src="item.imageUrl" mode="aspectFill">
+      <view class="class-item" v-for="(item, index) in list" :key="index" @click="goToDetail(item.id)">
+        <view class="item-img">
+          <u-image width="140rpx" height="140rpx" :src="item.imageUrl || item.urlImageMain || '/static/default-goods.png'" mode="aspectFill">
             <template v-slot:error>
               <image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
             </template>
           </u-image>
         </view>
-        <view class="info-wrapper">
-          <view class="title u-line-2">{{ item.goodsName }}</view>
-          <view class="tags">
-             <u-tag :text="item.manufacturer" type="info" size="mini" mode="light" v-if="item.manufacturer" class="tag"/>
-             <u-tag :text="item.spec || item.specification" type="warning" size="mini" mode="light" v-if="item.spec || item.specification" class="tag"/>
+        <view class="item-info">
+          <view class="item-title u-line-2">
+            <text v-if="item.goodsType === 2" class="type-tag">颗粒</text>
+            {{ item.goodsName }}
           </view>
-          <view class="price-row">
-            <view class="price">
-              <text class="symbol">¥</text>
-              <text class="num">{{ item.salePrice }}</text>
+          <view class="item-desc">
+            <text>规格: {{ item.specification || item.spec || '--' }}</text>
+            <text class="ml-10">厂家: {{ item.manufacturer || '--' }}</text>
+          </view>
+          <view class="item-tags">
+            <u-tag :text="item.packageType" type="primary" size="mini" mode="light" v-if="item.packageType && item.goodsType !== 2" class="mr-10"/>
+            <u-tag :text="`${item.minOrderQuantity || item.MinOrderQuantity || 1}${item.goodsType === 2 ? 'g' : '件'}起批`" type="warning" size="mini" mode="light" v-if="(item.minOrderQuantity || item.MinOrderQuantity) > 1"/>
+          </view>
+          <view class="item-price-row">
+            <view class="item-price">
+              <text class="price-symbol">¥</text>
+              <text class="price-num">{{ item.salePrice }}</text>
             </view>
-            <view class="sales">销量 {{ (item.salesActual || 0) + (item.salesInitial || 0) }}</view>
+            <view class="sales-text">销量 {{ (item.salesActual || 0) + (item.salesInitial || 0) }}</view>
           </view>
         </view>
       </view>
@@ -67,8 +69,8 @@
 </template>
 
 <script>
-// 【修改点1】引入 API 模块，不再写死 URL
-import * as GoodsApi from '@/api/goods/goods.js';
+// 🌟 修复 Bug: 引入正确的 getGoodsList 方法
+import { getGoodsList } from '@/api/goods/goods.js';
 
 export default {
   data() {
@@ -78,9 +80,8 @@ export default {
       page: 1,
       limit: 10,
       
-      // 排序相关
-      currentSort: 'default', // default, sales, price
-      priceSort: 'desc',      // asc, desc
+      currentSort: 'default',
+      priceSort: 'desc',      
       
       isLoading: false,
       loadStatus: 'loadmore'
@@ -88,7 +89,6 @@ export default {
   },
   
   onLoad(options) {
-    // 接收首页传过来的参数 key
     if (options.key) {
       this.keyword = decodeURIComponent(options.key);
       this.loadData(true);
@@ -103,7 +103,6 @@ export default {
   },
   
   methods: {
-    // 【修改点2】使用 API 调用
     loadData(reset = false) {
       if (reset) {
         this.page = 1;
@@ -112,7 +111,6 @@ export default {
       }
       this.isLoading = true;
 
-      // 计算 sortType (10=综合, 20=价格降, 30=价格升, 60=销量降)
       let sortType = 10;
       if (this.currentSort === 'sales') {
         sortType = 60;
@@ -120,15 +118,19 @@ export default {
         sortType = this.priceSort === 'asc' ? 30 : 20;
       }
 
+      // 🌟 修复 Bug: 修正搜索参数，兼容多字段
       const params = {
         page: this.page,
         limit: this.limit,
-        key: this.keyword, // 搜索关键词
+        keyword: this.keyword, 
+        key: this.keyword,
+        goodsName: this.keyword,
         sortType: sortType,
-        bigStatus: 10      // 仅搜索上架商品
+        bigStatus: 10      
       };
 
-      GoodsApi.getGoodsListByWhere(params).then(res => {
+      // 🌟 修复 Bug: 使用全局通用的列表接口
+      getGoodsList(params).then(res => {
         const curList = res.result || res.data?.list || [];
         
         if (reset) {
@@ -159,15 +161,13 @@ export default {
 
     handleSort(type) {
       if (type === 'price') {
-        // 如果当前已经是价格排序，则切换升降序
         if (this.currentSort === 'price') {
           this.priceSort = this.priceSort === 'asc' ? 'desc' : 'asc';
         } else {
           this.currentSort = 'price';
-          this.priceSort = 'desc'; // 默认降序
+          this.priceSort = 'desc'; 
         }
       } else {
-        // 切换到其他排序
         if (this.currentSort === type) return;
         this.currentSort = type;
       }
@@ -175,124 +175,34 @@ export default {
     },
 
     goToDetail(id) {
-      uni.navigateTo({
-        url: `/pages/good/detail?id=${id}`
-      });
+      uni.navigateTo({ url: `/pages/good/detail?id=${id}` });
     }
   }
 };
 </script>
 
 <style lang="scss" scoped>
-.container {
-  min-height: 100vh;
-  background-color: #f8f8f8;
-  padding-bottom: 20rpx;
-}
+.container { min-height: 100vh; background-color: #f8f8f8; padding-bottom: 20rpx; }
+.search-header { background-color: #fff; padding: 20rpx; position: sticky; top: 0; z-index: 10; }
+.sort-bar { display: flex; background-color: #fff; padding: 20rpx 0; border-bottom: 1px solid #f5f5f5; .sort-item { flex: 1; text-align: center; font-size: 28rpx; color: #333; display: flex; justify-content: center; align-items: center; &.active { color: #2979ff; font-weight: bold; } .icon-box { display: flex; flex-direction: column; margin-left: 6rpx; } } }
+.page-view { padding: 0 24rpx; background-color: #fff; min-height: calc(100vh - 180rpx); }
+.loading-center { padding: 50rpx; display: flex; justify-content: center; }
 
-.search-header {
-  background-color: #fff;
-  padding: 20rpx;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.sort-bar {
-  display: flex;
-  background-color: #fff;
-  padding: 20rpx 0;
-  border-bottom: 1px solid #f5f5f5;
-  
-  .sort-item {
-    flex: 1;
-    text-align: center;
-    font-size: 28rpx;
-    color: #333;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    
-    &.active {
-      color: #2979ff;
-      font-weight: bold;
-    }
-    
-    .icon-box {
-      display: flex;
-      flex-direction: column;
-      margin-left: 6rpx;
-    }
-  }
-}
-
-.goods-list {
-  padding: 20rpx;
-}
-
-.loading-center {
-  padding: 50rpx;
-  display: flex;
-  justify-content: center;
-}
-
-.goods-item {
-  display: flex;
-  background-color: #fff;
-  padding: 20rpx;
-  border-radius: 12rpx;
-  margin-bottom: 20rpx;
-  
-  .image-wrapper {
-    width: 200rpx;
-    height: 200rpx;
-    border-radius: 8rpx;
-    overflow: hidden;
-    flex-shrink: 0;
-    margin-right: 20rpx;
-  }
-  
-  .info-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    
-    .title {
-      font-size: 28rpx;
-      color: #333;
-      font-weight: bold;
-    }
-    
-    .tags {
-      margin-top: 10rpx;
-      display: flex;
-      flex-wrap: wrap;
-      
-      .tag {
-        margin-right: 10rpx;
-        margin-bottom: 10rpx;
-      }
-    }
-    
-    .price-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      
-      .price {
-        color: #ff3b30;
-        font-weight: bold;
-        
-        .symbol { font-size: 24rpx; }
-        .num { font-size: 32rpx; }
-      }
-      
-      .sales {
-        font-size: 24rpx;
-        color: #999;
-      }
-    }
-  }
+/* 完美移植自分类页的商品卡片样式 */
+.class-item {
+	display: flex; padding: 24rpx 0; border-bottom: 1px solid #f5f5f5;
+	&:active { background-color: #f9f9f9; }
+	.item-img { width: 140rpx; height: 140rpx; border-radius: 12rpx; overflow: hidden; background-color: #f5f5f5; margin-right: 24rpx; flex-shrink: 0; }
+	.item-info {
+		flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-width: 0;
+		.item-title { font-size: 28rpx; color: #333; font-weight: bold; line-height: 40rpx; .type-tag { display: inline-block; background-color: #2979ff; color: #fff; font-size: 20rpx; padding: 2rpx 8rpx; border-radius: 6rpx; margin-right: 10rpx; font-weight: normal; vertical-align: middle; margin-top: -4rpx; } }
+		.item-desc { font-size: 22rpx; color: #999; margin-top: 8rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; .ml-10 { margin-left: 20rpx; } }
+		.item-tags { display: flex; flex-wrap: wrap; margin-top: 8rpx; .mr-10 { margin-right: 10rpx; margin-bottom: 6rpx; } }
+		.item-price-row {
+			display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10rpx;
+			.item-price { color: #fa3534; font-weight: bold; display: flex; align-items: baseline; .price-symbol { font-size: 24rpx; } .price-num { font-size: 36rpx; } }
+			.sales-text { font-size: 22rpx; color: #999; }
+		}
+	}
 }
 </style>

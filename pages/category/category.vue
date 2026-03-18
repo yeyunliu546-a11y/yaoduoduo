@@ -76,11 +76,11 @@
 
 				<view class="class-item" v-for="(item, index) in goodsList" :key="index" @click="goToDetail(item.id)">
 					<view class="item-img">
-						<u-image width="140rpx" height="140rpx" :src="item.imageUrl" mode="aspectFill">
-							<template v-slot:error>
-								<image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
-							</template>
-						</u-image>
+							<u-image width="140rpx" height="140rpx" :src="item.imageUrl || item.urlImageMain || item.ImageUrl || item.image || '/static/empty.png'" mode="aspectFill">
+									<template v-slot:error>
+											<image src="/static/empty.png" style="width: 100%; height: 100%;"></image>
+									</template>
+							</u-image>
 					</view>
 					<view class="item-info">
 						<view class="item-title u-line-2">

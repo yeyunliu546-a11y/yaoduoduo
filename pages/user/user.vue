@@ -15,34 +15,21 @@
 						<view v-else class="mobile">{{ userInfo.phone || '绑定手机号，获取更多服务' }}</view>
 					</view>
 				</view>
-				<view class="setting-btn" @click="handlePersonal()">
-					<u-icon name="setting" color="#fff" size="40"></u-icon>
-				</view>
 			</view>
 		</view>
 
 		<view class="main-content">
 			
 			<view class="card asset-card">
-			  <view class="asset-item" @click="onTargetWallet">
-			    <view class="item-value">{{ userInfo.balance }}</view>
-			    <view class="item-name">账户余额</view>
-			  </view>
-			  <view class="asset-item" @click="onTargetPoints">
-			    <view class="item-value">{{ userInfo.points }}</view>
-			    <view class="item-name">{{ setting.pointsName }}</view>
-			  </view>
-			  <view class="asset-item" @click="onTargetMyCoupon">
-			    <view class="item-value">{{ userInfo.countCoupon }}</view>
-			    <view class="item-name">优惠券</view>
-			  </view>
-			  <view class="asset-item wallet-btn" @click="onTargetWallet">
-			    <view class="item-value icon-value">
-			      <text class="iconfont icon-qianbao"></text>
-			    </view>
-			    <view class="item-name">我的钱包</view>
-			  </view>
-			</view>
+						  <view class="asset-item" @click="onTargetPoints">
+						    <view class="item-value">{{ userInfo.points }}</view>
+						    <view class="item-name">{{ setting.pointsName }}</view>
+						  </view>
+						  <view class="asset-item" @click="onTargetMyCoupon">
+						    <view class="item-value">{{ userInfo.countCoupon }}</view>
+						    <view class="item-name">优惠券</view>
+						  </view>
+						</view>
 
 			<view class="card order-card">
 				<view class="card-header" @click="onTargetOrder({bigOrderStatus: 0})">
@@ -88,9 +75,14 @@
 								</block>
 							</view>
 						</view>
-			<view class="logout-section" v-if="hasLogin">
-				<button class="logout-btn" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
-			</view>
+			<view class="action-section" v-if="hasLogin">
+							<view class="setting-row card" @click="handlePersonal()">
+								<text class="setting-title">个人设置</text>
+								<u-icon name="arrow-right" color="#999" size="28"></u-icon>
+							</view>
+							
+							<button class="logout-btn card" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
+						</view>
 			
 			<view class="bottom-spacer"></view>
 		</view>
@@ -218,7 +210,7 @@ export default {
                 uni.navigateTo({ url: '/pages/login/index' });
                 return;
             }
-            this.$navTo('pages/user/personal/index') 
+            this.$navTo('/pages/user/personal/index') 
         },
 		onTargetWallet() { 
             if(!this.checkLogin()) return;
@@ -341,9 +333,7 @@ export default {
 		}
 	}
 	
-	.setting-btn {
-		padding: 20rpx;
-	}
+	
 }
 
 /* 核心内容区悬浮 */
@@ -505,9 +495,28 @@ export default {
 	}
 }
 
-/* 退出登录按钮 */
-.logout-section {
+/* 底部操作区 (设置 + 退出) */
+.action-section {
     margin: 40rpx 0;
+    
+    /* 设置行样式 */
+    .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 32rpx 30rpx;
+        margin-bottom: 24rpx; /* 与退出按钮保持间距 */
+        
+        .setting-title {
+            font-size: 30rpx;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        &:active {
+            background-color: #f9f9f9;
+        }
+    }
     
     .logout-btn {
         background-color: #fff;
@@ -516,7 +525,6 @@ export default {
         height: 96rpx;
         line-height: 96rpx;
         border-radius: 24rpx;
-        box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.03);
         border: none;
         
         &::after { border: none; }
