@@ -285,7 +285,7 @@ export default {
     handlePrescriptionData(data) {
         if(!data) return;
         const list = data.listGoods || data.list || data.goodsList || [];
-        this.goodsList = list.map(item => ({ goodsId: item.goodsId || item.id, goodsName: item.goodsName || item.GoodsName, imageUrl: item.urlImg || item.goodsImage || '/static/default-goods.png', manufacturer: item.manufacturer || '配方颗粒', weight: item.goodsWeight || 0, price: item.unitPrice || 0, num: 1 }));
+        this.goodsList = list.map(item => ({ goodsId: item.goodsId || item.id, goodsName: item.goodsName || item.GoodsName, imageUrl: item.urlImg || item.goodsImage || '/static/empty.png', manufacturer: item.manufacturer || '配方颗粒', weight: item.goodsWeight || 0, price: item.unitPrice || 0, num: 1 }));
         this.handleBaseData(data);
     },
 
@@ -294,7 +294,7 @@ export default {
         const rawList = data.listGoods || [];
         this.goodsList = rawList.map(item => {
             const sku = item.sku || {};
-            return { goodsId: sku.id || item.goodsId, goodsName: sku.goodsName || '未知商品', imageUrl: sku.skuUrlImage || sku.urlImg || '/static/default-goods.png', spec: sku.skuName || '默认规格', price: sku.salePrice || 0, num: item.quantity || 1 };
+            return { goodsId: sku.id || item.goodsId, goodsName: sku.goodsName || '未知商品', imageUrl: sku.skuUrlImage || sku.urlImg || '/static/empty.png', spec: sku.skuName || '默认规格', price: sku.salePrice || 0, num: item.quantity || 1 };
         });
         this.handleBaseData(data);
     },

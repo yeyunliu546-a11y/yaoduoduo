@@ -167,7 +167,7 @@ export default {
                       return {
                           goodsName: g.isVirtual ? g.goodsName : (entity.GoodsName || entity.goodsName),
                           spec: g.isVirtual ? '' : (entity.SkuName || entity.skuName || entity.spec || (order.orderType===2 ? '配方颗粒' : '默认规格')),
-                          imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/default-goods.png',
+                          imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/empty.png',
                           salePrice: price,
                           pricePerGram: entity.PricePerGram || entity.pricePerGram,
                           goodsNum: g.isVirtual ? g.goodsNum : (entity.Quantity || entity.goodsNum || entity.quantity || 1)

@@ -186,7 +186,7 @@ export default {
             const sku = g.sku || g.goods || g;
             const name = sku.GoodsName || sku.goodsName || g.goodsName || g.GoodsName || '未知商品';
             const spec = sku.SkuName || sku.skuName || sku.spec || g.specification || g.spec || defaultSpec;
-            const imageUrl = sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/default-goods.png';
+            const imageUrl = sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/empty.png';
             const salePrice = sku.SalePrice || sku.PayPrice || sku.unitPrice || sku.salePrice || sku.price || g.unitPrice || g.salePrice || g.price || 0;
             const num = Number(sku.Quantity || sku.quantity || g.quantity || g.goodsNum || g.buyNum || 1);
             
