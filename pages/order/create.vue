@@ -139,13 +139,33 @@
         </view>
     </u-popup>
 
+    <u-popup v-model="showPayTable" mode="bottom" border-radius="24" :mask-close-able="false">
+        <view class="pay-plugin-wrap">
+            <view class="pay-plugin-header">
+                <text class="title">请选择支付方式</text>
+                <view class="close-btn" @click="closePayTable">
+                    <u-icon name="close" color="#999" size="32"></u-icon>
+                </view>
+            </view>
+            <view class="pay-plugin-body">
+                <pay-table 
+                    v-if="showPayTable" 
+                    :checkValue="checkValueConfig"
+                    :payData="payTableConfig" 
+                    :redirectInfo="redirectInfoConfig"
+                    @paySuccess="onPaySuccess" 
+                    @payFail="onPayFail">
+                </pay-table>
+            </view>
+        </view>
+    </u-popup>
+
   </view>
 </template>
 
 <script>
 import { getOrderSettlement, getPrescriptionSettlement, createOrder, createPrescriptionOrder } from '@/api/order/order.js';
 import { getAvailableCoupons } from '@/api/user/coupon.js';
-// 🌟 核心：引入购物车清理接口
 import { deleteCart, removePrescriptionCart } from '@/api/goods/cart.js'; 
 
 export default {
@@ -166,7 +186,14 @@ export default {
       currentCouponId: '', 
       currentCouponName: '', 
       emptyGuid: '00000000-0000-0000-0000-000000000000',
-      isManualSelected: false
+      isManualSelected: false,
+      
+      orderId: '',
+      // 支付组件控制状态
+      showPayTable: false,
+      checkValueConfig: 'WECHATPAY',
+      payTableConfig: {},
+      redirectInfoConfig: {}
     };
   },
   onLoad(options) {
@@ -327,136 +354,101 @@ export default {
     },
 
     submitOrder() {
-            if (this.goodsList.length === 0) {
-                return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
-            }
-    
-            if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
-    
-            this.submitting = true;
-            const idsStr = this.getIdsString();
-            const commonPayload = { addressId: this.address.id, buyerRemark: this.buyerRemark, payType: 20, appKey: 'MP-WEIXIN' };
-    
-            let promise;
-            if (this.isDispensing) {
-                const payload = { ...commonPayload, cartIds: idsStr, dosageDays: Number(this.prescription.days), dailyPackages: Number(this.prescription.packs), medicalAdvice: this.doctorAdvice };
-                if (this.currentCouponId) payload.CouponId = this.currentCouponId;
-                promise = createPrescriptionOrder(payload);
-            } else {
-                const payload = { ...commonPayload, cartIds: idsStr, StrCartIds: idsStr, orderType: 1 };
-                if (this.currentCouponId) payload.UserCouponId = this.currentCouponId;
-                promise = createOrder(payload);
-            }
-    
-            promise.then(res => {
-                this.submitting = false;
-                console.log('====== [B2B节点1] 后端下单完整返回 ======', JSON.parse(JSON.stringify(res)));
-    
-                if (res.code === 200 || res.Code === 200) {
-                    const result = res.result || res.data || res.Result || {};
+        if (this.goodsList.length === 0) {
+            return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
+        }
+        if (!this.address.id) {
+            return uni.showToast({ title: '请选择收货地址', icon: 'none' });
+        }
+
+        this.submitting = true;
+        const idsStr = this.getIdsString();
+        const commonPayload = { addressId: this.address.id, buyerRemark: this.buyerRemark, payType: 20, appKey: 'MP-WEIXIN' };
+
+        let promise;
+        if (this.isDispensing) {
+            const payload = { ...commonPayload, cartIds: idsStr, dosageDays: Number(this.prescription.days), dailyPackages: Number(this.prescription.packs), medicalAdvice: this.doctorAdvice };
+            if (this.currentCouponId) payload.CouponId = this.currentCouponId;
+            promise = createPrescriptionOrder(payload);
+        } else {
+            const payload = { ...commonPayload, cartIds: idsStr, StrCartIds: idsStr, orderType: 1 };
+            if (this.currentCouponId) payload.UserCouponId = this.currentCouponId;
+            promise = createOrder(payload);
+        }
+
+        promise.then(res => {
+            this.submitting = false;
+
+            if (res.code === 200 || res.Code === 200) {
+                const result = res.result || res.data || res.Result || {};
+                
+                if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
+                    return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
+                }
+
+                try {
+                    if (this.parsedCartIds && this.parsedCartIds.length > 0) {
+                        if (this.isDispensing) removePrescriptionCart({ ids: this.parsedCartIds }).catch(()=>{});
+                        else deleteCart(this.parsedCartIds).catch(()=>{});
+                    }
+                } catch(e) {}
+
+                const orderId = result.orderId || result.OrderId || result.outTradeNo || result.out_trade_no || (this.address && this.address.orderId) || '';
+                this.orderId = orderId; 
+                const detailUrl = this.isDispensing ? `/pages/order/detail?id=${orderId}&type=2` : `/pages/order/detail?id=${orderId}&type=1`;
+
+                const payData = result.payData || {};
+                const redirectInfo = result.redirectInfo || payData.redirectInfo || {};
+                
+                const signData = payData.signData || result.signData;
+                const paySig = payData.paySig || result.paySig;
+                const signature = payData.signature || result.signature;
+
+                if (signData && paySig && signature) {
+                    this.checkValueConfig = result.checkValue || 'WECHATPAY';
+                    this.payTableConfig = { signData, paySig, signature };
+                    this.redirectInfoConfig = redirectInfo; 
                     
-                    if (result.hasOwnProperty('isCreatedOrder') && result.isCreatedOrder === false) {
-                        return uni.showToast({ title: '下单失败，请重试', icon: 'none' });
-                    }
-    
-                    // 🌟 下单成功，清理购物车
-                    try {
-                        if (this.parsedCartIds && this.parsedCartIds.length > 0) {
-                            if (this.isDispensing) removePrescriptionCart({ ids: this.parsedCartIds }).catch(()=>{});
-                            else deleteCart(this.parsedCartIds).catch(()=>{});
-                        }
-                    } catch(e) {}
-    
-                    // 提取订单ID（优先取 orderId，如果没有就拿 outTradeNo 当备用）
-                    const orderId = result.orderId || result.OrderId || result.outTradeNo;
-                    const detailUrl = this.isDispensing ? `/pages/order/detail?id=${orderId}&type=2` : `/pages/order/detail?id=${orderId}&type=1`;
-    
-                    // 🌟🌟🌟 【核心修改：精准暴力提取 B2B 参数】 🌟🌟🌟
-                    // 根据你的抓包，直接从 result 第一层拿，如果第一层没有，再去 result.payData 里面找
-                    const signData = result.signData || (result.payData && result.payData.signData);
-                    const paySig = result.paySig || (result.payData && result.payData.paySig);
-                    const signature = result.signature || (result.payData && result.payData.signature);
-    
-                    console.log('====== [B2B节点2] 提取出的核心三要素 ======', { signData, paySig, signature });
-    
-                    // 只要这三个参数存在，直接无脑唤起 B2B 原生支付
-                    if (signData && paySig && signature) {
-                        this.callB2BWechatPay({ signData, paySig, signature }, detailUrl);
-                    } else { 
-                        // 防止后端抽风没返回支付参数，静默跳转到详情页让用户去那里点支付
-                        console.warn('====== [B2B警告] 后端返回成功，但缺支付参数！======');
-                        uni.showToast({ title: '下单成功', icon: 'success' }); 
-                        setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
-                    }
+                    this.showPayTable = true; 
                 } else { 
-                    uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' }); 
-                }
-            }).catch((err) => { 
-                this.submitting = false; 
-                console.error('====== [B2B异常] 接口崩溃 ======', err);
-            });
-        },
-    
-        callB2BWechatPay(params, detailUrl) {
-            // 组装纯正的 wx.requestCommonPayment 参数
-            const requestCommonParams = {
-                signData: params.signData,
-                mode: 'retail_pay_goods', // 微信 B2B 医药采购默认模式
-                paySig: params.paySig,
-                signature: params.signature
-            };
-    
-            console.warn('====== [B2B节点3] 真正塞给底层收银台的参数 ======', requestCommonParams);
-    
-            wx.requestCommonPayment({
-                ...requestCommonParams,
-                success: (res) => { 
-                    console.log('====== [B2B节点4] 微信原生回调：支付成功！ ======', res);
-                    uni.showToast({ title: '支付成功', icon: 'success' }); 
-                    setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
-                },
-                fail: (err) => { 
-                    console.error('====== [B2B节点5] 微信原生回调：失败或取消！ ======', err);
-                    if (err.errMsg && err.errMsg.includes('cancel')) {
-                        uni.showToast({ title: '已取消支付', icon: 'none' });
-                    } else {
-                        uni.showModal({
-                            title: '底层唤起失败',
-                            content: `错误信息:\n${err.errMsg || '未知'}\n错误码: ${err.errCode || '无'}`,
-                            showCancel: false
-                        });
-                    }
+                    uni.showToast({ title: '下单成功', icon: 'success' }); 
                     setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
                 }
-            });
-        },
-    
-    callWechatPay(params, detailUrl) {
-        console.log('发起普通微信支付，参数：', params);
-        uni.requestPayment({
-            provider: 'wxpay', 
-            timeStamp: String(params.timeStamp || params.TimeStamp), 
-            nonceStr: params.nonceStr || params.NonceStr, 
-            package: params.package || params.Package, 
-            signType: params.signType || params.SignType || 'MD5', 
-            paySign: params.paySign || params.PaySign,
-            success: () => { 
-                uni.showToast({ title: '支付成功', icon: 'success' }); 
-                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
-            },
-            fail: (err) => { 
-                console.log('普通支付取消或失败', err); 
-                uni.showToast({ title: '取消支付', icon: 'none' }); 
-                setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500); 
+            } else { 
+                uni.showToast({ title: res.message || res.Message || '下单失败', icon: 'none' }); 
             }
+        }).catch((err) => { 
+            this.submitting = false; 
+            uni.showToast({ title: '网络请求异常', icon: 'none' });
         });
+    },
+
+    closePayTable() {
+        this.showPayTable = false;
+        this.onPayFail({ errMsg: '用户手动关闭收银台' });
+    },
+
+    onPaySuccess(res) {
+        this.showPayTable = false;
+        uni.showToast({ title: '支付成功', icon: 'success' });
+        
+        const detailUrl = this.isDispensing ? `/pages/order/detail?id=${this.orderId}&type=2` : `/pages/order/detail?id=${this.orderId}&type=1`;
+        setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500);
+    },
+
+    onPayFail(err) {
+        this.showPayTable = false;
+        uni.showToast({ title: '已生成订单，请在详情页完成支付', icon: 'none', duration: 2500 });
+        
+        const detailUrl = this.isDispensing ? `/pages/order/detail?id=${this.orderId}&type=2` : `/pages/order/detail?id=${this.orderId}&type=1`;
+        setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500);
     }
+
   }
 };
 </script>
 
 <style lang="scss" scoped>
-/* 样式保持不变 */
 .container { padding-bottom: 120rpx; background-color: #f5f5f5; min-height: 100vh; }
 .address-section { background: #fff; padding: 30rpx; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; .user-row { font-size: 30rpx; font-weight: bold; margin-bottom: 10rpx; .mobile { margin-left: 20rpx; color: #666; font-weight: normal; font-size: 26rpx; } } .addr-text { font-size: 26rpx; color: #333; line-height: 1.4; } .addr-empty { display: flex; align-items: center; color: #333; font-size: 28rpx; .icon-box { width: 40rpx; height: 40rpx; background: #2979ff; color: #fff; text-align: center; line-height: 36rpx; border-radius: 8rpx; margin-right: 12rpx; font-weight: bold;} } }
 .goods-section { background: #fff; margin-bottom: 20rpx; .prescription-header { padding: 20rpx 30rpx; border-bottom: 1px solid #f8f8f8; display: flex; align-items: center; .tag { background: #e6f1fc; color: #2979ff; font-size: 22rpx; padding: 4rpx 10rpx; border-radius: 6rpx; margin-right: 16rpx;} .usage-info { font-size: 26rpx; color: #333; font-weight: bold; } } .goods-item { display: flex; padding: 20rpx 30rpx; background: #fff; border-bottom: 1px solid #f8f8f8; .thumb { width: 140rpx; height: 140rpx; border-radius: 8rpx; margin-right: 20rpx; background: #f5f5f5;} .content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .title { font-size: 28rpx; color: #333; } .spec { font-size: 24rpx; color: #999; margin-top: 8rpx; } .price-row { display: flex; justify-content: space-between; margin-top: 10rpx; .price { color: #ff3b30; font-size: 30rpx; font-weight: bold; } .num { color: #999; font-size: 26rpx; } } } } }
@@ -464,4 +456,30 @@ export default {
 .footer-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 100rpx; background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 30rpx; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); z-index: 99; .total-box { .label { font-size: 28rpx; color: #333; } .price-symbol { font-size: 24rpx; color: #ff3b30; font-weight: bold; } .price-num { font-size: 40rpx; color: #ff3b30; font-weight: bold; } } .submit-btn { margin: 0; background: #2979ff; color: #fff; font-size: 30rpx; border-radius: 40rpx; padding: 0 60rpx; height: 76rpx; line-height: 76rpx; } }
 .popup-container { background: #f5f5f5; height: 100%; display: flex; flex-direction: column; } .popup-header { background: #fff; padding: 30rpx; text-align: center; position: relative; font-size: 32rpx; font-weight: bold; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; } .popup-content { flex: 1; padding: 20rpx; overflow-y: auto; } .no-use-row { background: #fff; padding: 24rpx 30rpx; border-radius: 12rpx; margin-bottom: 20rpx; display: flex; justify-content: space-between; align-items: center; font-size: 28rpx; color: #333; }
 .coupon-item { display: flex; background: #fff; border-radius: 12rpx; overflow: hidden; margin-bottom: 20rpx; box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05); transition: all 0.2s; .left-box { width: 180rpx; background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%); color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; &.discount-bg { background: linear-gradient(135deg, #ff9f43 0%, #ee5253 100%); } .price-row { margin-bottom: 6rpx; .symbol { font-size: 24rpx; } .num { font-size: 48rpx; font-weight: bold; } } .condition { font-size: 20rpx; opacity: 0.9; } } .right-box { flex: 1; padding: 20rpx; display: flex; align-items: center; justify-content: space-between; .info { flex: 1; margin-right: 20rpx; .title-row { display: flex; align-items: center; margin-bottom: 10rpx; .tag { font-size: 18rpx; background: #fff2e8; color: #ff9900; padding: 2rpx 6rpx; border-radius: 4rpx; margin-right: 8rpx; flex-shrink: 0; &.purple { background: #f9f0ff; color: #722ed1; } &.blue { background: #e6f7ff; color: #1890ff; } } .title { font-size: 28rpx; font-weight: bold; color: #333; } } .date { font-size: 22rpx; color: #ccc; } } } }
+
+/* 🌟 B2B 支付弹窗专享样式 */
+.pay-plugin-wrap {
+    background-color: #fff;
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.pay-plugin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 30rpx 30rpx 10rpx;
+    border-bottom: 1px solid #f9f9f9;
+    .title {
+        font-size: 32rpx;
+        font-weight: bold;
+        color: #333;
+    }
+    .close-btn {
+        padding: 10rpx;
+    }
+}
+.pay-plugin-body {
+    padding: 10rpx 0 20rpx;
+    min-height: 350rpx;
+}
 </style>

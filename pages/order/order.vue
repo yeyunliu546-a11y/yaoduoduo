@@ -59,6 +59,7 @@
       <u-empty v-if="!isLoading && orderList.length === 0" mode="order" margin-top="100"></u-empty>
       <u-loadmore v-if="orderList.length > 0" :status="loadStatus" margin-top="30" margin-bottom="30"></u-loadmore>
     </view>
+
   </view>
 </template>
 
@@ -89,7 +90,7 @@ export default {
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      statusMapCode: [0, 10, 20, 30, 80, -30] 
+      statusMapCode: [0, 10, 20, 30, 80, -30]
     };
   },
   onLoad(option) {
@@ -194,68 +195,67 @@ export default {
       uni.navigateTo({ url: `/pages/order/detail?id=${item.id}&type=${item.orderType}` });
     },
     
-    // 🌟 核心修改：双通道支付逻辑
-    // 🌟 核心修改：订单列表纯 B2B 支付逻辑
-        handlePay(item) {
-            uni.showLoading({ title: '获取支付信息...', mask: true });
+    // 🌟 原生 API 支付：纯净无组件版本
+    handlePay(item) {
+        uni.showLoading({ title: '获取支付信息...', mask: true });
+        
+        const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+        let payApi = isPrescription 
+            ? payPrescriptionOrder({ orderId: item.id, payType: 20, appKey: 'MP-WEIXIN' })
+            : payOrder({ OrderId: item.id, PayType: 20, AppKey: 'MP-WEIXIN', orderId: item.id, payType: 20, appKey: 'MP-WEIXIN' });
+
+        payApi.then(res => {
+            uni.hideLoading();
+            const code = res.code !== undefined ? res.code : res.Code;
             
-            const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
-            let payApi;
-            
-            if (isPrescription) {
-                payApi = payPrescriptionOrder({ orderId: item.id, payType: 20, appKey: 'MP-WEIXIN' });
-            } else {
-                payApi = payOrder({ OrderId: item.id, PayType: 20, AppKey: 'MP-WEIXIN', orderId: item.id, payType: 20, appKey: 'MP-WEIXIN' });
-            }
-    
-            payApi.then(res => {
-                uni.hideLoading();
-                const code = res.code !== undefined ? res.code : res.Code;
+            if(code === 200) {
+                const result = res.result || res.Result || res.data || {};
                 
-                console.log('====== [B2B列表页节点1] 获取支付参数返回 ======', JSON.parse(JSON.stringify(res)));
+                // 1. 提取核心支付参数
+                const payData = result.payData || {};
+                const signData = payData.signData || result.signData;
+                const paySig = payData.paySig || result.paySig;
+                const signature = payData.signature || result.signature;
                 
-                if(code === 200) {
-                    const result = res.result || res.Result || res.data || {};
+                // 2. 提取后端返回的模式（如果没有，默认零售 B2B 模式）
+                const mode = result.mode || 'retail_pay_goods';
+
+                if (signData && paySig && signature) {
+                    console.log('====== 发起最纯净的原生 API 支付 ======');
                     
-                    // 🌟 暴力提取 B2B 参数
-                    const signData = result.signData || (result.payData && result.payData.signData);
-                    const paySig = result.paySig || (result.payData && result.payData.paySig);
-                    const signature = result.signature || (result.payData && result.payData.signature);
-                    
-                    console.log('====== [B2B列表页节点2] 提取参数 ======', { signData, paySig, signature });
-    
-                    // 只要这三个参数存在，无脑唤起 B2B 原生支付
-                    if (signData && paySig && signature) {
-                        wx.requestCommonPayment({
-                            signData: signData,
-                            mode: 'retail_pay_goods', // 微信 B2B 医药采购默认模式
-                            paySig: paySig,
-                            signature: signature,
-                            success: (payRes) => {
-                                uni.showToast({ title: '支付成功', icon: 'success' });
-                                setTimeout(() => { this.refreshList(); }, 1500); // 刷新列表状态
-                            },
-                            fail: (err) => {
-                                console.error('B2B支付异常', err);
-                                if (err.errMsg && err.errMsg.includes('cancel')) {
-                                    uni.showToast({ title: '已取消支付', icon: 'none' });
-                                } else {
-                                    uni.showModal({ title: '底层唤起失败', content: `错误信息:\n${err.errMsg || '未知'}\n错误码: ${err.errCode || '无'}`, showCancel: false });
-                                }
+                    // 👇 纯裸调！只传官方要求的 4 个核心参数
+                    wx.requestCommonPayment({
+                        mode: mode,
+                        signData: signData,
+                        paySig: paySig,
+                        signature: signature,
+                        success: (payRes) => {
+                            console.log('====== 原生 API 支付成功 ======', payRes);
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.refreshList(); }, 1500);
+                        },
+					fail: (err) => {
+                            // 精准判断：只要包含 cancel，就是用户主动取消，不是代码报错！
+                            if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
+                                uni.showToast({ title: '您已取消支付', icon: 'none' });
+                            } else {
+                                console.error('====== 原生 API 支付异常 ======', err);
+                                uni.showToast({ title: '支付环境异常，请重试', icon: 'none' });
                             }
-                        });
-                    } else {
-                        uni.showToast({ title: '后台返回支付参数不完整', icon: 'none' });
-                    }
+                        }
+                    });
+
                 } else {
-                    uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
+                    uni.showToast({ title: '后台返回支付参数不完整', icon: 'none' });
                 }
-            }).catch(err => {
-                uni.hideLoading();
-                uni.showToast({ title: '网络异常', icon: 'none' });
-                console.error(err);
-            });
-        },
+            } else {
+                uni.showToast({ title: res.message || res.Message || '获取支付参数失败', icon: 'none' });
+            }
+        }).catch(() => {
+            uni.hideLoading();
+            uni.showToast({ title: '网络异常', icon: 'none' });
+        });
+    },
     
     handleReceive(item) {
         uni.showModal({
@@ -339,7 +339,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-/* 样式保留不变 */
 .container { background-color: #f5f5f5; min-height: 100vh; }
 .tabs-box { background: #fff; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #f5f5f5; }
 .order-list { padding: 20rpx; }

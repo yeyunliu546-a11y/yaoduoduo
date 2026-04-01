@@ -106,6 +106,7 @@
     </block>
     
     <u-loading-page :loading="loading"></u-loading-page>
+
   </view>
 </template>
 
@@ -130,14 +131,13 @@ export default {
   computed: {
       isPrescription() { return parseInt(this.orderType) === 2; },
       
-      // 动态匹配头部大图标
       statusIcon() {
           const status = this.orderInfo?.orderStatus;
-          if (status === 10) return 'clock-fill'; // 待付款
-          if (status === 20) return 'car-fill';   // 待发货
-          if (status === 30) return 'gift-fill';  // 待收货
-          if (status === 80) return 'checkmark-circle-fill'; // 已完成
-          if (status === -20 || status === -30) return 'close-circle-fill'; // 取消/退款
+          if (status === 10) return 'clock-fill'; 
+          if (status === 20) return 'car-fill';   
+          if (status === 30) return 'gift-fill';  
+          if (status === 80) return 'checkmark-circle-fill'; 
+          if (status === -20 || status === -30) return 'close-circle-fill'; 
           return 'order';
       }
   },
@@ -152,13 +152,10 @@ export default {
     }
   },
   methods: {
-    // 复制订单号到剪贴板
     copyText(text) {
         uni.setClipboardData({
             data: String(text),
-            success: () => {
-                uni.showToast({ title: '复制成功', icon: 'none' });
-            }
+            success: () => { uni.showToast({ title: '复制成功', icon: 'none' }); }
         });
     },
 
@@ -186,7 +183,7 @@ export default {
             const sku = g.sku || g.goods || g;
             const name = sku.GoodsName || sku.goodsName || g.goodsName || g.GoodsName || '未知商品';
             const spec = sku.SkuName || sku.skuName || sku.spec || g.specification || g.spec || defaultSpec;
-            const imageUrl = sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/empty.png';
+            const imageUrl = sku.skuImageUrl || g.skuImageUrl || sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/empty.png';
             const salePrice = sku.SalePrice || sku.PayPrice || sku.unitPrice || sku.salePrice || sku.price || g.unitPrice || g.salePrice || g.price || 0;
             const num = Number(sku.Quantity || sku.quantity || g.quantity || g.goodsNum || g.buyNum || 1);
             
@@ -196,11 +193,8 @@ export default {
                 map[uniqueKey].goodsNum += num;
             } else {
                 map[uniqueKey] = {
-                    goodsName: name,
-                    spec: spec,
-                    imageUrl: imageUrl,
-                    salePrice: Number(salePrice).toFixed(2),
-                    goodsNum: num
+                    goodsName: name, spec: spec, imageUrl: imageUrl,
+                    salePrice: Number(salePrice).toFixed(2), goodsNum: num
                 };
                 grouped.push(map[uniqueKey]);
             }
@@ -208,141 +202,119 @@ export default {
         return grouped;
     },
 
-    // 处理处方单详情数据
-        handlePrescriptionData(data) {
-            if(!data) return;
-            const rawGoods = data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [];
-            
-            // 🌟 暴力兼容地址对象
-            const addr = data.address || data.AddressInfo || data;
-            let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
-            if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
-                fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
-            }
-            
-            this.orderInfo = {
-                id: data.id || data.Id,
-                orderNo: data.orderNo || data.OrderNo,
-                orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
-                orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
-                createTime: data.createTime || data.CreateTime,
-                payTime: data.payTime || data.PayTime,
-                payPrice: data.payPrice || data.PayPrice || 0,
-                expressNo: data.expressNo || data.ExpressNo,
-                dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
-                medicalAdvice: data.medicalAdvice || data.MedicalAdvice,
-                buyerRemark: data.buyerRemark || data.BuyerRemark,
-                
-                // 🌟 极限提取收货人信息
-                receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
-                receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
-                receiverAddress: fullAddress,
-                
-                goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
-            };
-        },
+    handlePrescriptionData(data) {
+        if(!data) return;
+        const rawGoods = data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [];
+        const addr = data.address || data.AddressInfo || data;
+        let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
+        if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
+            fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
+        }
         
-        // 处理采购单详情数据
-            handleProcurementData(data) {
-                if(!data) return;
-                const rawGoods = data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || [];
-                
-                // 🌟 破案关键：加上首字母小写的 addressInfo 和 orderAddressInfo 兼容
-                const addr = data.addressInfo || data.orderAddressInfo || data.AddressInfo || data.OrderAddressInfo || data.address || data;
-                
-                // 拼装详细地址
-                let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
-                if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
-                    fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
-                }
-                
-                this.orderInfo = {
-                    id: data.Id || data.id,
-                    orderNo: data.OrderNo || data.orderNo,
-                    orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
-                    orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
-                    createTime: data.CreateTime || data.createTime,
-                    payTime: data.PayTime || data.payTime,
-                    payPrice: data.payPrice || data.PayPrice || data.orderPayPrice || 0, 
-                    expressNo: data.ExpressNo || data.expressNo,
-                    buyerRemark: data.BuyerRemark || data.buyerRemark,
-                    
-                    // 提取人名和手机号
-                    receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
-                    receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
-                    receiverAddress: fullAddress,
-                    
-                    goodsList: this.aggregateGoods(rawGoods, '默认规格')
-                };
-            },
+        this.orderInfo = {
+            id: data.id || data.Id, orderNo: data.orderNo || data.OrderNo,
+            orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
+            orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
+            createTime: data.createTime || data.CreateTime, payTime: data.payTime || data.PayTime,
+            payPrice: data.payPrice || data.PayPrice || 0, expressNo: data.expressNo || data.ExpressNo,
+            dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
+            medicalAdvice: data.medicalAdvice || data.MedicalAdvice, buyerRemark: data.buyerRemark || data.BuyerRemark,
+            receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
+            receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
+            receiverAddress: fullAddress,
+            goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
+        };
+    },
+    
+    handleProcurementData(data) {
+        if(!data) return;
+        const rawGoods = data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || [];
+        const addr = data.addressInfo || data.orderAddressInfo || data.AddressInfo || data.OrderAddressInfo || data.address || data;
+        let fullAddress = addr.fullAddress || addr.FullAddress || addr.receiverAddress || data.receiverAddress || '';
+        if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
+            fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
+        }
+        
+        this.orderInfo = {
+            id: data.Id || data.id, orderNo: data.OrderNo || data.orderNo,
+            orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
+            orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
+            createTime: data.CreateTime || data.createTime, payTime: data.PayTime || data.payTime,
+            payPrice: data.payPrice || data.PayPrice || data.orderPayPrice || 0, 
+            expressNo: data.ExpressNo || data.expressNo, buyerRemark: data.BuyerRemark || data.buyerRemark,
+            receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
+            receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
+            receiverAddress: fullAddress,
+            goodsList: this.aggregateGoods(rawGoods, '默认规格')
+        };
+    },
     
     getStatusName(status) {
         const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
         return map[String(status)] || '未知状态';
     },
     
-    // ======================================
-    // 原封不动保留的操作功能区（双通道支付等）
-    // ======================================
-   // 🌟 核心修改：订单详情纯 B2B 支付逻辑
-       handlePay() {
-           uni.showLoading({ title: '获取支付信息...', mask: true });
-           
-           let payApi;
-           if (this.isPrescription) {
-               payApi = payPrescriptionOrder({ orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' });
-           } else {
-               payApi = payOrder({ OrderId: this.orderId, PayType: 20, AppKey: 'MP-WEIXIN', orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' });
-           }
-   
-           payApi.then(res => {
-               uni.hideLoading();
-               const code = res.code !== undefined ? res.code : res.Code;
-               
-               console.log('====== [B2B详情页节点1] 获取支付参数返回 ======', JSON.parse(JSON.stringify(res)));
-   
-               if(code === 200) {
-                   const result = res.result || res.Result || res.data || {};
-                   
-                   // 🌟 暴力提取 B2B 参数
-                   const signData = result.signData || (result.payData && result.payData.signData);
-                   const paySig = result.paySig || (result.payData && result.payData.paySig);
-                   const signature = result.signature || (result.payData && result.payData.signature);
-   
-                   console.log('====== [B2B详情页节点2] 提取参数 ======', { signData, paySig, signature });
-   
-                   // 唤起 B2B 收银台
-                   if (signData && paySig && signature) {
-                       wx.requestCommonPayment({
-                           signData: signData,
-                           mode: 'retail_pay_goods',
-                           paySig: paySig,
-                           signature: signature,
-                           success: (payRes) => {
-                               uni.showToast({ title: '支付成功', icon: 'success' });
-                               setTimeout(() => { this.loadDetail(); }, 1500); // 刷新详情页数据
-                           },
-                           fail: (err) => {
-                               console.error('B2B支付异常', err);
-                               if (err.errMsg && err.errMsg.includes('cancel')) {
-                                   uni.showToast({ title: '已取消支付', icon: 'none' });
-                               } else {
-                                   uni.showModal({ title: '底层唤起失败', content: `错误信息:\n${err.errMsg || '未知'}\n错误码: ${err.errCode || '无'}`, showCancel: false });
-                               }
-                           }
-                       });
-                   } else {
-                       uni.showToast({ title: '后台返回支付参数不完整', icon: 'none' });
-                   }
-               } else {
-                   uni.showToast({ title: res.message || res.Message || '获取参数失败', icon: 'none' });
-               }
-           }).catch(err => {
-               uni.hideLoading();
-               uni.showToast({ title: '网络异常', icon: 'none' });
-               console.error(err);
-           });
-       },
+    // 🌟 原生 API 支付：你指定的纯净版本
+    handlePay() {
+        uni.showLoading({ title: '获取支付信息...', mask: true });
+        
+        let payApi = this.isPrescription 
+            ? payPrescriptionOrder({ orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' })
+            : payOrder({ OrderId: this.orderId, PayType: 20, AppKey: 'MP-WEIXIN', orderId: this.orderId, payType: 20, appKey: 'MP-WEIXIN' });
+
+        payApi.then(res => {
+            uni.hideLoading();
+            const code = res.code !== undefined ? res.code : res.Code;
+
+            if(code === 200) {
+                const result = res.result || res.Result || res.data || {};
+                
+                // 1. 提取核心支付参数
+                const payData = result.payData || {};
+                const signData = payData.signData || result.signData;
+                const paySig = payData.paySig || result.paySig;
+                const signature = payData.signature || result.signature;
+                
+                // 2. 提取后端返回的模式（如果没有，默认零售 B2B 模式）
+                const mode = result.mode || 'retail_pay_goods';
+
+                if (signData && paySig && signature) {
+                    console.log('====== 发起最纯净的原生 API 支付 ======');
+                    console.log('参数:', { mode, signData, paySig, signature });
+
+                    // 👇 纯裸调！只传官方要求的 4 个核心参数
+                    wx.requestCommonPayment({
+                        mode: mode,
+                        signData: signData,
+                        paySig: paySig,
+                        signature: signature,
+                        success: (payRes) => {
+                            console.log('====== 原生 API 支付成功 ======', payRes);
+                            uni.showToast({ title: '支付成功', icon: 'success' });
+                            setTimeout(() => { this.loadDetail(); }, 1500);
+                        },
+					fail: (err) => {
+                             // 精准判断：只要包含 cancel，就是用户主动取消，不是代码报错！
+                             if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
+                                 uni.showToast({ title: '您已取消支付', icon: 'none' });
+                             } else {
+                                 console.error('====== 原生 API 支付异常 ======', err);
+                                 uni.showToast({ title: '支付环境异常，请重试', icon: 'none' });
+                             }
+                         }
+                    });
+
+                } else {
+                    uni.showToast({ title: '后台返回支付参数不完整', icon: 'none' });
+                }
+            } else {
+                uni.showToast({ title: res.message || res.Message || '获取参数失败', icon: 'none' });
+            }
+        }).catch(err => {
+            uni.hideLoading();
+            uni.showToast({ title: '网络异常', icon: 'none' });
+        });
+    },
     
     handleReceive() {
         uni.showModal({
@@ -413,7 +385,6 @@ export default {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* 渐变头部背景 */
 .header-bg { 
   background: linear-gradient(135deg, #2979ff 0%, #518cff 100%); 
   height: 280rpx;
@@ -446,16 +417,14 @@ export default {
   }
 }
 
-/* 核心内容区：利用负边距上浮，营造空间感 */
 .main-content {
     position: relative;
     z-index: 2;
     margin-top: -80rpx; 
     padding: 0 24rpx;
-    padding-bottom: 120rpx; /* 给底部按钮留出空间 */
+    padding-bottom: 120rpx; 
 }
 
-/* 统一卡片基础样式 */
 .card { 
   background: #fff; 
   border-radius: 20rpx; 
@@ -464,7 +433,6 @@ export default {
   box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.03); 
 }
 
-/* 地址卡片细节 */
 .address-card {
     display: flex;
     align-items: center;
@@ -504,7 +472,6 @@ export default {
     }
 }
 
-/* 商品卡片细节 */
 .goods-card {
     .shop-header {
         display: flex;
@@ -566,7 +533,6 @@ export default {
         .sub-tip { font-size: 20rpx; margin-top: 8rpx; }
     }
     
-    /* 订单总计 */
     .total-row {
         display: flex;
         justify-content: flex-end;
@@ -582,7 +548,6 @@ export default {
     }
 }
 
-/* 订单信息卡片细节 */
 .info-card {
     .card-title {
         font-size: 30rpx;
@@ -612,7 +577,6 @@ export default {
     }
 }
 
-/* 底部操作栏 */
 .footer-bar { 
   position: fixed; 
   bottom: 0; 
@@ -628,7 +592,6 @@ export default {
   box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04); 
   z-index: 99;
   
-  /* 适配苹果底部安全区 */
   padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);
   
