@@ -25,7 +25,7 @@
           <view class="tags-row">
             <text class="tag manufacturer" v-if="goodsInfo.manufacturer">{{ goodsInfo.manufacturer }}</text>
             <text class="tag standard" v-if="goodsInfo.standard">{{ goodsInfo.standard }}</text>
-            <text class="tag package" v-if="goodsInfo.packageType">{{ goodsInfo.packageType }}</text>
+            <text class="tag package" v-if="goodsInfo.packageType && !isPrescription">{{ goodsInfo.packageType }}</text>
             <text class="tag type" :class="isPrescription ? 'type-prescription' : 'type-normal'">
               {{ isPrescription ? '处方调剂' : '普通采购' }}
             </text>
@@ -90,7 +90,6 @@
 
 <script>
   import { getGoodsDetail } from '@/api/goods/goods.js';
-  // 【修复1】引入处方购物车接口
   import { addCart, addPrescriptionCart } from '@/api/goods/cart.js';
 
   export default {
@@ -160,19 +159,15 @@
         uni.showLoading({ title: '加入中' });
         
         let promise;
-        // 🌟 获取起批量，兼容大小写驼峰，默认为 1
         let minQty = this.currentSku.minOrderQuantity || this.currentSku.MinOrderQuantity || this.goodsInfo.minOrderQuantity || this.goodsInfo.MinOrderQuantity || 1;
 
-        // 【修复2】根据商品类型调用不同的加购接口
         if (this.isPrescription) {
-          // 调剂药品 -> 处方购物车，如果有起批量则采用起批量，否则默认 10g
           const params = {
             goodsSkuId: this.currentSku.id,
             goodsWeight: Math.max(10, minQty) 
           };
           promise = addPrescriptionCart(params);
         } else {
-          // 普通药品 -> 采购购物车，默认数量为起批量
           const params = {
             goodsSkuId: this.currentSku.id,
             goodsNum: minQty
@@ -202,7 +197,6 @@
 </script>
 
 <style lang="scss" scoped>
-  /* 保持原有样式，增加 type 标签样式 */
   .container { background-color: #f8f8f8; min-height: 100vh; padding-bottom: 120rpx; }
   .goods-swiper { width: 100%; height: 750rpx; background-color: #fff; }
   .swiper-img { width: 100%; height: 100%; }

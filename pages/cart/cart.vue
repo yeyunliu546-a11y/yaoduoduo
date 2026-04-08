@@ -100,8 +100,7 @@
         </view>
       </view>
 
-<view v-show="currentTab === 1">
-          
+      <view v-show="currentTab === 1">
           <view class="dispensing-list" v-if="dispensingList.length > 0">
               <view class="list-title">
                   <view class="title-left" @click="isListExpanded = !isListExpanded">
@@ -182,12 +181,17 @@
               <text class="select-text">全选</text>
             </view>
             <view class="footer-right">
-              <view class="total-info">
-                <text class="label">合计：</text>
-                <view class="price-box">
-                  <text class="unit">￥</text>
-                  <text class="num">{{ totalPriceProcurement }}</text>
-                </view>
+              <view class="summary-info right-align">
+                  <view class="main-total">
+                      <text>总价：</text>
+                      <text class="price-symbol">￥</text>
+                      <text class="price-val">{{ finalPriceProcurement }}</text>
+                  </view>
+                  <view class="sub-total">
+                      <text>商品￥{{ goodsCostProcurement }} </text>
+                      <text v-if="shippingFeeProcurement > 0" class="fee-tag"> + 运费￥{{ shippingFeeProcurement }}</text>
+                      <text v-else-if="parseFloat(goodsCostProcurement) > 0" class="fee-tag free"> (免运费)</text>
+                  </view>
               </view>
               <view class="checkout-btn" @click="handleOrder">
                 去结算({{ checkedCount }})
@@ -247,23 +251,37 @@ export default {
       prescriptionPacks: 2,
       doctorAdvice: '', 
       debounceTimers: {},
-      isListExpanded: true, // 🌟 新增：控制药品清单展开折叠
-	  
+      isListExpanded: true,
       showFavNameModal: false,
       favName: ''
     }
   },
   computed: {
+    // 🌟 采购计算属性
     allProcurementIds() { return Object.values(this.procurementList).flat().map(item => item.id); },
     isAllChecked() { return this.allProcurementIds.length > 0 && this.checkedIds.length === this.allProcurementIds.length; },
     checkedCount() { return this.checkedIds.length; },
-    totalPriceProcurement() {
+    
+    // 纯商品总价
+    goodsCostProcurement() {
         let total = 0;
         Object.values(this.procurementList).flat().forEach(item => {
             if (this.inArray(item.id, this.checkedIds)) total += Number(item.salePrice) * Number(item.goodsNum);
         });
         return total.toFixed(2);
     },
+    // 采购运费（默认低于1000收10元，这里可自行修改为真实基础运费）
+    shippingFeeProcurement() {
+        const cost = parseFloat(this.goodsCostProcurement);
+        if (cost === 0) return 0;
+        return cost >= 1000 ? 0 : 10; 
+    },
+    // 采购实付总额
+    finalPriceProcurement() {
+        return (parseFloat(this.goodsCostProcurement) + this.shippingFeeProcurement).toFixed(2);
+    },
+
+    // 🌟 处方调剂计算属性
     singleDosePrice() {
         let total = 0;
         this.dispensingList.forEach(item => {
@@ -324,7 +342,6 @@ export default {
         }
     },
     
-    // 🌟 优化：全方位暴力提取“厂家名称”，防止因为嵌套找不到
     groupCartByBrand(list) {
         const groups = {};
         list.forEach(item => {
@@ -502,33 +519,28 @@ export default {
 .brand-header { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .brand-left { display: flex; align-items: center; .brand-title { font-size: 30rpx; font-weight: bold; color: #333; margin: 0 10rpx 0 16rpx; } } .clear-btn { font-size: 24rpx; color: #999; } }
 .checkbox-icon { width: 40rpx; height: 40rpx; border-radius: 50%; border: 2rpx solid #c8c9cc; display: flex; align-items: center; justify-content: center; transition: all 0.2s; background: #fff; &.checked { background: #ee0a24; border-color: #ee0a24; } }
 
-/* 🌟 新增：标题与删除按钮并排样式 */
 .title-row { 
     display: flex; 
     justify-content: space-between; 
     align-items: flex-start; 
-    .goods-title { 
-        flex: 1; 
-        font-size: 28rpx; 
-        color: #333; 
-        font-weight: bold; 
-        line-height: 40rpx; 
-        margin-bottom: 10rpx; 
-        margin-right: 16rpx; 
-    } 
-    .delete-icon { 
-        padding: 4rpx; 
-    } 
+    .goods-title { flex: 1; font-size: 28rpx; color: #333; font-weight: bold; line-height: 40rpx; margin-bottom: 10rpx; margin-right: 16rpx; } 
+    .delete-icon { padding: 4rpx; } 
 }
 
 .goods-item { display: flex; padding: 24rpx; background: #fff; border-bottom: 1px solid #f9f9f9; .checkbox-area { display: flex; align-items: center; padding-right: 20rpx; } .goods-image { flex-shrink: 0; margin-right: 20rpx; border-radius: 12rpx; overflow: hidden; border: 1rpx solid #f0f0f0; } .goods-content { flex: 1; display: flex; flex-direction: column; justify-content: space-between; .goods-specs { display: flex; flex-wrap: wrap; gap: 10rpx; margin-bottom: 16rpx; .spec-tag { font-size: 22rpx; color: #909399; background: #f4f4f5; padding: 4rpx 12rpx; border-radius: 6rpx; } } .goods-bottom { display: flex; justify-content: space-between; align-items: flex-end; .price-box { color: #ee0a24; font-weight: bold; line-height: 1; .symbol { font-size: 24rpx; } .number { font-size: 36rpx; } } } } }
 .empty-cart { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 120rpx; }
 .footer-wrapper { position: fixed; bottom: 0; bottom: var(--window-bottom); left: 0; right: 0; z-index: 999; background: #fff; box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05); }
-.footer-bar { display: flex; justify-content: space-between; align-items: center; height: 100rpx; padding: 0 24rpx; .footer-left { display: flex; align-items: center; height: 100%; .select-text { margin-left: 12rpx; font-size: 28rpx; color: #666; } } .footer-right { display: flex; align-items: center; .total-info { display: flex; align-items: baseline; margin-right: 24rpx; .label { font-size: 26rpx; color: #333; } .price-box { color: #ee0a24; font-weight: bold; .unit { font-size: 24rpx; } .num { font-size: 36rpx; } } } .checkout-btn { width: 200rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: linear-gradient(90deg, #ff6034, #ee0a24); color: #fff; font-size: 30rpx; font-weight: bold; border-radius: 38rpx; box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3); &:active { opacity: 0.9; } } } }
-.dispensing-footer { .summary-info { display: flex; flex-direction: column; justify-content: center; .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ee0a24; font-size: 24rpx; } .price-val { color: #ee0a24; font-size: 40rpx; font-weight: bold; } } .sub-total { font-size: 22rpx; color: #999; margin-top: 4rpx; .fee-tag { margin-left: 6rpx; &.free { color: #19be6b; } } } } .btn-group { display: flex; gap: 20rpx; .action-btn { height: 72rpx; line-height: 72rpx; padding: 0 30rpx; border-radius: 36rpx; font-size: 28rpx; font-weight: 500; &.outline { border: 2rpx solid #ff9900; color: #ff9900; background: #fff; } &.fill { background: linear-gradient(90deg, #ff9900, #ff6034); color: #fff; box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3); } } } }
-/* 🌟 更新后的处方用法配置与医嘱卡片样式 */
-.prescription-config-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 24rpx; .config-title { font-size: 30rpx; font-weight: bold; margin-bottom: 20rpx; border-left: 8rpx solid #ff9900; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; gap: 20rpx; .config-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9f9f9; padding: 30rpx 16rpx; border-radius: 12rpx; .label-top { font-size: 28rpx; color: #666; margin-bottom: 24rpx; font-weight: 500; } } } .advice-box { position: relative; .advice-input { width: 100%; height: 140rpx; background: #f9f9f9; border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box; } .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
 
-/* 🌟 更新后的药品清单卡片样式 */
+/* 🌟 将 summary-info 提出来作为公用样式 */
+.summary-info { 
+    display: flex; flex-direction: column; justify-content: center; 
+    &.right-align { align-items: flex-end; margin-right: 24rpx; }
+    .main-total { font-size: 28rpx; color: #333; .price-symbol { color: #ee0a24; font-size: 24rpx; } .price-val { color: #ee0a24; font-size: 40rpx; font-weight: bold; } } 
+    .sub-total { font-size: 22rpx; color: #999; margin-top: 4rpx; .fee-tag { margin-left: 6rpx; &.free { color: #19be6b; } } } 
+}
+
+.footer-bar { display: flex; justify-content: space-between; align-items: center; height: 100rpx; padding: 0 24rpx; .footer-left { display: flex; align-items: center; height: 100%; .select-text { margin-left: 12rpx; font-size: 28rpx; color: #666; } } .footer-right { display: flex; align-items: center; .checkout-btn { width: 200rpx; height: 76rpx; line-height: 76rpx; text-align: center; background: linear-gradient(90deg, #ff6034, #ee0a24); color: #fff; font-size: 30rpx; font-weight: bold; border-radius: 38rpx; box-shadow: 0 4rpx 12rpx rgba(238, 10, 36, 0.3); &:active { opacity: 0.9; } } } }
+.dispensing-footer { .btn-group { display: flex; gap: 20rpx; .action-btn { height: 72rpx; line-height: 72rpx; padding: 0 30rpx; border-radius: 36rpx; font-size: 28rpx; font-weight: 500; &.outline { border: 2rpx solid #ff9900; color: #ff9900; background: #fff; } &.fill { background: linear-gradient(90deg, #ff9900, #ff6034); color: #fff; box-shadow: 0 4rpx 12rpx rgba(255, 96, 52, 0.3); } } } }
+.prescription-config-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 24rpx; .config-title { font-size: 30rpx; font-weight: bold; margin-bottom: 20rpx; border-left: 8rpx solid #ff9900; padding-left: 16rpx; line-height: 1; } .config-row { display: flex; justify-content: space-between; gap: 20rpx; .config-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9f9f9; padding: 30rpx 16rpx; border-radius: 12rpx; .label-top { font-size: 28rpx; color: #666; margin-bottom: 24rpx; font-weight: 500; } } } .advice-box { position: relative; .advice-input { width: 100%; height: 140rpx; background: #f9f9f9; border-radius: 12rpx; padding: 16rpx; font-size: 28rpx; color: #333; box-sizing: border-box; } .word-count { position: absolute; bottom: 16rpx; right: 16rpx; font-size: 22rpx; color: #ccc; } } }
 .dispensing-list { background: #fff; border-radius: 20rpx; overflow: hidden; margin-bottom: 24rpx; .list-title { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; background: #fff7eb; color: #d48806; font-size: 28rpx; font-weight: 500; .title-left { display: flex; align-items: center; } } .herb-item { display: flex; align-items: center; padding: 24rpx; border-bottom: 1rpx solid #f5f5f5; .herb-info { flex: 1; .name-row { margin-bottom: 8rpx; .name { font-size: 30rpx; font-weight: bold; margin-right: 12rpx; } .factory { font-size: 20rpx; color: #909399; background: #f4f4f5; padding: 2rpx 8rpx; border-radius: 4rpx; } } .price-row { font-size: 24rpx; color: #999; } } .weight-control { display: flex; align-items: center; margin-right: 20rpx; .label { font-size: 24rpx; color: #666; margin-right: 10rpx; } .unit { font-size: 24rpx; color: #333; margin-left: 10rpx; } } .delete-btn { padding: 10rpx; } } }
 </style>
