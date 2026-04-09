@@ -43,7 +43,7 @@
 					
 					<view class="entrance-card blue-card" @click="jumpToCategory('dispensing')">
 						<view class="entrance-info">
-							<text class="entrance-title">配方颗粒</text>
+							<text class="entrance-title">处方调剂</text>
 							<text class="entrance-desc">海量配方 一键采购</text>
 						</view>
 						<image src="/static/menu/icon_1.png" mode="aspectFit" class="entrance-icon"></image>

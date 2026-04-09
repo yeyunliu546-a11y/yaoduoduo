@@ -367,12 +367,8 @@ export default {
                 uni.setStorageSync('clinicAuditStatus', status);
                 uni.setStorageSync('clinicAuditRemark', remark);
                 uni.setStorageSync('hasClinicProfile', hasProfile);
+
 			setTimeout(() => {
-                    // ⚠️ 临时修改：为了应对微信审核，屏蔽了资质拦截，统一放行到首页
-                    // 等审核通过后，把下面的代码注释掉，恢复原来的 if-else 逻辑即可
-                    uni.switchTab({ url: '/pages/index/index' });
-                }, 1000);
-			/*setTimeout(() => {
                 if (!hasProfile || status === -99) {
                     uni.showModal({
                         title: '提示',
@@ -401,7 +397,7 @@ export default {
                 else {
                     uni.switchTab({ url: '/pages/index/index' });
                 }
-            }, 1000);*/
+            }, 1000);
                 
             } else {
                 uni.showToast({ title: res.Message || '登录异常', icon: 'none' });

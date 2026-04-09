@@ -9,8 +9,8 @@ const api = {
   clinicDetail: '/api/Clinic/GetDetail',
   
   // ================= 新增：个人设置相关 API =================
-  getCaptcha: '/api/Check/GetCaptcha',                   // 获取图形验证码
-  sendSmsCaptcha: '/api/Check/SendSmsCaptcha',           // 发送短信验证码
+  getCaptcha: '/api/check/getImageCaptcha',              // 🌟 修复：根据真实代码修正路径
+  sendSmsCaptcha: '/api/check/sendSmsCaptcha',           // 🌟 修复：顺便修正短信接口的大小写路径
   changeUserInfo: '/api/User/ChangeUserInfo',            // 修改头像等信息
   changeName: '/api/User/ChangeName',                    // 修改机构名称
   setReplacePhone: '/api/User/SetReplacePhone',          // 换绑手机号
@@ -32,8 +32,9 @@ export const getUserGrade = (param, option) => request.get(api.myGrade, param, o
 export const getClinicDetail = (param, option) => request.get(api.clinicDetail, param, option)
 
 // ================= 新增：个人设置相关方法 =================
-export const getCaptcha = () => request.post(api.getCaptcha)
-export const sendSmsCaptcha = (data) => request.post(api.sendSmsCaptcha, data)
+// 🌟 修复：改为 GET 请求，且传 {load: false} 防止每次点验证码都弹 loading 框闪烁
+export const getCaptcha = () => request.get(api.getCaptcha, {}, { load: false }) 
+export const sendSmsCaptcha = (data) => request.post(api.sendSmsCaptcha, data, { load: false })
 export const changeUserInfo = (data) => request.post(api.changeUserInfo, data)
 export const changeName = (data) => request.post(api.changeName, data)
 export const setReplacePhone = (data) => request.post(api.setReplacePhone, data)

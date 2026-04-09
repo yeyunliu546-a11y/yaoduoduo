@@ -200,40 +200,68 @@ export default {
 						success: (chooseRes) => {
 							uni.showLoading({ title: '上传中...' });
 							
-							// 🌟 已加上你们代码中的正式后端域名
+							// ⚠️ 重点沟通点：请务必和后端确认真正的【图片上传API地址】是什么！
+							// 我这里暂时保留这个猜测的地址，你要根据后端给的地址进行替换
 							const uploadApi = 'https://www.yaoduoduo.top/api/Upload/Image'; 
 							
 							uni.uploadFile({
 								url: uploadApi, 
 								filePath: chooseRes.tempFilePaths[0],
-								name: 'file', // 通常后端接收图片文件的字段名为 file
+								name: 'file', // ⚠️ 也要和后端确认文件参数的字段名是不是 'file'
 								header: { 
-									// 🌟 严格对齐你 request.js 中的自定义头部配置
-									'X-Token': uni.getStorageSync('token') || '', 
-									'platform': 'MP-WEIXIN',
-									'storeId': uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945'
+									'Token': uni.getStorageSync('token') || '', 
+									'platform': 'wxapp',
+									'StoreId': uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945'
 								},
 								success: (uploadRes) => {
-									const data = JSON.parse(uploadRes.data);
+									console.log('====== 上传接口真实返回 ======', uploadRes);
+									let data;
+									
+									// 🌟 增加极其强大的容错，防止后端乱返回东西导致前端崩溃
+									if (typeof uploadRes.data === 'string') {
+										if (!uploadRes.data.trim()) {
+											uni.hideLoading();
+											return uni.showToast({ title: '上传接口未响应，请检查API路径', icon: 'none' });
+										}
+										try {
+											data = JSON.parse(uploadRes.data);
+										} catch (e) {
+											uni.hideLoading();
+											console.error('JSON解析失败，后端返回的是:', uploadRes.data);
+											return uni.showToast({ title: '上传服务异常(404/500)', icon: 'none' });
+										}
+									} else {
+										data = uploadRes.data;
+									}
+									
 									if (data.code === 200) {
-										const newAvatarUrl = data.result.url || data.result; 
+										// 兼容不同后端的返回格式
+										const newAvatarUrl = data.result?.url || data.result?.urlAvater || data.result; 
 										
-										// 调用我们在 user.js 里封装好的 API 更新头像
+										if (!newAvatarUrl || typeof newAvatarUrl !== 'string') {
+											uni.hideLoading();
+											return uni.showToast({ title: '无法获取图片URL', icon: 'none' });
+										}
+										
+										// 拿到新图片 URL 后，调用修改信息的接口
 										changeUserInfo({ urlAvater: newAvatarUrl }).then(res => {
 											uni.hideLoading();
 											if (res.code === 200) {
 												this.userInfo.urlAvater = newAvatarUrl;
 												uni.showToast({ title: '头像修改成功', icon: 'success' });
+											} else {
+												uni.showToast({ title: res.message || '保存头像失败', icon: 'none' });
 											}
-										});
+										}).catch(() => uni.hideLoading());
 									} else {
 										uni.hideLoading();
 										uni.showToast({ title: data.message || '上传失败', icon: 'none' });
 									}
 								},
-								fail: () => {
+								fail: (err) => {
 									uni.hideLoading();
-									uni.showToast({ title: '网络异常', icon: 'none' });
+									console.error('上传请求直接失败:', err);
+									uni.showToast({ title: '网络或上传异常', icon: 'none' });
 								}
 							});
 						}
