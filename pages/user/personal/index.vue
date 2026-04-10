@@ -18,7 +18,7 @@
 			</view>
 
 			<view class="setting-row card" @click="openPhonePopup">
-				<text class="setting-title">{{ userInfo.phone ? '手机号换绑' : '绑定手机号' }}</text>
+				<text class="setting-title">{{ userStatus.hasPhone ? '手机号换绑' : '绑定手机号' }}</text>
 				<view class="right-box">
 					<text class="value-text">{{ maskPhone(userInfo.phone) }}</text>
 					<u-icon name="arrow-right" color="#999" size="28" margin-left="10"></u-icon>
@@ -26,7 +26,7 @@
 			</view>
 
 			<view class="setting-row card" @click="openPwdPopup">
-				<text class="setting-title">修改密码</text>
+				<text class="setting-title">{{ userStatus.hasPassword ? '修改密码' : '设置密码' }}</text>
 				<u-icon name="arrow-right" color="#999" size="28"></u-icon>
 			</view>
 		</view>
@@ -39,7 +39,7 @@
 
 		<u-popup v-model="showPwdPopup" mode="bottom" border-radius="24" closeable>
 			<view class="popup-container">
-				<view class="popup-title">修改登录密码</view>
+				<view class="popup-title">{{ userStatus.hasPassword ? '修改登录密码' : '设置登录密码' }}</view>
 				<view class="form-box">
 					<u-field v-model="userInfo.phone" label="手机号" disabled />
 					
@@ -61,14 +61,16 @@
 					<u-field v-model="editForm.confirmPassword" label="确认密码" placeholder="请再次输入新密码" password />
 				</view>
 				<view class="btn-box">
-					<u-button type="primary" shape="circle" @click="submitChangePwd">确认修改并重新登录</u-button>
+					<u-button type="primary" shape="circle" @click="submitChangePwd">
+						{{ userStatus.hasPassword ? '确认修改并重新登录' : '确认设置并重新登录' }}
+					</u-button>
 				</view>
 			</view>
 		</u-popup>
 
 		<u-popup v-model="showPhonePopup" mode="bottom" border-radius="24" closeable>
 			<view class="popup-container">
-				<view class="popup-title">{{ !userInfo.phone ? '绑定手机号' : (phoneStep === 1 ? '验证原手机号' : '绑定新手机号') }}</view>
+				<view class="popup-title">{{ !userStatus.hasPhone ? '绑定手机号' : (phoneStep === 1 ? '验证原手机号' : '绑定新手机号') }}</view>
 				
 				<view class="form-box" v-if="phoneStep === 1">
 					<u-field v-model="userInfo.phone" label="原手机号" disabled />
@@ -105,7 +107,7 @@
 				<view class="btn-box">
 					<u-button v-if="phoneStep === 1" type="primary" shape="circle" @click="nextPhoneStep">下一步</u-button>
 					<u-button v-if="phoneStep === 2" type="primary" shape="circle" @click="submitChangePhone">
-						{{ !userInfo.phone ? '确认绑定' : '确认换绑' }}
+						{{ !userStatus.hasPhone ? '确认绑定' : '确认换绑' }}
 					</u-button>
 				</view>
 			</view>
@@ -114,17 +116,18 @@
 </template>
 
 <script>
-// 🌟 引入了 bindMobile (首次绑定手机号接口)
 import { 
 	getDetail, getCaptcha, sendSmsCaptcha, 
-	changeUserInfo, changeName, setReplacePhone, changePassword, bindMobile 
-} from '@/api/user/user.js'
-import md5 from '@/uview-ui/libs/function/md5.js' 
+	changeUserInfo, changeName, setReplacePhone, changePassword, getMyStatus 
+} from '@/api/user/user.js' // 🌟 移除了 bindMobile，加入了 getMyStatus
 
+ import md5Module from '@/uview-ui/libs/function/md5.js';
 export default {
 	data() {
 		return {
 			userInfo: { nickName: '', phone: '', urlAvater: '' },
+			// 🌟 新增：用户账户状态
+			userStatus: { hasPhone: false, hasPassword: false }, 
 			showNameModal: false, showPwdPopup: false, showPhonePopup: false,
 			phoneStep: 1, captcha: { verifyCodeId: '', base64Str: '' },
 			smsTimer: 0, intervalId: null,
@@ -137,6 +140,7 @@ export default {
 	},
 	onShow() { 
 		this.loadUserInfo(); 
+		this.loadUserStatus(); // 🌟 每次进入页面，获取最新状态
 	},
 	beforeDestroy() {
 		if (this.intervalId) {
@@ -152,12 +156,22 @@ export default {
 				}
 			});
 		},
+		
+		// 🌟 新增：获取账户核心状态
+		loadUserStatus() {
+			getMyStatus().then(res => {
+				if (res.code === 200 && res.result) {
+					this.userStatus.hasPhone = res.result.hasPhone;
+					this.userStatus.hasPassword = res.result.hasPassword;
+				}
+			}).catch(err => console.log('获取状态失败', err));
+		},
+		
 		maskPhone(phone) { return phone ? phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '未绑定'; },
 		
 		refreshCaptcha() {
 			getCaptcha().then(res => {
 				if (res.code === 200 && res.result) {
-					// 🌟 修复：图形验证码 Base64 缺少前缀导致无法渲染的问题
 					let base64 = res.result.base64Str || res.result.Base64Str;
 					if (base64 && !base64.startsWith('data:image')) {
 						base64 = 'data:image/png;base64,' + base64;
@@ -180,22 +194,35 @@ export default {
 			uni.showLoading({ title: '发送中...' });
 			
 			sendSmsCaptcha({
-				mobile: mobile,
-				verifyCodeId: this.captcha.verifyCodeId,
-				verifyCode: this.editForm.verifyCode
+			    mobile: mobile,
+			    verifyCodeId: this.captcha.verifyCodeId,
+			    verifyCode: this.editForm.verifyCode
 			}).then(res => {
-				uni.hideLoading();
-				if (res.code === 200) {
-					uni.showToast({ title: '发送成功', icon: 'success' });
-					if (type === 'pwd') this.editForm.smsVerifyCodeId = res.result.smsVerifyCodeId;
-					if (type === 'oldPhone') this.editForm.oldSmsVerifyCodeId = res.result.smsVerifyCodeId;
-					if (type === 'newPhone') this.editForm.newSmsVerifyCodeId = res.result.smsVerifyCodeId;
-					this.startSmsTimer();
-				} else {
-					uni.showToast({ title: res.message || '发送失败', icon: 'none' });
-					this.refreshCaptcha(); 
-					this.editForm.verifyCode = '';
-				}
+			    uni.hideLoading();
+			    if (res.code === 200) {
+			        uni.showToast({ title: '发送成功', icon: 'success' });
+			        
+			        // 🌟 核心兼容修复：把后端可能返回的所有大小写字段全捕获一遍！
+			        const returnedId = res.result.smsVerifyCodeId || 
+			                           res.result.SmsVerifyCodeId || 
+			                           res.result.verifyCodeId || 
+			                           res.result.VerifyCodeId;
+			                           
+			        if (!returnedId) {
+			            console.error('致命异常：后端验证码接口没有返回任何相关的 ID 字段！', res.result);
+			        }
+			
+			        // 赋值给对应的表单字段
+			        if (type === 'pwd') this.editForm.smsVerifyCodeId = returnedId;
+			        if (type === 'oldPhone') this.editForm.oldSmsVerifyCodeId = returnedId;
+			        if (type === 'newPhone') this.editForm.newSmsVerifyCodeId = returnedId;
+			        
+			        this.startSmsTimer();
+			    } else {
+			        uni.showToast({ title: res.message || '发送失败', icon: 'none' });
+			        this.refreshCaptcha(); 
+			        this.editForm.verifyCode = '';
+			    }
 			}).catch(() => uni.hideLoading());
 		},
 		
@@ -213,14 +240,11 @@ export default {
 				count: 1,
 				success: (chooseRes) => {
 					uni.showLoading({ title: '上传中...' });
-					
 					const uploadApi = 'https://www.yaoduoduo.top/api/FileUpload/UploadImg'; 
-					
 					uni.uploadFile({
 						url: uploadApi, 
 						filePath: chooseRes.tempFilePaths[0],
 						name: 'files', 
-						// 🌟 修复：Header 与 request.js 严格保持一致，解决 50014 Token 无效错误
 						header: { 
 							'X-Token': uni.getStorageSync('token') || '', 
 							'platform': 'MP-WEIXIN',
@@ -235,20 +259,13 @@ export default {
 								}
 								try { data = JSON.parse(uploadRes.data); } 
 								catch (e) { uni.hideLoading(); return uni.showToast({ title: '上传服务异常', icon: 'none' }); }
-							} else {
-								data = uploadRes.data;
-							}
+							} else { data = uploadRes.data; }
 							
 							if (data.code === 200 && data.result && data.result.length > 0) {
 								const imageInfo = data.result[0];
-								
-								// 🌟 修复：携带 nickName 解决数据库 500 空值报错
-								// 注：如果后端明确了存头像的字段名叫别的(如 avatar)，请把下方的 urlAvater 换成他说的名字
 								changeUserInfo({ 
-									// 🌟 1. 顺手带上当前名字，加个兜底防 undefined
-									        name: this.userInfo.nickName || '', 
-									        // 🌟 2. 传入新上传的图片 URL
-									        urlAvater: imageInfo.filePath 
+									name: this.userInfo.nickName || '', 
+									urlAvater: imageInfo.filePath 
 								}).then(res => {
 									uni.hideLoading();
 									if (res.code === 200) {
@@ -274,25 +291,20 @@ export default {
 		
 		submitChangeName() {
 			if (!this.editForm.name.trim()) return uni.showToast({ title: '机构名称不能为空', icon: 'none' });
-			
 			changeUserInfo({ 
-				// 🌟 1. 严格使用 name 字段
-				        name: this.editForm.name, 
-				        // 🌟 2. 加上 || '' 兜底，绝不让它变成 undefined 被丢掉！
-				        urlAvater: this.userInfo.urlAvater || ''
+				name: this.editForm.name, 
+				urlAvater: this.userInfo.urlAvater || ''
 			}).then(res => {
 				this.showNameModal = false;
 				if (res.code === 200) {
 					uni.showModal({ title: '修改成功', content: '修改机构名称需要重新登录生效', showCancel: false, success: () => this.forceLogout() });
-				} else {
-					uni.showToast({ title: res.message || '修改失败', icon: 'none' });
-				}
+				} else { uni.showToast({ title: res.message || '修改失败', icon: 'none' }); }
 			});
 		},
 
 		openPhonePopup() {
-			// 🌟 修复：没有绑定手机号时，直接跳过第一步，进入第二步
-			this.phoneStep = this.userInfo.phone ? 1 : 2; 
+			// 🌟 基于后端的标志位来决定步骤
+			this.phoneStep = this.userStatus.hasPhone ? 1 : 2; 
 			
 			this.editForm.verifyCode = ''; 
 			this.editForm.oldSmsCode = '';
@@ -311,56 +323,84 @@ export default {
 		submitChangePhone() {
 			if (!this.editForm.newPhone || !this.editForm.newSmsCode) return uni.showToast({ title: '请填写完整', icon: 'none' });
 			
-			// 🌟 修复：区分 首次绑定 和 换绑 逻辑
-			if (!this.userInfo.phone) {
-				// 【场景 A：首次绑定】
-				bindMobile({
-					mobile: this.editForm.newPhone,
-					phone: this.editForm.newPhone,
-					smsVerifyCodeId: this.editForm.newSmsVerifyCodeId, 
-					smsCode: this.editForm.newSmsCode
-				}).then(res => {
-					if (res.code === 200) {
-						this.showPhonePopup = false; 
-						uni.showToast({ title: '手机号绑定成功' }); 
-						this.loadUserInfo(); 
-					} else { uni.showToast({ title: res.message, icon: 'none' }); }
-				});
-			} else {
-				// 【场景 B：换绑】
-				setReplacePhone({
-					oldPhone: this.userInfo.phone, oldSmsVerifyCodeId: this.editForm.oldSmsVerifyCodeId, oldSmsCode: this.editForm.oldSmsCode,
-					newPhone: this.editForm.newPhone, newSmsVerifyCodeId: this.editForm.newSmsVerifyCodeId, newSmsCode: this.editForm.newSmsCode
-				}).then(res => {
-					if (res.code === 200) {
-						this.showPhonePopup = false; 
-						uni.showToast({ title: '手机号换绑成功' }); 
-						this.loadUserInfo(); 
-					} else { uni.showToast({ title: res.message, icon: 'none' }); }
-				});
+			// 🌟 统一使用 setReplacePhone，通过 hasPhone 判断是否传老手机号参数
+			let params = {
+				newPhone: this.editForm.newPhone,
+				newSmsVerifyCodeId: this.editForm.newSmsVerifyCodeId,
+				newSmsCode: this.editForm.newSmsCode
+			};
+
+			// 如果已绑定手机号，则加上老手机的验证信息
+			if (this.userStatus.hasPhone) {
+				params.oldPhone = this.userInfo.phone;
+				params.oldSmsVerifyCodeId = this.editForm.oldSmsVerifyCodeId;
+				params.oldSmsCode = this.editForm.oldSmsCode;
 			}
+
+			setReplacePhone(params).then(res => {
+				if (res.code === 200) {
+					this.showPhonePopup = false; 
+					uni.showToast({ title: this.userStatus.hasPhone ? '手机号换绑成功' : '手机号绑定成功' }); 
+					this.loadUserInfo(); 
+					this.loadUserStatus(); // 刷新状态
+				} else { 
+					uni.showToast({ title: res.message, icon: 'none' }); 
+				}
+			});
 		},
 
 		openPwdPopup() {
+			// 🌟 强拦截：没有手机号不让设密码！强制引导去绑定！
+			if (!this.userStatus.hasPhone) {
+				return uni.showModal({
+					title: '提示',
+					content: '为了账户安全，请先绑定手机号再设置密码',
+					confirmText: '去绑定',
+					success: (res) => {
+						if (res.confirm) {
+							this.openPhonePopup(); 
+						}
+					}
+				});
+			}
+
 			this.editForm.verifyCode = ''; this.editForm.smsCode = ''; this.editForm.newPassword = ''; this.editForm.confirmPassword = '';
 			this.refreshCaptcha(); this.showPwdPopup = true;
 		},
 		
 		submitChangePwd() {
-			const { smsCode, newPassword, confirmPassword, smsVerifyCodeId } = this.editForm;
-			if (!smsCode) return uni.showToast({ title: '请输入短信验证码', icon: 'none' });
-			if (newPassword.length < 6) return uni.showToast({ title: '新密码不能少于6位', icon: 'none' });
-			if (newPassword !== confirmPassword) return uni.showToast({ title: '两次密码不一致', icon: 'none' });
-            
-			changePassword({
-				phone: this.userInfo.phone, smsVerifyCodeId: smsVerifyCodeId, smsCode: smsCode,
-				newPassword: md5(newPassword), confirmPassword: md5(confirmPassword)
-			}).then(res => {
-				if (res.code === 200) {
-					this.showPwdPopup = false;
-					uni.showModal({ title: '修改成功', content: '密码修改成功，请重新登录', showCancel: false, success: () => this.forceLogout() });
-				} else { uni.showToast({ title: res.message, icon: 'none' }); }
-			});
+		    const { smsCode, newPassword, confirmPassword, smsVerifyCodeId } = this.editForm;
+		    
+		    // 🌟 第一道防线：强拦截！如果没有拿到 ID，绝对不让它发请求去后端丢人
+		    if (!smsVerifyCodeId) return uni.showToast({ title: '请先点击获取短信验证码', icon: 'none' });
+		    if (!smsCode) return uni.showToast({ title: '请输入短信验证码', icon: 'none' });
+		    if (newPassword.length < 6) return uni.showToast({ title: '新密码不能少于6位', icon: 'none' });
+		    if (newPassword !== confirmPassword) return uni.showToast({ title: '两次密码不一致', icon: 'none' });
+		    
+		    let safeMd5 = typeof md5Module === 'function' ? md5Module : (md5Module.md5 || md5Module.default || (uni.$u && uni.$u.md5));
+		    
+		    if (typeof safeMd5 !== 'function') {
+		        return uni.showToast({ title: '加密模块异常，请联系技术支持', icon: 'none' });
+		    }
+		
+		    changePassword({
+		        phone: this.userInfo.phone, 
+		        
+		        // 🌟 第二道防线：大小写双管齐下！不管后端兄弟写的是大写S还是小写s，统统喂给他！
+		        smsVerifyCodeId: smsVerifyCodeId, 
+		        SmsVerifyCodeId: smsVerifyCodeId, 
+		        
+		        smsCode: smsCode,
+		        newPassword: safeMd5(newPassword),       
+		        confirmPassword: safeMd5(confirmPassword) 
+		    }).then(res => {
+		        if (res.code === 200) {
+		            this.showPwdPopup = false;
+		            uni.showModal({ title: '设置成功', content: '密码保存成功，请重新登录', showCancel: false, success: () => this.forceLogout() });
+		        } else { 
+		            uni.showToast({ title: res.message, icon: 'none' }); 
+		        }
+		    });
 		},
 		
 		forceLogout() {
