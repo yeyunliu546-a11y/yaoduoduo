@@ -3,7 +3,7 @@
 		<view class="header-bg" :style="{ paddingTop: platform == 'H5' ? '40rpx' : '100rpx' }">
 			<view class="user-info">
 				<view class="user-avatar" @click="handlePersonal()">
-					<avatar-image :url="userInfo.urlAvater" :width="110"/>
+					<u-avatar :src="userInfo.urlAvater || '/static/default-avatar.png'" size="118"></u-avatar>
 				</view>
 				<view class="user-content">
 					<view class="nick-name" @click="handlePersonal()">{{ userInfo.nickName }}</view>
@@ -21,15 +21,15 @@
 		<view class="main-content">
 			
 			<view class="card asset-card">
-						  <view class="asset-item" @click="onTargetPoints">
-						    <view class="item-value">{{ userInfo.points }}</view>
-						    <view class="item-name">{{ setting.pointsName }}</view>
-						  </view>
-						  <view class="asset-item" @click="onTargetMyCoupon">
-						    <view class="item-value">{{ userInfo.countCoupon }}</view>
-						    <view class="item-name">优惠券</view>
-						  </view>
-						</view>
+				<view class="asset-item" @click="onTargetPoints">
+					<view class="item-value">{{ userInfo.points }}</view>
+					<view class="item-name">{{ setting.pointsName }}</view>
+				</view>
+				<view class="asset-item" @click="onTargetMyCoupon">
+					<view class="item-value">{{ userInfo.countCoupon }}</view>
+					<view class="item-name">优惠券</view>
+				</view>
+			</view>
 
 			<view class="card order-card">
 				<view class="card-header" @click="onTargetOrder({bigOrderStatus: 0})">
@@ -53,36 +53,37 @@
 			</view>
 
 			<view class="card service-card">
-							<view class="card-header">
-								<text class="card-title">常用功能</text>
+				<view class="card-header">
+					<text class="card-title">常用功能</text>
+				</view>
+				<view class="service-grid">
+					<block v-for="(item, index) in service" :key="index">
+						<view v-if="item.type === 'link'" class="service-item" @click="handleService(item)">
+							<view class="item-icon">
+								<u-icon v-if="item.isUview" :name="item.icon" color="#2979ff" size="56"></u-icon>
+								<text v-else class="iconfont" :class="`icon-${item.icon}`"></text>
 							</view>
-							<view class="service-grid">
-								<block v-for="(item, index) in service" :key="index">
-								  <view v-if="item.type === 'link'" class="service-item" @click="handleService(item)">
-								  					    <view class="item-icon">
-								  					      <u-icon v-if="item.isUview" :name="item.icon" color="#2979ff" size="56"></u-icon>
-								  					      <text v-else class="iconfont" :class="`icon-${item.icon}`"></text>
-								  					    </view>
-								  					    <view class="item-name">{{ item.name }}</view>
-								  					  </view>
-								  
-								  <button v-else-if="item.type === 'button'" class="service-item reset-btn" open-type="contact">
-								    <view class="item-icon">
-								      <text class="iconfont" :class="`icon-${item.icon}`"></text>
-								    </view>
-								    <view class="item-name">{{ item.name }}</view>
-								  </button>
-								</block>
-							</view>
+							<view class="item-name">{{ item.name }}</view>
 						</view>
+						  
+						<button v-else-if="item.type === 'button'" class="service-item reset-btn" open-type="contact">
+							<view class="item-icon">
+								<text class="iconfont" :class="`icon-${item.icon}`"></text>
+							</view>
+							<view class="item-name">{{ item.name }}</view>
+						</button>
+					</block>
+				</view>
+			</view>
+
 			<view class="action-section" v-if="hasLogin">
-							<view class="setting-row card" @click="handlePersonal()">
-								<text class="setting-title">个人设置</text>
-								<u-icon name="arrow-right" color="#999" size="28"></u-icon>
-							</view>
-							
-							<button class="logout-btn card" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
-						</view>
+				<view class="setting-row card" @click="handlePersonal()">
+					<text class="setting-title">个人设置</text>
+					<u-icon name="arrow-right" color="#999" size="28"></u-icon>
+				</view>
+				
+				<button class="logout-btn card" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
+			</view>
 			
 			<view class="bottom-spacer"></view>
 		</view>
@@ -90,7 +91,7 @@
 </template>
 
 <script>
-import AvatarImage from '@/components/avatar-image/avatar-image.vue'
+// 🌟 已移除不再需要的 AvatarImage 引入
 import request from '@/utils/request/request.js'
 import { getDetail } from '@/api/user/user.js'
 
@@ -118,7 +119,7 @@ const service = [
 ]
 
 export default {
-	components: { AvatarImage },
+	// 🌟 已移除 AvatarImage 注册
 	data() {
 		return {
 			platform: 'H5',

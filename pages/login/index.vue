@@ -156,7 +156,7 @@ export default {
   },
   onShow() {
   			// 🌟 终极防线：每次显示首页时，检查是否登录及审核状态
-  			/*const token = uni.getStorageSync('token');
+  			const token = uni.getStorageSync('token');
   			if (token) {
   				const status = uni.getStorageSync('clinicAuditStatus');
   				const hasProfile = uni.getStorageSync('hasClinicProfile');
@@ -171,7 +171,7 @@ export default {
   					uni.reLaunch({ url: '/pages/auth/certStatus' });
   					return;
   				}
-*/
+			}
   		},
   methods: {
     // 💡 新增：跳转到协议富文本页面
