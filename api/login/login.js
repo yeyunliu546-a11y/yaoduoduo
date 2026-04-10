@@ -29,7 +29,7 @@ export function loginByPassword(data) {
 // URL: /api/Check/SendSmsCode
 // 参数: { Mobile, Type }
 export function sendSmsCode(data) {
-  return request.post('/api/Check/SendSmsCode', data)
+  return request.post('/api/Check/SendSmsCaptcha', data)
 }
 // 5. 获取图形验证码 (密码登录必填)
 // URL: /api/Check/GetImageCaptcha

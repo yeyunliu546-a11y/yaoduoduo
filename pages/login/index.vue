@@ -19,20 +19,39 @@
         />
       </view>
 
-      <view v-if="loginMode === 'sms'" class="input-group">
-        <u-icon name="lock" color="#c0c4cc" size="40" class="input-icon"></u-icon>
+      <view class="input-group">
+        <u-icon name="photo" color="#c0c4cc" size="40" class="input-icon"></u-icon>
         <input 
-          v-model="smsCode" 
-          type="number"
-          maxlength="6"
-          placeholder="请输入短信验证码"
+          v-model="captchaCode" 
+          placeholder="请输入图形验证码"
           class="input-box"
           placeholder-class="placeholder"
         />
-        <view class="sms-btn" :class="{ 'disabled': isSending || !canSend }" @click="handleSendSms">
-          {{ isSending ? `${countdown}s后重发` : '获取验证码' }}
-        </view>
+        <image 
+          :src="captchaBase64" 
+          class="captcha-img" 
+          mode="aspectFit"
+          @click="refreshCaptcha"
+        />
       </view>
+ 
+
+      <block v-if="loginMode === 'sms'">
+        <view class="input-group">
+          <u-icon name="lock" color="#c0c4cc" size="40" class="input-icon"></u-icon>
+          <input 
+            v-model="smsCode" 
+            type="number"
+            maxlength="6"
+            placeholder="请输入短信验证码"
+            class="input-box"
+            placeholder-class="placeholder"
+          />
+          <view class="sms-btn" :class="{ 'disabled': isSending || !canSend }" @click="handleSendSms">
+            {{ isSending ? `${countdown}s后重发` : '获取验证码' }}
+          </view>
+        </view>
+      </block>
 
       <block v-else>
         <view class="input-group">
@@ -45,23 +64,6 @@
             placeholder-class="placeholder"
           />
         </view>
-        
-        <view class="input-group">
-          <u-icon name="photo" color="#c0c4cc" size="40" class="input-icon"></u-icon>
-          <input 
-            v-model="captchaCode" 
-            placeholder="请输入图形验证码"
-            class="input-box"
-            placeholder-class="placeholder"
-          />
-          <image 
-            :src="captchaBase64" 
-            class="captcha-img" 
-            mode="aspectFit"
-            @click="refreshCaptcha"
-          />
-        </view>
-        <view class="captcha-tip" @click="refreshCaptcha">看不清？点击换一张</view>
       </block>
 
       <view class="agreement-box">
@@ -118,12 +120,12 @@
 
 <script>
 import * as apiAuth from '@/api/login/login.js'
-
+import md5Module from '@/uview-ui/libs/function/md5.js';
 export default {
   data() {
     return {
       loginMode: 'sms', // 'sms' | 'password'
-      isAgree: false,   // 💡 新增：协议勾选状态
+      isAgree: false,
       
       mobile: '',
       smsCode: '',
@@ -150,37 +152,31 @@ export default {
     }
   },
   onLoad() {
-    if (this.loginMode === 'password') {
-      this.refreshCaptcha();
-    }
+    // 🌟 统一处理：无论何种模式，进入页面一律加载图形验证码
+    this.refreshCaptcha();
   },
   onShow() {
-  			// 🌟 终极防线：每次显示首页时，检查是否登录及审核状态
-  			const token = uni.getStorageSync('token');
-  			if (token) {
-  				const status = uni.getStorageSync('clinicAuditStatus');
-  				const hasProfile = uni.getStorageSync('hasClinicProfile');
-  				
-  				// 状态 -99 或 没有填资料，踢回上传页
-  				if (status === -99 || !hasProfile) {
-  					uni.reLaunch({ url: '/pages/auth/certUpload' });
-  					return;
-  				}
-  				// 状态 0(待审核) 或 -1(驳回)，踢回状态页
-  				if (status === 0 || status === -1) {
-  					uni.reLaunch({ url: '/pages/auth/certStatus' });
-  					return;
-  				}
-			}
-  		},
+    const token = uni.getStorageSync('token');
+    if (token) {
+        const status = uni.getStorageSync('clinicAuditStatus');
+        const hasProfile = uni.getStorageSync('hasClinicProfile');
+        
+        if (status === -99 || !hasProfile) {
+            uni.reLaunch({ url: '/pages/auth/certUpload' });
+            return;
+        }
+        if (status === 0 || status === -1) {
+            uni.reLaunch({ url: '/pages/auth/certStatus' });
+            return;
+        }
+    }
+  },
   methods: {
-    // 💡 新增：跳转到协议富文本页面
-   // 将原来的跳转方法替换为：
-       goToAgreement(type) {
-         uni.navigateTo({
-           url: `/pages/login/agreement?type=${type}` 
-         });
-       },
+    goToAgreement(type) {
+      uni.navigateTo({
+        url: `/pages/login/agreement?type=${type}` 
+      });
+    },
 
     handleServiceClick(index) {
         if (index === 0) {
@@ -212,13 +208,11 @@ export default {
 
     toggleLoginMode() {
       this.loginMode = this.loginMode === 'sms' ? 'password' : 'sms';
-      if (this.loginMode === 'password') {
-        this.refreshCaptcha();
-      }
+      this.captchaCode = ''; // 🌟 切换模式时清空已输入的图形码
+      this.refreshCaptcha();
     },
 
     wechatLogin() {
-      // 💡 新增：严格阻断未勾选协议的用户
       if (!this.isAgree) {
         return uni.showToast({ title: '请先仔细阅读并勾选同意下方协议', icon: 'none' });
       }
@@ -260,45 +254,59 @@ export default {
     },
 
     async handleSendSms() {
-      if (!this.canSend) return uni.showToast({ title: '手机号格式不正确', icon: 'none' });
-      
-      try {
-        this.isSending = true;
-        const res = await apiAuth.sendSmsCode({ 
-            Mobile: this.mobile
-        });
-
-        const result = res.Result || res.result;
-
-        if (res.Code === 200 || res.code === 200) {
-            uni.showToast({ title: '发送成功', icon: 'success' });
-            if (result && result.SmsVerifyCodeId) {
-                this.smsVerifyCodeId = result.SmsVerifyCodeId;
-            } else if (result && result.smsVerifyCodeId) {
-                this.smsVerifyCodeId = result.smsVerifyCodeId;
-            }
-            
-            let timer = setInterval(() => {
-                this.countdown--;
-                if (this.countdown <= 0) {
-                    clearInterval(timer);
+          if (!this.canSend) return uni.showToast({ title: '手机号格式不正确', icon: 'none' });
+          if (!this.captchaCode || !this.captchaId) {
+              return uni.showToast({ title: '请先输入图形验证码', icon: 'none' });
+          }
+          
+          try {
+            this.isSending = true;
+            const res = await apiAuth.sendSmsCode({ 
+                Mobile: this.mobile,
+                VerifyCodeId: this.captchaId,
+                VerifyCode: this.captchaCode
+            });
+    
+            // 兼容 Result 和 result，如果为空给个空对象防报错
+            const result = res.Result || res.result || {};
+    
+            if (res.Code === 200 || res.code === 200) {
+                
+                // 🌟 核心兼容：把后端可能返回的所有大小写全抓一遍！
+                const fetchedId = result.SmsVerifyCodeId || result.smsVerifyCodeId || result.VerifyCodeId || result.verifyCodeId;
+                
+                if (!fetchedId) {
+                    console.error('致命异常：后端没有返回短信验证码ID', res);
                     this.isSending = false;
-                    this.countdown = 60;
+                    return uni.showToast({ title: '获取验证码异常，请重试', icon: 'none' });
                 }
-            }, 1000);
-        } else {
+    
+                // 赋值
+                this.smsVerifyCodeId = fetchedId;
+                uni.showToast({ title: '发送成功', icon: 'success' });
+                
+                let timer = setInterval(() => {
+                    this.countdown--;
+                    if (this.countdown <= 0) {
+                        clearInterval(timer);
+                        this.isSending = false;
+                        this.countdown = 60;
+                    }
+                }, 1000);
+            } else {
+                this.isSending = false;
+                uni.showToast({ title: res.Message || res.message || '发送失败', icon: 'none' });
+                this.refreshCaptcha();
+                this.captchaCode = '';
+            }
+          } catch (e) {
             this.isSending = false;
-            uni.showToast({ title: res.Message || res.message || '发送失败', icon: 'none' });
-        }
-      } catch (e) {
-        this.isSending = false;
-        console.error(e);
-        uni.showToast({ title: '网络异常', icon: 'none' });
-      }
-    },
+            console.error(e);
+            uni.showToast({ title: '网络异常', icon: 'none' });
+          }
+        },
 
     async handleLogin() {
-      // 💡 新增：严格阻断未勾选协议的用户
       if (!this.isAgree) {
         return uni.showToast({ title: '请先仔细阅读并勾选同意下方协议', icon: 'none' });
       }
@@ -308,34 +316,53 @@ export default {
       uni.showLoading({ title: '登录中...' });
       
       try {
-        let res;
-        if (this.loginMode === 'sms') {
-           if (!this.smsCode) {
-               uni.hideLoading();
-               return uni.showToast({ title: '请输入验证码', icon: 'none' });
-           }
-           res = await this.$store.dispatch('LoginByPhone', { 
-               Mobile: this.mobile, 
-               SmsCode: this.smsCode,
-               SmsVerifyCodeId: this.smsVerifyCodeId
-           });
+              let res;
+              if (this.loginMode === 'sms') {
+                 // 🌟 第一道防线：强拦截！如果没有拿到 ID，说明用户没点获取或者获取失败，不准去调登录接口
+                 if (!this.smsVerifyCodeId) {
+                     uni.hideLoading();
+                     return uni.showToast({ title: '请先点击获取短信验证码', icon: 'none' });
+                 }
+                 
+                 if (!this.smsCode) {
+                     uni.hideLoading();
+                     return uni.showToast({ title: '请输入短信验证码', icon: 'none' });
+                 }
+                 
+                 res = await this.$store.dispatch('LoginByPhone', { 
+                     Mobile: this.mobile, 
+                     SmsCode: this.smsCode,
+                     
+                     // 🌟 第二道防线：不管后端要大写还是小写，我们双管齐下全传过去！
+                     SmsVerifyCodeId: this.smsVerifyCodeId,
+                     smsVerifyCodeId: this.smsVerifyCodeId 
+                 });
         } else {
            if (!this.password) {
-               uni.hideLoading();
-               return uni.showToast({ title: '请输入密码', icon: 'none' });
-           }
-           if (!this.captchaCode || !this.captchaId) {
-               uni.hideLoading();
-               return uni.showToast({ title: '请输入图形验证码', icon: 'none' });
-           }
-
-           res = await this.$store.dispatch('LoginByPassword', { 
-               AppKey: 'MP-WEIXIN', 
-               Account: this.mobile,  
-               Password: this.password, 
-               VerifyCodeId: this.captchaId,
-               VerifyCode: this.captchaCode
-           });
+                          uni.hideLoading();
+                          return uni.showToast({ title: '请输入密码', icon: 'none' });
+                      }
+                      if (!this.captchaCode || !this.captchaId) {
+                          uni.hideLoading();
+                          return uni.showToast({ title: '请输入图形验证码', icon: 'none' });
+                      }
+           
+                      // 🌟 获取剥离出来的 MD5 函数
+                      let safeMd5 = typeof md5Module === 'function' ? md5Module : (md5Module.md5 || md5Module.default || (uni.$u && uni.$u.md5));
+                      
+                      if (typeof safeMd5 !== 'function') {
+                          uni.hideLoading();
+                          return uni.showToast({ title: '加密模块异常', icon: 'none' });
+                      }
+           
+                      // 🌟 把密码用 MD5 加密后再传给后端！
+                      res = await this.$store.dispatch('LoginByPassword', { 
+                          AppKey: 'MP-WEIXIN', 
+                          Account: this.mobile,  
+                          Password: safeMd5(this.password), // 👈 核心修改：加密了！
+                          VerifyCodeId: this.captchaId,
+                          VerifyCode: this.captchaCode
+                      });
         }
 
         this.processLoginResult(res);
@@ -343,7 +370,9 @@ export default {
       } catch (err) {
         uni.hideLoading();
         console.error('登录异常', err);
-        if (this.loginMode === 'password') this.refreshCaptcha(); 
+        // 任何登录报错，强制刷新图形验证码
+        this.refreshCaptcha(); 
+        this.captchaCode = '';
         
         let msg = err.Message || err.message || '登录失败';
         uni.showToast({ title: msg, icon: 'none' });
@@ -351,24 +380,23 @@ export default {
     },
 
     processLoginResult(res) {
-            uni.hideLoading();
-            
-            const code = res.Code !== undefined ? res.Code : res.code;
-            const result = res.Result || res.result;
-    
-            if (code === 200 && result) {
-                uni.showToast({ title: '登录成功', icon: 'success' });
-                
-                const hasProfile = result.HasClinicProfile !== undefined ? result.HasClinicProfile : result.hasClinicProfile;
-                const status = result.ClinicAuditStatus !== undefined ? result.ClinicAuditStatus : result.clinicAuditStatus;
-                const remark = result.AuditRemark || result.auditRemark || '';
-    
-                // 🌟 核心拦截支持：把状态存入 Storage，供全避拦截器判断
-                uni.setStorageSync('clinicAuditStatus', status);
-                uni.setStorageSync('clinicAuditRemark', remark);
-                uni.setStorageSync('hasClinicProfile', hasProfile);
+        uni.hideLoading();
+        
+        const code = res.Code !== undefined ? res.Code : res.code;
+        const result = res.Result || res.result;
 
-			setTimeout(() => {
+        if (code === 200 && result) {
+            uni.showToast({ title: '登录成功', icon: 'success' });
+            
+            const hasProfile = result.HasClinicProfile !== undefined ? result.HasClinicProfile : result.hasClinicProfile;
+            const status = result.ClinicAuditStatus !== undefined ? result.ClinicAuditStatus : result.clinicAuditStatus;
+            const remark = result.AuditRemark || result.auditRemark || '';
+
+            uni.setStorageSync('clinicAuditStatus', status);
+            uni.setStorageSync('clinicAuditRemark', remark);
+            uni.setStorageSync('hasClinicProfile', hasProfile);
+
+            setTimeout(() => {
                 if (!hasProfile || status === -99) {
                     uni.showModal({
                         title: '提示',
@@ -398,12 +426,13 @@ export default {
                     uni.switchTab({ url: '/pages/index/index' });
                 }
             }, 1000);
-                
-            } else {
-                uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
-                if (this.loginMode === 'password') this.refreshCaptcha();
-            }
+            
+        } else {
+            uni.showToast({ title: res.Message || '登录异常', icon: 'none' });
+            this.refreshCaptcha();
+            this.captchaCode = '';
         }
+    }
   }
 }
 </script>
@@ -499,7 +528,6 @@ page {
   padding-right: 20rpx;
 }
 
-/* 💡 新增：协议勾选区样式 */
 .agreement-box {
   display: flex;
   align-items: flex-start;
@@ -511,7 +539,6 @@ page {
     padding-right: 12rpx;
     padding-top: 4rpx;
     
-    /* 未勾选时的空心圆圈 */
     .circle-icon {
       width: 34rpx;
       height: 34rpx;
@@ -545,7 +572,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 20rpx; /* 微调间距 */
+  margin-top: 20rpx;
   box-shadow: 0 8rpx 20rpx rgba(41, 121, 255, 0.3);
   border: none;
   &::after { border: none; }

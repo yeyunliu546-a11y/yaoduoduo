@@ -71,7 +71,9 @@ import {
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
     applyCancelOrder,
-    deleteOrder
+    deleteOrder,
+	confirmB2BPay,
+	confirmPrescriptionPay
 } from '@/api/order/order.js';
 
 export default {
@@ -230,9 +232,44 @@ export default {
                         paySig: paySig,
                         signature: signature,
                         success: (payRes) => {
-                            console.log('====== 原生 API 支付成功 ======', payRes);
-                            uni.showToast({ title: '支付成功', icon: 'success' });
-                            setTimeout(() => { this.refreshList(); }, 1500);
+                            console.log('====== 微信底层扣款成功 ======', payRes);
+                        
+                            // 🌟 1. 尝试获取（真机可能会有），如果没有，就给个默认占位符，不强行报错了！
+                            const transactionId = payRes.transactionId || payRes.transaction_id || (payRes.detail && payRes.detail.transactionId) || 'JSAPI_PAY_SUCCESS';
+                        
+                            uni.showLoading({ title: '正在确认订单...', mask: true });
+                        
+                            // 🌟 2. 注意这里一定要用 item.id，不要写成 order.id
+                            const confirmParams = {
+                                orderId: item.id, 
+                                transactionId: transactionId // 把占位符或者空字符串传过去
+                            };
+                        
+                            // 🌟 3. 判断是否是处方药
+                            const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+                            const confirmApi = isPrescription ? confirmPrescriptionPay : confirmB2BPay;
+                        
+                            confirmApi(confirmParams).then(res => {
+                                uni.hideLoading();
+                                if (res.code === 200) {
+                                    uni.showToast({ title: '支付成功', icon: 'success' });
+                                    
+                                    setTimeout(() => {
+                                        // 切换到待发货并刷新
+                                        if (this.currentStatus === 1 || this.currentStatus === 10) { 
+                                            this.currentStatus = 2; 
+                                        }
+                                        this.refreshList(); 
+                                    }, 1000);
+                                } else {
+                                    uni.showModal({ title: '支付核销失败', content: res.message || '请联系客服核实订单状态', showCancel: false });
+                                    // 即便核销失败，也刷新一下列表，防扯皮
+                                    this.refreshList();
+                                }
+                            }).catch(() => {
+                                uni.hideLoading();
+                                uni.showToast({ title: '网络异常，确认失败', icon: 'none' });
+                            });
                         },
 					fail: (err) => {
                             // 精准判断：只要包含 cancel，就是用户主动取消，不是代码报错！
