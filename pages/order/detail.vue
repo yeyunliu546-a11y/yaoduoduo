@@ -116,7 +116,9 @@ import {
     payOrder, payPrescriptionOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
-    applyCancelOrder
+    applyCancelOrder,
+    // 🌟 1. 新增引入：核销订单确认支付的接口
+    confirmB2BPay, confirmPrescriptionPay 
 } from '@/api/order/order.js';
 
 export default {
@@ -254,7 +256,6 @@ export default {
         return map[String(status)] || '未知状态';
     },
     
-    // 🌟 原生 API 支付：你指定的纯净版本
     handlePay() {
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
@@ -282,26 +283,62 @@ export default {
                     console.log('====== 发起最纯净的原生 API 支付 ======');
                     console.log('参数:', { mode, signData, paySig, signature });
 
-                    // 👇 纯裸调！只传官方要求的 4 个核心参数
                     wx.requestCommonPayment({
                         mode: mode,
                         signData: signData,
                         paySig: paySig,
                         signature: signature,
-                        success: (payRes) => {
-                            console.log('====== 原生 API 支付成功 ======', payRes);
-                            uni.showToast({ title: '支付成功', icon: 'success' });
-                            setTimeout(() => { this.loadDetail(); }, 1500);
+						success: (payRes) => {
+                            console.log('====== 详情页：微信底层扣款成功 ======', payRes);
+                            uni.showLoading({ title: '正在同步支付结果...', mask: true });
+
+                            const confirmParams = {
+                                orderId: this.orderId 
+                            };
+
+                            const confirmApi = this.isPrescription ? confirmPrescriptionPay : confirmB2BPay;
+
+                            // 🌟 核心优化 1：前端故意等 1.5 秒再去请求核销，给微信服务器一点同步数据的时间！
+                            setTimeout(() => {
+                                confirmApi(confirmParams).then(confirmRes => {
+                                    uni.hideLoading();
+                                    const confirmCode = confirmRes.code !== undefined ? confirmRes.code : confirmRes.Code;
+                                    
+                                    if (confirmCode === 200) {
+                                        uni.showToast({ title: '支付成功', icon: 'success' });
+                                        setTimeout(() => {
+                                            this.loadDetail(); 
+                                        }, 1000);
+                                    } else {
+                                        // 🌟 核心优化 2：即使后端查单失败（可能还是延迟或者网络波动），不报死错！
+                                        // 用友好的话术安抚用户，并强行刷新页面。
+                                        uni.showModal({ 
+                                            title: '支付处理中', 
+                                            content: '微信支付已成功，但状态同步可能有延迟，请稍后下拉刷新页面查看。', 
+                                            showCancel: false 
+                                        });
+                                        this.loadDetail(); 
+                                    }
+                                }).catch((err) => {
+                                    // 🌟 核心优化 3：哪怕后端报 500 导致进入 catch，绝对保证关闭 Loading，不卡死！
+                                    uni.hideLoading();
+                                    uni.showModal({ 
+                                        title: '支付处理中', 
+                                        content: '网络同步可能有延迟，请稍后刷新页面查看。', 
+                                        showCancel: false 
+                                    });
+                                    this.loadDetail();
+                                });
+                            }, 1500); // 延迟 1500 毫秒
                         },
-					fail: (err) => {
-                             // 精准判断：只要包含 cancel，就是用户主动取消，不是代码报错！
+					    fail: (err) => {
                              if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
                                  uni.showToast({ title: '您已取消支付', icon: 'none' });
                              } else {
                                  console.error('====== 原生 API 支付异常 ======', err);
                                  uni.showToast({ title: '支付环境异常，请重试', icon: 'none' });
                              }
-                         }
+                        }
                     });
 
                 } else {

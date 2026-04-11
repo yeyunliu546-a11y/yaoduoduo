@@ -233,51 +233,45 @@ export default {
                         signature: signature,
                         success: (payRes) => {
                             console.log('====== 微信底层扣款成功 ======', payRes);
-                        
-                            // 🌟 1. 尝试获取（真机可能会有），如果没有，就给个默认占位符，不强行报错了！
-                            const transactionId = payRes.transactionId || payRes.transaction_id || (payRes.detail && payRes.detail.transactionId) || 'JSAPI_PAY_SUCCESS';
-                        
-                            uni.showLoading({ title: '正在确认订单...', mask: true });
-                        
-                            // 🌟 2. 注意这里一定要用 item.id，不要写成 order.id
+                            
+                            uni.showLoading({ title: '正在确认订单状态...', mask: true });
+                    
+                            // 🌟 核心修改：直接丢弃 transactionId，只传订单ID！
+                            // ⚠️ 注意：请确保证这里传的参数名（orderId）和图片里后端要求的一模一样。
+                            // 如果后端图片里要求传 orderNo，请把 orderId 改成 orderNo，值改成 item.orderNo
                             const confirmParams = {
-                                orderId: item.id, 
-                                transactionId: transactionId // 把占位符或者空字符串传过去
+                                orderId: item.id 
                             };
-                        
-                            // 🌟 3. 判断是否是处方药
+                    
+                            // 🌟 判断是否是处方药
                             const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
                             const confirmApi = isPrescription ? confirmPrescriptionPay : confirmB2BPay;
-                        
+                    
                             confirmApi(confirmParams).then(res => {
                                 uni.hideLoading();
                                 if (res.code === 200) {
                                     uni.showToast({ title: '支付成功', icon: 'success' });
                                     
                                     setTimeout(() => {
-                                        // 切换到待发货并刷新
+                                        // 自动切换到“待发货”列表并刷新
                                         if (this.currentStatus === 1 || this.currentStatus === 10) { 
                                             this.currentStatus = 2; 
                                         }
                                         this.refreshList(); 
                                     }, 1000);
                                 } else {
-                                    uni.showModal({ title: '支付核销失败', content: res.message || '请联系客服核实订单状态', showCancel: false });
-                                    // 即便核销失败，也刷新一下列表，防扯皮
-                                    this.refreshList();
+                                    uni.showModal({ title: '支付核销异常', content: res.message || '请刷新列表或联系客服核实', showCancel: false });
+                                    this.refreshList(); // 异常也刷新一下，防止状态其实已经变了
                                 }
                             }).catch(() => {
                                 uni.hideLoading();
-                                uni.showToast({ title: '网络异常，确认失败', icon: 'none' });
+                                uni.showToast({ title: '网络异常，请手动刷新订单列表', icon: 'none' });
+                                this.refreshList();
                             });
                         },
-					fail: (err) => {
-                            // 精准判断：只要包含 cancel，就是用户主动取消，不是代码报错！
-                            if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
-                                uni.showToast({ title: '您已取消支付', icon: 'none' });
-                            } else {
-                                console.error('====== 原生 API 支付异常 ======', err);
-                                uni.showToast({ title: '支付环境异常，请重试', icon: 'none' });
+                        fail: (err) => {
+                            if (err.errMsg.indexOf('cancel') === -1) {
+                                uni.showToast({ title: '支付失败，请重试', icon: 'none' });
                             }
                         }
                     });

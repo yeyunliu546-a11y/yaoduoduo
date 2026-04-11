@@ -49,21 +49,18 @@
 
       <view class="form-group">
         <text class="label">所在地区</text>
-        <view class="picker-wrapper" @click="showRegionPicker">
-          <text v-if="clinicInfo.province" class="picker-text">
-            {{ clinicInfo.province }} {{ clinicInfo.city }} {{ clinicInfo.district }}
-          </text>
-          <text v-else class="picker-placeholder">请选择所在地区</text>
-        </view>
         <picker 
-		  v-if="showPicker" 
-		  mode="region" 
-		  :value="[clinicInfo.province, clinicInfo.city, clinicInfo.district]" 
-		  @change="onRegionChange"
-		  @cancel="onRegionCancel"
-		>
-		  <view style="display:none">hidden trigger</view>
-		</picker>
+          mode="region" 
+          :value="[clinicInfo.province, clinicInfo.city, clinicInfo.district]" 
+          @change="onRegionChange"
+        >
+          <view class="picker-wrapper">
+            <text v-if="clinicInfo.province" class="picker-text">
+              {{ clinicInfo.province }} {{ clinicInfo.city }} {{ clinicInfo.district }}
+            </text>
+            <text v-else class="picker-placeholder">请选择所在地区</text>
+          </view>
+        </picker>
       </view>
 
       <view class="form-group">
@@ -261,8 +258,8 @@ export default {
       fileInfo: [],
       isInfoValid: false,
       isCertValid: false,
-      token: '',
-      showPicker: false
+      token: ''
+      // ✨ 修改点 2：删除了 showPicker: false 变量
     }
   },
 
@@ -343,9 +340,7 @@ export default {
       this.currentPage = 2;
     },
 
-    showRegionPicker() {
-      this.showPicker = true;
-    },
+    // ✨ 修改点 3：保留 onRegionChange 并删除了 this.showPicker = false，删掉了原本控制弹窗的冗余方法
 
     onRegionChange(e) {
       const [province, city, district] = e.detail.value;
@@ -353,11 +348,6 @@ export default {
       this.clinicInfo.city = city;
       this.clinicInfo.district = district;
       this.checkInfoValid();
-      this.showPicker = false;
-    },
-
-    onRegionCancel() {
-      this.showPicker = false;
     },
 	
 	// 预览示例图或本地图

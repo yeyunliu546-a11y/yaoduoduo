@@ -113,8 +113,12 @@ export function deleteOrder(data) {
 }
 // 在 api/order/order.js 中添加：
 
-// 🌟 普通 B2B 订单支付确认
-export const confirmB2BPay = (data) => request.post('/api/Order/ConfirmB2BPay', data)
+// 在 api/order/order.js 底部，修改为：
 
-// 🌟 处方订单支付确认 (如果路径不同，请参考你们文档里的路径)
-export const confirmPrescriptionPay = (data) => request.post('/api/user/prescription/order/confirmPay', data)
+export function confirmB2BPay(data) {
+  return request({ url: '/api/Order/ConfirmB2BPay', method: 'POST', data });
+}
+
+export function confirmPrescriptionPay(data) {
+  return request({ url: '/api/user/prescription/order/confirmPay', method: 'POST', data });
+}
