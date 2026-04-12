@@ -188,7 +188,7 @@ export default {
           label: '医疗机构执业许可证',
           type: 'medicalLicense',
           fileType: 2,
-          exampleImage: '/static/images/medical_license_example.png',
+          exampleImage: '/static/images/medical_license_example.jpg',
           desc: '（复印件盖公章）',
           templateDownload: false
         },
@@ -197,7 +197,7 @@ export default {
           label: '法人身份证正面',
           type: 'legalPersonIdFront',
           fileType: 7,
-          exampleImage: '/static/images/legal_id_front_example.png',
+          exampleImage: '/static/images/legal_id_front_example.jpg',
           desc: '（复印件盖红章）',
           templateDownload: false
         },
@@ -206,7 +206,7 @@ export default {
           label: '法人身份证反面',
           type: 'legalPersonIdBack',
           fileType: 8,
-          exampleImage: '/static/images/legal_id_back_example.png',
+          exampleImage: '/static/images/legal_id_back_example.jpg',
           desc: '（复印件盖红章）',
           templateDownload: false
         },
@@ -214,7 +214,7 @@ export default {
           label: '委托人身份证正面',
           type: 'idCardFront',
           fileType: 3,
-          exampleImage: '/static/images/id_card_front_example.png',
+          exampleImage: '/static/images/id_card_front_example.jpg',
           desc: '（复印件盖红章）',
           templateDownload: false
         },
@@ -222,7 +222,7 @@ export default {
           label: '委托人身份证反面',
           type: 'idCardBack',
           fileType: 4,
-          exampleImage: '/static/images/id_card_back_example.png',
+          exampleImage: '/static/images/id_card_back_example.jpg',
           desc: '（复印件盖红章）',
           templateDownload: false
         },
@@ -230,7 +230,7 @@ export default {
           label: '采购委托书',
           type: 'powerOfAttorney',
           fileType: 5,
-          exampleImage: '/static/images/power_of_attorney_example.png',
+          exampleImage: '/static/images/power_of_attorney_example.jpg',
           desc: '（白纸黑字、签字、盖章）',
           templateDownload: true
         },
@@ -238,7 +238,7 @@ export default {
           label: '药品质量保证协议照片',
           type: 'qualityAgreement',
           fileType: 6,
-          exampleImage: '/static/images/quality_agreement_example.png',
+          exampleImage: '/static/images/quality_agreement_example.jpg',
           desc: '（复印件盖公章）',
           templateDownload: true
         }
