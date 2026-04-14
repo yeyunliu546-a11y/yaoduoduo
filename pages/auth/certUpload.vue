@@ -62,7 +62,7 @@
           <view class="cert-image-group">
             <view class="image-pair">
               <view class="example-wrapper" @click="previewExample(cert.exampleImage)">
-                <image v-if="cert.exampleImage" :src="cert.exampleImage" class="example-image" mode="aspectFill" />
+                <image v-if="cert.exampleImage" :src="cert.exampleImage" class="example-image" mode="aspectFill" @error="handleExampleImageError(cert.type)" />
                 <view v-else class="placeholder-text">无示例</view>
               </view>
 
@@ -91,8 +91,38 @@
 
 <script>
 import request from '@/utils/request/request.js'
+import { getClinicExampleImages } from '@/api/user/user.js'
 
 const BASE_URL = 'https://www.yaoduoduo.top'
+const EXAMPLE_IMAGE_TYPE_MAP = {
+  business_license: 'businessLicense',
+  medical_license: 'medicalLicense',
+  legal_id_front: 'legalPersonIdFront',
+  legal_id_back: 'legalPersonIdBack',
+  id_card_front: 'idCardFront',
+  id_card_back: 'idCardBack',
+  power_of_attorney: 'powerOfAttorney',
+  quality_agreement: 'qualityAgreement'
+}
+
+function pushUnique(list, value) {
+  if (value && list.indexOf(value) === -1) {
+    list.push(value)
+  }
+}
+
+function buildExampleImageCandidates(url) {
+  const normalizedUrl = String(url || '').trim().replace(/\\/g, '/')
+  const candidates = []
+
+  if (!normalizedUrl) {
+    return candidates
+  }
+
+  pushUnique(candidates, normalizedUrl)
+
+  return candidates
+}
 
 function pickFirst() {
   for (let i = 0; i < arguments.length; i++) {
@@ -149,14 +179,14 @@ export default {
         detailAddress: ''
       },
       requiredCerts: [
-        { label: '营业执照', type: 'businessLicense', fileType: 1, exampleImage: '/static/images/business_license_example.JPG', desc: '（复印件盖公章）', templateDownload: false },
-        { label: '医疗机构执业许可证', type: 'medicalLicense', fileType: 2, exampleImage: '/static/images/medical_license_example.JPG', desc: '（复印件盖公章）', templateDownload: false },
-        { label: '法人身份证正面', type: 'legalPersonIdFront', fileType: 7, exampleImage: '/static/images/legal_id_front_example.jpg', desc: '（复印件盖红章）', templateDownload: false },
-        { label: '法人身份证反面', type: 'legalPersonIdBack', fileType: 8, exampleImage: '/static/images/legal_id_back_example.JPG', desc: '（复印件盖红章）', templateDownload: false },
-        { label: '委托人身份证正面', type: 'idCardFront', fileType: 3, exampleImage: '/static/images/id_card_front_example.jpg', desc: '（复印件盖红章）', templateDownload: false },
-        { label: '委托人身份证反面', type: 'idCardBack', fileType: 4, exampleImage: '/static/images/id_card_back_example.JPG', desc: '（复印件盖红章）', templateDownload: false },
-        { label: '采购委托书', type: 'powerOfAttorney', fileType: 5, exampleImage: '/static/images/power_of_attorney_example.JPG', desc: '（白纸黑字、签字、盖章）', templateDownload: true },
-        { label: '药品质量保证协议照片', type: 'qualityAgreement', fileType: 6, exampleImage: '/static/images/quality_agreement_example.JPG', desc: '（复印件盖公章）', templateDownload: true }
+        { label: '营业执照', type: 'businessLicense', fileType: 1, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖公章）', templateDownload: false },
+        { label: '医疗机构执业许可证', type: 'medicalLicense', fileType: 2, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖公章）', templateDownload: false },
+        { label: '法人身份证正面', type: 'legalPersonIdFront', fileType: 7, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
+        { label: '法人身份证反面', type: 'legalPersonIdBack', fileType: 8, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
+        { label: '委托人身份证正面', type: 'idCardFront', fileType: 3, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
+        { label: '委托人身份证反面', type: 'idCardBack', fileType: 4, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
+        { label: '采购委托书', type: 'powerOfAttorney', fileType: 5, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（白纸黑字、签字、盖章）', templateDownload: true },
+        { label: '药品质量保证协议照片', type: 'qualityAgreement', fileType: 6, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖公章）', templateDownload: true }
       ],
       certList: {
         businessLicense: '',
@@ -203,6 +233,7 @@ export default {
 
     this.checkInfoValid()
     this.checkCertValid()
+    this.loadExampleImages()
   },
   methods: {
     onInputChange() {
@@ -241,8 +272,112 @@ export default {
     },
 
     previewExample(imageUrl) {
-      if (!imageUrl) return
-      uni.previewImage({ urls: [imageUrl], current: imageUrl })
+      this.openImagePreview(imageUrl)
+    },
+
+    openImagePreview(imageUrl) {
+      if (!imageUrl) {
+        return
+      }
+
+      uni.getImageInfo({
+        src: imageUrl,
+        success: (res) => {
+          const previewUrl = pickFirst(res.path, res.tempFilePath, imageUrl)
+          uni.previewImage({
+            urls: [previewUrl],
+            current: previewUrl,
+            fail: () => {
+              uni.showToast({ title: '图片预览失败', icon: 'none' })
+            }
+          })
+        },
+        fail: () => {
+          uni.previewImage({
+            urls: [imageUrl],
+            current: imageUrl,
+            fail: () => {
+              uni.showToast({ title: '图片预览失败', icon: 'none' })
+            }
+          })
+        }
+      })
+    },
+
+    loadExampleImages() {
+      getClinicExampleImages({}, { load: false }).then(res => {
+        const code = getCode(res)
+        const result = getResult(res) || []
+
+        if (code !== 200 || !Array.isArray(result) || result.length === 0) {
+          return
+        }
+
+        const exampleMap = result.reduce((map, item) => {
+          const rawType = pickFirst(item.fileType, item.FileType, '')
+          const exampleType = String(rawType || '').trim()
+          if (!exampleType) {
+            return map
+          }
+
+          const targetType = EXAMPLE_IMAGE_TYPE_MAP[exampleType]
+          if (!targetType) {
+            return map
+          }
+
+          map[targetType] = {
+            exampleImageCandidates: buildExampleImageCandidates(
+              pickFirst(item.exampleUrl, item.ExampleUrl, '')
+            )
+          }
+          return map
+        }, {})
+
+        if (Object.keys(exampleMap).length === 0) {
+          return
+        }
+
+        this.requiredCerts = this.requiredCerts.map(cert => {
+          const exampleConfig = exampleMap[cert.type]
+          if (!exampleConfig) {
+            return cert
+          }
+
+          return {
+            ...cert,
+            exampleImage: exampleConfig.exampleImageCandidates[0] || '',
+            exampleImageCandidates: exampleConfig.exampleImageCandidates,
+            exampleImageCandidateIndex: exampleConfig.exampleImageCandidates.length > 0 ? 0 : -1
+          }
+        })
+      }).catch(err => {
+        console.error('获取资质示例图失败', err)
+      })
+    },
+
+    handleExampleImageError(type) {
+      this.requiredCerts = this.requiredCerts.map(cert => {
+        if (cert.type !== type) {
+          return cert
+        }
+
+        const candidates = Array.isArray(cert.exampleImageCandidates) ? cert.exampleImageCandidates : []
+        const nextIndex = Number(cert.exampleImageCandidateIndex) + 1
+
+        if (nextIndex >= 0 && nextIndex < candidates.length) {
+          return {
+            ...cert,
+            exampleImage: candidates[nextIndex],
+            exampleImageCandidateIndex: nextIndex
+          }
+        }
+
+        return {
+          ...cert,
+          exampleImage: '',
+          exampleImageCandidateIndex: candidates.length
+        }
+      })
     },
 
     chooseImage(type, fileType) {
@@ -342,8 +477,7 @@ export default {
     },
 
     previewImage(url) {
-      if (!url) return
-      uni.previewImage({ urls: [url], current: url })
+      this.openImagePreview(url)
     },
 
     deleteImage(type) {

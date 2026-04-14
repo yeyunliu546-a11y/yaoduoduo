@@ -6,6 +6,7 @@ const api = {
   myGrade: '/api/UserGrade/GetMyGradeInfo',
   clinicStatus: '/api/Clinic/CheckStatus',
   clinicDetail: '/api/Clinic/GetMyClinicDetail',
+  clinicExampleImages: '/api/Clinic/GetExampleImages',
   getMyStatus: '/api/User/GetMyStatus',
   getCaptcha: '/api/Check/GetImageCaptcha',
   sendSmsCaptcha: '/api/check/sendSmsCaptcha',
@@ -24,6 +25,7 @@ export const personal = (data, option) => request.post(api.personal, data, optio
 export const getUserGrade = (param, option) => request.get(api.myGrade, param, option)
 export const getClinicStatus = (param, option) => request.get(api.clinicStatus, param, option)
 export const getClinicDetail = (param, option) => request.get(api.clinicDetail, param, option)
+export const getClinicExampleImages = (param, option) => request.get(api.clinicExampleImages, param, option)
 export const getMyStatus = (param, option) => request.get(api.getMyStatus, param, option)
 export const getCaptcha = () => request.get(api.getCaptcha, {}, { load: false })
 export const sendSmsCaptcha = (data) => request.post(api.sendSmsCaptcha, data, { load: false })
