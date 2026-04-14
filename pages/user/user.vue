@@ -3,16 +3,16 @@
     <view class="header-bg" :style="{ paddingTop: platform == 'H5' ? '40rpx' : '100rpx' }">
       <view class="user-info">
         <view class="user-avatar" @click="handlePersonal()">
-          <u-avatar :src="userInfo.urlAvater || '/static/default-avatar.png'" size="118"></u-avatar>
+          <u-avatar :src="userInfo.urlAvater || '/static/default-avatar.png'" size="122"></u-avatar>
         </view>
         <view class="user-content">
           <view class="nick-name" @click="handlePersonal()">{{ userInfo.nickName }}</view>
           <view class="user-sub">
+            <text class="mobile">{{ formatDisplayPhone(userInfo.phone) }}</text>
             <view v-if="userInfo.grade_id > 0 && userInfo.grade" class="user-grade">
-              <u-icon name="vip-fill" color="#ffd700" size="24" margin-right="6"></u-icon>
+              <u-icon name="vip-fill" color="#ffd700" size="20" margin-right="4"></u-icon>
               <text>{{ userInfo.grade.name }}</text>
             </view>
-            <view v-else class="mobile">{{ userInfo.phone || '绑定手机号，获取更多服务' }}</view>
           </view>
           <view v-if="isClinicApproved && userInfo.institutionName" class="institution-name">{{ userInfo.institutionName }}</view>
         </view>
@@ -75,12 +75,17 @@
       </view>
 
       <view class="action-section" v-if="hasLogin">
-        <view class="setting-row card" @click="handlePersonal()">
-          <text class="setting-title">个人设置</text>
-          <u-icon name="arrow-right" color="#999" size="28"></u-icon>
+        <view class="action-card card">
+          <view class="action-row" hover-class="action-row-hover" @click="handlePersonal()">
+            <text class="action-title">个人设置</text>
+            <u-icon name="arrow-right" color="#999" size="28"></u-icon>
+          </view>
+          <view class="action-divider"></view>
+          <view class="action-row" hover-class="action-row-hover" @click="handleLogout">
+            <text class="action-title logout-title">退出当前账号</text>
+            <u-icon name="arrow-right" color="#c4c9d3" size="28"></u-icon>
+          </view>
         </view>
-
-        <button class="logout-btn card" hover-class="logout-hover" @click="handleLogout">退出当前账号</button>
       </view>
 
       <view class="bottom-spacer"></view>
@@ -315,6 +320,13 @@ export default {
       return true
     },
 
+    formatDisplayPhone(phone) {
+      if (!phone) {
+        return '绑定手机号，获取更多服务'
+      }
+      return String(phone).replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
+    },
+
     loadOrderCounts() {
       if (!uni.getStorageSync('token')) return
       request({
@@ -344,14 +356,14 @@ export default {
 <style lang="scss" scoped>
 .container { background-color: #f5f7fa; min-height: 100vh; }
 .header-bg { background: linear-gradient(135deg, #2979ff 0%, #518cff 100%); height: 380rpx; padding: 0 40rpx; box-sizing: border-box; border-bottom-left-radius: 40rpx; border-bottom-right-radius: 40rpx; }
-.user-info { display: flex; align-items: center; margin-top: 20rpx; }
-.user-avatar { border: 4rpx solid rgba(255,255,255,0.4); border-radius: 50%; overflow: hidden; width: 118rpx; height: 118rpx; display: flex; align-items: center; justify-content: center; background: #fff; }
-.user-content { flex: 1; display: flex; flex-direction: column; margin-left: 30rpx; color: #fff; }
-.nick-name { font-size: 38rpx; font-weight: 800; letter-spacing: 1rpx; margin-bottom: 12rpx; }
-.user-sub { display: flex; align-items: center; }
-.mobile { font-size: 24rpx; opacity: 0.9; }
-.user-grade { display: inline-flex; align-items: center; background: rgba(0, 0, 0, 0.2); border-radius: 20rpx; padding: 4rpx 16rpx; font-size: 22rpx; backdrop-filter: blur(4px); }
-.institution-name { margin-top: 10rpx; font-size: 24rpx; color: rgba(255, 255, 255, 0.92); line-height: 1.4; word-break: break-all; }
+.user-info { display: flex; align-items: flex-start; margin-top: 18rpx; }
+.user-avatar { border: 4rpx solid rgba(255,255,255,0.45); border-radius: 50%; overflow: hidden; width: 126rpx; height: 126rpx; display: flex; align-items: center; justify-content: center; background: #fff; box-shadow: 0 10rpx 22rpx rgba(0, 0, 0, 0.12); flex-shrink: 0; }
+.user-content { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 24rpx; padding-top: 10rpx; color: #fff; }
+.nick-name { font-size: 40rpx; font-weight: 700; letter-spacing: 0.5rpx; line-height: 1.2; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 12rpx; margin-top: 10rpx; }
+.mobile { font-size: 22rpx; color: rgba(255,255,255,0.9); line-height: 1.3; }
+.user-grade { display: inline-flex; align-items: center; background: rgba(0, 0, 0, 0.16); border-radius: 999rpx; padding: 4rpx 14rpx; font-size: 20rpx; color: rgba(255,255,255,0.94); line-height: 1.2; backdrop-filter: blur(4px); }
+.institution-name { margin-top: 8rpx; font-size: 20rpx; color: rgba(255, 255, 255, 0.76); line-height: 1.35; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .main-content { position: relative; z-index: 2; margin-top: -100rpx; padding: 0 24rpx; }
 .card { background: #fff; border-radius: 24rpx; margin-bottom: 24rpx; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.03); overflow: hidden; }
 .card-header { display: flex; justify-content: space-between; align-items: center; padding: 30rpx 30rpx 20rpx; border-bottom: 1px solid transparent; }
@@ -374,10 +386,11 @@ export default {
 .reset-btn { background: transparent; border: none; padding: 0; margin: 0; line-height: 1.5; outline: none; }
 .reset-btn::after { border: none; }
 .action-section { margin: 40rpx 0; }
-.setting-row { display: flex; justify-content: space-between; align-items: center; padding: 32rpx 30rpx; margin-bottom: 24rpx; }
-.setting-title { font-size: 30rpx; color: #333; font-weight: 500; }
-.logout-btn { background-color: #fff; color: #333; font-size: 30rpx; height: 96rpx; line-height: 96rpx; border-radius: 24rpx; border: none; }
-.logout-btn::after { border: none; }
-.logout-hover { background-color: #f5f5f5; }
+.action-card { padding: 0; overflow: hidden; }
+.action-row { display: flex; justify-content: space-between; align-items: center; min-height: 100rpx; padding: 0 30rpx; }
+.action-row-hover { background-color: #fafbfc; }
+.action-divider { height: 1rpx; margin: 0 24rpx; background: #eef1f4; }
+.action-title { font-size: 30rpx; color: #333; font-weight: 500; }
+.logout-title { color: #db5b52; }
 .bottom-spacer { height: 40rpx; }
 </style>
