@@ -10,7 +10,7 @@
 			</view>
 
 			<view class="setting-row card" @click="showNameModal = true">
-				<text class="setting-title">机构名称</text>
+				<text class="setting-title">用户名称</text>
 				<view class="right-box">
 					<text class="value-text">{{ userInfo.nickName || '未设置' }}</text>
 					<u-icon name="arrow-right" color="#999" size="28" margin-left="10"></u-icon>
@@ -31,9 +31,9 @@
 			</view>
 		</view>
 
-		<u-modal v-model="showNameModal" title="修改机构名称" show-cancel-button @confirm="submitChangeName" :async-close="true">
+		<u-modal v-model="showNameModal" title="修改用户名称" show-cancel-button @confirm="submitChangeName" :async-close="true">
 			<view class="modal-inner">
-				<u-input v-model="editForm.name" placeholder="请输入新的机构名称" border clearable />
+				<u-input v-model="editForm.name" placeholder="请输入新的用户名称" border clearable />
 			</view>
 		</u-modal>
 
@@ -290,14 +290,14 @@ export default {
 		},
 		
 		submitChangeName() {
-			if (!this.editForm.name.trim()) return uni.showToast({ title: '机构名称不能为空', icon: 'none' });
+			if (!this.editForm.name.trim()) return uni.showToast({ title: '用户名称不能为空', icon: 'none' });
 			changeUserInfo({ 
 				name: this.editForm.name, 
 				urlAvater: this.userInfo.urlAvater || ''
 			}).then(res => {
 				this.showNameModal = false;
 				if (res.code === 200) {
-					uni.showModal({ title: '修改成功', content: '修改机构名称需要重新登录生效', showCancel: false, success: () => this.forceLogout() });
+					uni.showModal({ title: '修改成功', content: '修改用户名称需要重新登录生效', showCancel: false, success: () => this.forceLogout() });
 				} else { uni.showToast({ title: res.message || '修改失败', icon: 'none' }); }
 			});
 		},

@@ -1,51 +1,146 @@
-<script>
-	export default {
-		onLaunch: function() {
-			console.log('App Launch');
-			
-			// ------------------------------------------------------
-			// 【核心权限控制】
-			// 启动时检查本地是否有 Token，如果没有，强制跳转到登录页
-			// ------------------------------------------------------
-			try {
-				const token = uni.getStorageSync('token'); // 假设登录成功后你存的 key 叫 'token'
-				if (!token) {
-					// 延迟一点点执行，避免应用还没初始化完毕
-					setTimeout(() => {
-						// 使用 reLaunch 关闭所有页面，打开登录页
-						uni.reLaunch({
-							url: '/pages/login/index'
-						});
-					}, 50);
-				}
-			} catch (e) {
-				console.error('权限检查失败', e);
-			}
-		},
-		onShow: function() {
-			console.log('App Show')
-		},
-		onHide: function() {
-			console.log('App Hide')
-		}
-	}
+﻿<script>
+const AUDIT_WHITE_LIST = [
+  '/pages/login/index',
+  '/pages/login/agreement',
+  '/pages/auth/certUpload',
+  '/pages/auth/certStatus',
+  '/pages/user/user',
+  '/pages/user/personal/index',
+  '/pages/help/index'
+]
+
+const GOODS_RESTRICTED_ROUTES = [
+  '/pages/index/index',
+  '/pages/category/category',
+  '/pages/search/search',
+  '/pages/good/detail',
+  '/pages/good/brand-detail',
+  '/pages/cart/cart'
+]
+
+let routeGuardInited = false
+let auditRedirecting = false
+
+function normalizeAuditStatus(value) {
+  const status = Number(value)
+  return Number.isNaN(status) ? -99 : status
+}
+
+function getAuditSnapshot() {
+  return {
+    token: uni.getStorageSync('token'),
+    hasClinicProfile: !!uni.getStorageSync('hasClinicProfile'),
+    auditStatus: normalizeAuditStatus(uni.getStorageSync('clinicAuditStatus')),
+    canOrder: !!uni.getStorageSync('canOrder')
+  }
+}
+
+function getAuditRedirectUrl(snapshot = getAuditSnapshot()) {
+  if (snapshot.auditStatus === 0 || snapshot.auditStatus === -1 || snapshot.hasClinicProfile) {
+    return '/pages/auth/certStatus'
+  }
+  return '/pages/auth/certUpload'
+}
+
+function isWhiteRoute(url = '') {
+  return AUDIT_WHITE_LIST.some(item => url.startsWith(item))
+}
+
+function isRestrictedRoute(url = '') {
+  return GOODS_RESTRICTED_ROUTES.some(item => url.startsWith(item))
+}
+
+function canViewGoods(snapshot = getAuditSnapshot()) {
+  return !!snapshot.token && (snapshot.auditStatus === 1 || snapshot.canOrder)
+}
+
+function ensureAuditRouteAccess(url = '') {
+  const cleanUrl = (url || '').split('?')[0]
+  const snapshot = getAuditSnapshot()
+
+  if (!snapshot.token) {
+    return true
+  }
+
+  if (canViewGoods(snapshot)) {
+    return true
+  }
+
+  if (!isRestrictedRoute(cleanUrl)) {
+    return true
+  }
+
+  if (auditRedirecting) {
+    return false
+  }
+
+  auditRedirecting = true
+  uni.showToast({ title: '资质审核通过后才可查看商品和价格', icon: 'none' })
+
+  setTimeout(() => {
+    uni.reLaunch({ url: getAuditRedirectUrl(snapshot) })
+    auditRedirecting = false
+  }, 300)
+
+  return false
+}
+
+export default {
+  onLaunch() {
+    this.initRouteGuard()
+    this.handleInitialGuard()
+  },
+  onShow() {
+    this.handleInitialGuard()
+  },
+  methods: {
+    initRouteGuard() {
+      if (routeGuardInited) return
+      routeGuardInited = true
+
+      ;['navigateTo', 'redirectTo', 'reLaunch', 'switchTab'].forEach(method => {
+        uni.addInterceptor(method, {
+          invoke: (args) => ensureAuditRouteAccess(args.url || '')
+        })
+      })
+    },
+
+    handleInitialGuard() {
+      try {
+        const token = uni.getStorageSync('token')
+        const pages = getCurrentPages()
+        const currentRoute = pages.length ? `/${pages[pages.length - 1].route}` : ''
+
+        if (!token) {
+          if (currentRoute && !isWhiteRoute(currentRoute)) {
+            setTimeout(() => {
+              uni.reLaunch({ url: '/pages/login/index' })
+            }, 30)
+          }
+          return
+        }
+
+        if (currentRoute && !isWhiteRoute(currentRoute)) {
+          ensureAuditRouteAccess(currentRoute)
+        }
+      } catch (e) {
+        console.error('全局资质拦截异常', e)
+      }
+    }
+  }
+}
 </script>
 
 <style lang="scss">
-	/* 注意：uView 基础样式必须写在第一行 */
-	@import "@/uview-ui/index.scss";
-	
-	/* 引入你的 iconfont 样式 */
-	@import "/static/iconfont/iconfont.scss";
-	
-	/* 每个页面公共css */
-	page {
-		background-color: #f5f5f5;
-		font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Segoe UI, Arial, Roboto, 'PingFang SC', 'miui', 'Hiragino Sans GB', 'Microsoft Yahei', sans-serif;
-	}
-    
-    /* 解决图片在部分机型可能有默认边距的问题 */
-    image {
-        display: block;
-    }
+@import "@/uview-ui/index.scss";
+@import "/static/iconfont/iconfont.scss";
+
+page {
+  background-color: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Segoe UI, Arial, Roboto, 'PingFang SC', 'miui', 'Hiragino Sans GB', 'Microsoft Yahei', sans-serif;
+}
+
+image {
+  display: block;
+}
 </style>
