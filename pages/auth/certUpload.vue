@@ -2,6 +2,7 @@
   <view class="container">
     <view class="custom-nav">
       <text class="title">资质认证</text>
+      <text class="back-login" @click="handleBackLogin">返回登录</text>
     </view>
 
     <view class="steps">
@@ -239,6 +240,28 @@ export default {
     onInputChange() {
       this.$nextTick(() => {
         this.checkInfoValid()
+      })
+    },
+
+    handleBackLogin() {
+      uni.showModal({
+        title: '返回登录',
+        content: '将退出当前账号并清空未提交的资质资料，确定返回登录吗？',
+        confirmText: '确定',
+        cancelText: '取消',
+        success: (res) => {
+          if (!res.confirm) {
+            return
+          }
+
+          uni.removeStorageSync('clinicInfo')
+          uni.removeStorageSync('certList')
+          uni.removeStorageSync('fileInfo')
+
+          this.$store.dispatch('Logout').finally(() => {
+            uni.reLaunch({ url: '/pages/login/index' })
+          })
+        }
       })
     },
 
@@ -583,8 +606,9 @@ export default {
 
 <style>
 .container { padding: 20rpx; background-color: #f5f5f5; min-height: 100vh; }
-.custom-nav { text-align: center; padding: 20rpx 0; background-color: white; margin-bottom: 20rpx; }
+.custom-nav { position: relative; text-align: center; padding: 20rpx 0; background-color: white; margin-bottom: 20rpx; }
 .title { font-size: 36rpx; font-weight: bold; }
+.back-login { position: absolute; right: 24rpx; top: 50%; transform: translateY(-50%); font-size: 26rpx; color: #007aff; }
 .steps { display: flex; align-items: center; justify-content: center; margin-bottom: 40rpx; }
 .step-item { display: flex; flex-direction: column; align-items: center; padding: 0 30rpx; }
 .step-text { font-size: 28rpx; color: #ccc; }
