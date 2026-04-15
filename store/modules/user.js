@@ -10,6 +10,7 @@ const CLINIC_AUDIT_STATUS_KEY = 'clinicAuditStatus'
 const CLINIC_AUDIT_REMARK_KEY = 'clinicAuditRemark'
 const HAS_CLINIC_PROFILE_KEY = 'hasClinicProfile'
 const CLINIC_NAME_KEY = 'clinicName'
+const CAN_ORDER_KEY = 'canOrder'
 
 function pickFirst() {
   for (let i = 0; i < arguments.length; i++) {
@@ -156,6 +157,7 @@ const user = {
         uni.removeStorageSync(CLINIC_AUDIT_REMARK_KEY)
         uni.removeStorageSync(HAS_CLINIC_PROFILE_KEY)
         uni.removeStorageSync(CLINIC_NAME_KEY)
+        uni.removeStorageSync(CAN_ORDER_KEY)
 
         commit('SET_TOKEN', '')
         commit('SET_USER_ID', null)

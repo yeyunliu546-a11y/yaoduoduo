@@ -156,6 +156,7 @@
 			}
 		},
 		onLoad(options) {
+			if (!this.ensureLogin()) return;
             if (options && options.type) {
                 this.businessType = options.type;
             }
@@ -163,6 +164,7 @@
 			this.loadGoodsData(true);
 		},
         onShow() {
+            if (!this.ensureLogin()) return;
             const app = getApp();
             if (app.globalData && app.globalData.categoryType) {
                 if (this.businessType !== app.globalData.categoryType) {
@@ -172,12 +174,26 @@
             }
         },
 		onReachBottom() {
+			if (!this.ensureLogin()) return;
 			if(this.loadStatus === 'nomore') return;
 			this.page++;
 			this.loadGoodsData();
 		},
 		methods: {
+			ensureLogin() {
+				if (uni.getStorageSync('token')) {
+					return true;
+				}
+
+				this.goodsList = [];
+				this.filterOptions = { manufacturers: [] };
+				this.loadStatus = 'loadmore';
+				uni.reLaunch({ url: '/pages/login/index' });
+				return false;
+			},
+
 			switchBusiness(type) {
+				if (!this.ensureLogin()) return;
 				if (this.businessType === type) return;
 				this.businessType = type;
 				this.keyword = '';
@@ -189,6 +205,7 @@
 			},
 
 			loadFilterOptions() {
+				if (!this.ensureLogin()) return;
 				const goodsType = this.businessType === 'dispensing' ? 2 : 1;
 				GoodsApi.getFilterOptions({ goodsType: goodsType }).then(res => {
                     if(res.code === 200 && res.result) {
@@ -215,15 +232,18 @@
 			},
 
 			onPkgConfirm(arr) {
+				if (!this.ensureLogin()) return;
 				this.selectedFilter.packageType = arr[0].value;
 				this.loadGoodsData(true);
 			},
 			onStdConfirm(arr) {
+				if (!this.ensureLogin()) return;
 				this.selectedFilter.standard = arr[0].value;
 				this.loadGoodsData(true);
 			},
 
 			loadGoodsData(reset = false) {
+				if (!this.ensureLogin()) return;
 				if (reset) {
 					this.page = 1; this.goodsList = []; this.loadStatus = 'loading';
 				}
@@ -261,11 +281,13 @@
 			},
 
 			onSelectManufacturer(name) {
+				if (!this.ensureLogin()) return;
 				if (this.selectedFilter.manufacturer === name) return;
 				this.selectedFilter.manufacturer = name;
 				this.loadGoodsData(true);
 			},
             onSort(type) {
+				if (!this.ensureLogin()) return;
                 if (type === 'sales') {
                     this.currentSort = 'sales'; this.sortOrder = 'desc';
                 } else if (type === 'price') {
@@ -277,17 +299,20 @@
                 this.loadGoodsData(true);
             },
 			onSearch() {
+				if (!this.ensureLogin()) return;
                 this.selectedFilter = { manufacturer: '', packageType: '', standard: '' };
                 this.currentSort = 'default';
 				this.loadGoodsData(true);
 			},
-            onClearSearch() { this.keyword = ''; this.loadGoodsData(true); },
+            onClearSearch() { if (!this.ensureLogin()) return; this.keyword = ''; this.loadGoodsData(true); },
 			goToDetail(id) { 
+				if (!this.ensureLogin()) return;
                 uni.navigateTo({ url: `/pages/good/detail?id=${id}` }); 
             },
             
             // 🌟 智能加购逻辑 (支持起批量解析)
             addToCart(item) {
+				if (!this.ensureLogin()) return;
                 uni.showLoading({ title: '添加中...' });
                 
                 const targetId = item.id || item.goodsId || item.GoodsId || item.skuId;
@@ -330,6 +355,7 @@
 
             // 🌟 执行加购 (带起批量判定)
             executeAddCart(skuId, skuData = {}, baseInfo = {}) {
+				if (!this.ensureLogin()) return;
                 // 优先取 sku 层级的起批量，若无则取外层商品层级的，默认值为 1
                 const minQty = skuData.minOrderQuantity || skuData.MinOrderQuantity || baseInfo.minOrderQuantity || baseInfo.MinOrderQuantity || 1;
                 

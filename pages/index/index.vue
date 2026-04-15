@@ -146,6 +146,7 @@
 		},
 		
 		onLoad(options) {
+			if (!this.ensureLogin()) return;
 			this.loadRecommendList(true);
 			this.loadSeckillGoods();
 			if (options && options.q) {
@@ -153,7 +154,15 @@
 			}
 		},
 		
+		onShow() {
+			this.ensureLogin();
+		},
+		
 		onPullDownRefresh() {
+			if (!this.ensureLogin()) {
+				uni.stopPullDownRefresh();
+				return;
+			}
 			this.page = 1;
 			this.hasMore = true;
 			this.loadSeckillGoods();
@@ -163,6 +172,7 @@
 		},
 		
 		onReachBottom() {
+			if (!this.ensureLogin()) return;
 			if (this.hasMore && !this.loading) {
 				this.page++;
 				this.loadRecommendList(false);
@@ -170,8 +180,20 @@
 		},
 
 		methods: {
+			ensureLogin() {
+				if (uni.getStorageSync('token')) {
+					return true;
+				}
+
+				this.recommendList = [];
+				this.seckillGoods = null;
+				uni.reLaunch({ url: '/pages/login/index' });
+				return false;
+			},
+
 			// 加载精选列表
 			loadRecommendList(isRefresh = false) {
+				if (!this.ensureLogin()) return Promise.resolve();
 				this.loading = true;
 				
 				const params = {
@@ -200,6 +222,7 @@
 			
 			// 加载秒杀商品
 			loadSeckillGoods() {
+				if (!this.ensureLogin()) return;
 				const params = {
 					page: 1,
 					limit: 1,
@@ -217,6 +240,7 @@
 			},
 
 			gotoDetail(item) {
+				if (!this.ensureLogin()) return;
 				if (!item || !item.id) return;
 				uni.navigateTo({
 					url: `/pages/good/detail?id=${item.id}`
@@ -224,6 +248,7 @@
 			},
 
 			onSearch() {
+				if (!this.ensureLogin()) return;
 				if (!this.searchValue.trim()) return;
 				
 				if (!this.searchHistory.includes(this.searchValue)) {
@@ -248,9 +273,11 @@
 				this.onSearch();
 			},
 			goToPage(path) {
+				if (!this.ensureLogin()) return;
 				uni.navigateTo({ url: path });
 			},
 			jumpToCategory(type) {
+							if (!this.ensureLogin()) return;
 							const app = getApp();
 							if (!app.globalData) {
 								app.globalData = {};

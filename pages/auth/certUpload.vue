@@ -2,7 +2,6 @@
   <view class="container">
     <view class="custom-nav">
       <text class="title">资质认证</text>
-      <text class="back-login" @click="handleBackLogin">返回登录</text>
     </view>
 
     <view class="steps">
@@ -47,6 +46,7 @@
       </view>
 
       <button :disabled="!isInfoValid" @click="nextPage" class="next-btn">下一步</button>
+      <button @click="handleBackLogin" class="back-login-btn">返回登录</button>
     </view>
 
     <view v-if="currentPage === 2" class="step-content">
@@ -606,9 +606,8 @@ export default {
 
 <style>
 .container { padding: 20rpx; background-color: #f5f5f5; min-height: 100vh; }
-.custom-nav { position: relative; text-align: center; padding: 20rpx 0; background-color: white; margin-bottom: 20rpx; }
+.custom-nav { text-align: center; padding: 20rpx 0; background-color: white; margin-bottom: 20rpx; }
 .title { font-size: 36rpx; font-weight: bold; }
-.back-login { position: absolute; right: 24rpx; top: 50%; transform: translateY(-50%); font-size: 26rpx; color: #007aff; }
 .steps { display: flex; align-items: center; justify-content: center; margin-bottom: 40rpx; }
 .step-item { display: flex; flex-direction: column; align-items: center; padding: 0 30rpx; }
 .step-text { font-size: 28rpx; color: #ccc; }
@@ -623,6 +622,7 @@ export default {
 .picker-placeholder { color: #999; font-size: 28rpx; }
 .next-btn, .submit-btn { width: 100%; height: 80rpx; background-color: #007aff; color: white; border-radius: 8rpx; margin-top: 40rpx; }
 .next-btn[disabled], .submit-btn[disabled] { background-color: #ccc; }
+.back-login-btn { width: 100%; height: 80rpx; background-color: #f0f0f0; color: #666; border-radius: 8rpx; margin-top: 20rpx; }
 .prev-btn { width: 100%; height: 80rpx; background-color: #f0f0f0; color: #666; border-radius: 8rpx; margin-top: 20rpx; }
 .cert-list { margin-bottom: 40rpx; }
 .cert-item { padding: 30rpx 0; border-bottom: 1rpx solid #eee; position: relative; }

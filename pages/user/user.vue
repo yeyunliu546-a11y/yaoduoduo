@@ -269,9 +269,9 @@ export default {
         success: (res) => {
           if (res.confirm) {
             this.$store.dispatch('Logout').then(() => {
-              uni.showToast({ title: '已安全退出', icon: 'success' })
               this.hasLogin = false
               this.resetUserInfo()
+              uni.reLaunch({ url: '/pages/login/index' })
             })
           }
         }

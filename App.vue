@@ -20,6 +20,7 @@ const GOODS_RESTRICTED_ROUTES = [
 
 let routeGuardInited = false
 let auditRedirecting = false
+let loginRedirecting = false
 
 function normalizeAuditStatus(value) {
   const status = Number(value)
@@ -54,11 +55,27 @@ function canViewGoods(snapshot = getAuditSnapshot()) {
   return !!snapshot.token && (snapshot.auditStatus === 1 || snapshot.canOrder)
 }
 
+function redirectToLogin() {
+  if (loginRedirecting) {
+    return
+  }
+
+  loginRedirecting = true
+  setTimeout(() => {
+    uni.reLaunch({ url: '/pages/login/index' })
+    loginRedirecting = false
+  }, 30)
+}
+
 function ensureAuditRouteAccess(url = '') {
   const cleanUrl = (url || '').split('?')[0]
   const snapshot = getAuditSnapshot()
 
   if (!snapshot.token) {
+    if (cleanUrl && !isWhiteRoute(cleanUrl)) {
+      redirectToLogin()
+      return false
+    }
     return true
   }
 
@@ -107,22 +124,29 @@ export default {
 
     handleInitialGuard() {
       try {
-        const token = uni.getStorageSync('token')
-        const pages = getCurrentPages()
-        const currentRoute = pages.length ? `/${pages[pages.length - 1].route}` : ''
+        const guardCurrentRoute = () => {
+          const token = uni.getStorageSync('token')
+          const pages = getCurrentPages()
+          const currentRoute = pages.length ? `/${pages[pages.length - 1].route}` : ''
 
-        if (!token) {
-          if (currentRoute && !isWhiteRoute(currentRoute)) {
-            setTimeout(() => {
-              uni.reLaunch({ url: '/pages/login/index' })
-            }, 30)
+          if (!currentRoute) {
+            return
           }
-          return
+
+          if (!token) {
+            if (!isWhiteRoute(currentRoute)) {
+              redirectToLogin()
+            }
+            return
+          }
+
+          if (!isWhiteRoute(currentRoute)) {
+            ensureAuditRouteAccess(currentRoute)
+          }
         }
 
-        if (currentRoute && !isWhiteRoute(currentRoute)) {
-          ensureAuditRouteAccess(currentRoute)
-        }
+        guardCurrentRoute()
+        setTimeout(guardCurrentRoute, 80)
       } catch (e) {
         console.error('全局资质拦截异常', e)
       }

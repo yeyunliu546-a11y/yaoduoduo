@@ -19,6 +19,7 @@ const AUTH_SYNC_API_PATTERNS = [
 ]
 
 let auditRedirecting = false
+let loginRedirecting = false
 
 function pickFirst() {
   for (let i = 0; i < arguments.length; i++) {
@@ -160,6 +161,18 @@ function redirectToAuditPage(snapshot = getAuditSnapshot(), message = '资质审
   }, 300)
 }
 
+function redirectToLogin(message = '请先登录') {
+  if (loginRedirecting) return
+
+  loginRedirecting = true
+  uni.showToast({ title: message, icon: 'none' })
+
+  setTimeout(() => {
+    uni.reLaunch({ url: '/pages/login/index' })
+    loginRedirecting = false
+  }, 300)
+}
+
 const request = (options) => {
   return new Promise((resolve, reject) => {
     if (USE_MOCK) {
@@ -176,10 +189,18 @@ const request = (options) => {
     const storeId = uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945'
     const auditSnapshot = getAuditSnapshot()
 
-    if (token && isGoodsRequest(options.url) && !isAuditApproved(auditSnapshot)) {
-      redirectToAuditPage(auditSnapshot)
-      reject({ code: 40301, message: '资质审核未通过，禁止查看商品和价格' })
-      return
+    if (isGoodsRequest(options.url)) {
+      if (!token) {
+        redirectToLogin()
+        reject({ code: 401, message: '请先登录' })
+        return
+      }
+
+      if (!isAuditApproved(auditSnapshot)) {
+        redirectToAuditPage(auditSnapshot)
+        reject({ code: 40301, message: '资质审核未通过，禁止查看商品和价格' })
+        return
+      }
     }
 
     const headers = {
