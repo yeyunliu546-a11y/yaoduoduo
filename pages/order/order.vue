@@ -99,6 +99,50 @@ function getResult(res = {}) {
     return pickFirst(res.result, res.Result, res.data, {});
 }
 
+function parseJsonObject(value) {
+    if (!value || typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+        return {};
+    }
+}
+
+function getB2BPayOrderNo(result = {}) {
+    const payData = result.payData || result.PayData || {};
+    const signData = pickFirst(payData.signData, payData.SignData, result.signData, result.SignData);
+    const signDataPayload = parseJsonObject(signData);
+    return pickFirst(
+        result.b2bPayOrderNo,
+        result.B2bPayOrderNo,
+        result.B2BPayOrderNo,
+        result.outTradeNo,
+        result.OutTradeNo,
+        result.out_trade_no,
+        payData.b2bPayOrderNo,
+        payData.B2bPayOrderNo,
+        payData.B2BPayOrderNo,
+        payData.outTradeNo,
+        payData.OutTradeNo,
+        payData.out_trade_no,
+        signDataPayload.out_trade_no,
+        signDataPayload.outTradeNo,
+        signDataPayload.OutTradeNo
+    );
+}
+
+function getPaymentTransactionId(payRes = {}, result = {}) {
+    return pickFirst(
+        payRes.transactionId,
+        payRes.TransactionId,
+        payRes.transaction_id,
+        payRes.order_id,
+        payRes.OrderId,
+        getB2BPayOrderNo(result)
+    );
+}
+
 export default {
   data() {
     return {
@@ -322,17 +366,17 @@ export default {
                 const result = res.result || res.Result || res.data || {};
                 
                 // 1. 提取核心支付参数
-                const payData = result.payData || {};
-                const signData = payData.signData || result.signData;
-                const paySig = payData.paySig || result.paySig;
-                const signature = payData.signature || result.signature;
+                const payData = result.payData || result.PayData || {};
+                const signData = payData.signData || payData.SignData || result.signData || result.SignData;
+                const paySig = payData.paySig || payData.PaySig || result.paySig || result.PaySig;
+                const signature = payData.signature || payData.Signature || result.signature || result.Signature;
                 
                 // 2. 提取后端返回的模式（如果没有，默认零售 B2B 模式）
-                const mode = result.mode || 'retail_pay_goods';
+                const mode = result.mode || result.Mode || payData.mode || payData.Mode || 'retail_pay_goods';
 
                 if (signData && paySig && signature) {
                     console.log('====== 发起最纯净的原生 API 支付 ======');
-                    
+
                     // 👇 纯裸调！只传官方要求的 4 个核心参数
                     wx.requestCommonPayment({
                         mode: mode,
@@ -343,12 +387,11 @@ export default {
                             console.log('====== 微信底层扣款成功 ======', payRes);
                             
                             uni.showLoading({ title: '正在确认订单状态...', mask: true });
-                    
-                            // 🌟 核心修改：直接丢弃 transactionId，只传订单ID！
-                            // ⚠️ 注意：请确保证这里传的参数名（orderId）和图片里后端要求的一模一样。
-                            // 如果后端图片里要求传 orderNo，请把 orderId 改成 orderNo，值改成 item.orderNo
+                            const transactionId = getPaymentTransactionId(payRes, result);
+
                             const confirmParams = {
-                                orderId: item.id 
+                                orderId: item.id,
+                                transactionId
                             };
                     
                             // 🌟 判断是否是处方药
@@ -357,7 +400,7 @@ export default {
                     
                             confirmApi(confirmParams).then(res => {
                                 uni.hideLoading();
-                                if (res.code === 200) {
+                                if (getCode(res) === 200) {
                                     uni.showToast({ title: '支付成功', icon: 'success' });
                                     
                                     setTimeout(() => {
@@ -368,7 +411,7 @@ export default {
                                         this.refreshList(); 
                                     }, 1000);
                                 } else {
-                                    uni.showModal({ title: '支付核销异常', content: res.message || '请刷新列表或联系客服核实', showCancel: false });
+                                    uni.showModal({ title: '支付核销异常', content: res.message || res.Message || '请刷新列表或联系客服核实', showCancel: false });
                                     this.refreshList(); // 异常也刷新一下，防止状态其实已经变了
                                 }
                             }).catch(() => {

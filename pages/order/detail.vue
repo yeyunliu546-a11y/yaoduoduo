@@ -149,6 +149,50 @@ function getResult(res = {}) {
     return pickFirst(res.result, res.Result, res.data, {});
 }
 
+function parseJsonObject(value) {
+    if (!value || typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+        return {};
+    }
+}
+
+function getB2BPayOrderNo(result = {}) {
+    const payData = result.payData || result.PayData || {};
+    const signData = pickFirst(payData.signData, payData.SignData, result.signData, result.SignData);
+    const signDataPayload = parseJsonObject(signData);
+    return pickFirst(
+        result.b2bPayOrderNo,
+        result.B2bPayOrderNo,
+        result.B2BPayOrderNo,
+        result.outTradeNo,
+        result.OutTradeNo,
+        result.out_trade_no,
+        payData.b2bPayOrderNo,
+        payData.B2bPayOrderNo,
+        payData.B2BPayOrderNo,
+        payData.outTradeNo,
+        payData.OutTradeNo,
+        payData.out_trade_no,
+        signDataPayload.out_trade_no,
+        signDataPayload.outTradeNo,
+        signDataPayload.OutTradeNo
+    );
+}
+
+function getPaymentTransactionId(payRes = {}, result = {}) {
+    return pickFirst(
+        payRes.transactionId,
+        payRes.TransactionId,
+        payRes.transaction_id,
+        payRes.order_id,
+        payRes.OrderId,
+        getB2BPayOrderNo(result)
+    );
+}
+
 export default {
   data() {
     return {
@@ -388,13 +432,13 @@ export default {
                 const result = res.result || res.Result || res.data || {};
                 
                 // 1. 提取核心支付参数
-                const payData = result.payData || {};
-                const signData = payData.signData || result.signData;
-                const paySig = payData.paySig || result.paySig;
-                const signature = payData.signature || result.signature;
+                const payData = result.payData || result.PayData || {};
+                const signData = payData.signData || payData.SignData || result.signData || result.SignData;
+                const paySig = payData.paySig || payData.PaySig || result.paySig || result.PaySig;
+                const signature = payData.signature || payData.Signature || result.signature || result.Signature;
                 
                 // 2. 提取后端返回的模式（如果没有，默认零售 B2B 模式）
-                const mode = result.mode || 'retail_pay_goods';
+                const mode = result.mode || result.Mode || payData.mode || payData.Mode || 'retail_pay_goods';
 
                 if (signData && paySig && signature) {
                     console.log('====== 发起最纯净的原生 API 支付 ======');
@@ -408,9 +452,11 @@ export default {
 						success: (payRes) => {
                             console.log('====== 详情页：微信底层扣款成功 ======', payRes);
                             uni.showLoading({ title: '正在同步支付结果...', mask: true });
+                            const transactionId = getPaymentTransactionId(payRes, result);
 
                             const confirmParams = {
-                                orderId: this.orderId 
+                                orderId: this.orderId,
+                                transactionId
                             };
 
                             const confirmApi = this.isPrescription ? confirmPrescriptionPay : confirmB2BPay;
