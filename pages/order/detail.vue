@@ -35,6 +35,20 @@
           </view>
         </view>
 
+        <view v-if="showExpressCard" class="card express-card" @click="goExpress">
+          <view class="express-left">
+            <view class="express-icon">
+              <u-icon name="car" color="#fff" size="30"></u-icon>
+            </view>
+            <view class="express-info">
+              <view class="express-title">物流信息</view>
+              <view class="express-desc u-line-1">{{ latestTrackText }}</view>
+              <view class="express-time" v-if="latestTrackTime">{{ latestTrackTime }}</view>
+            </view>
+          </view>
+          <u-icon name="arrow-right" color="#c0c4cc" size="28"></u-icon>
+        </view>
+
         <view class="card goods-card">
           <view class="shop-header">
              <u-icon name="home" color="#333" size="34"></u-icon>
@@ -120,6 +134,20 @@ import {
     // 🌟 1. 新增引入：核销订单确认支付的接口
     confirmB2BPay, confirmPrescriptionPay 
 } from '@/api/order/order.js';
+import { GetLasetTrack } from '@/api/order/express.js';
+
+function pickFirst(...values) {
+    const target = values.find(value => value !== undefined && value !== null && value !== '');
+    return target === undefined ? '' : target;
+}
+
+function getCode(res = {}) {
+    return pickFirst(res.code, res.Code);
+}
+
+function getResult(res = {}) {
+    return pickFirst(res.result, res.Result, res.data, {});
+}
 
 export default {
   data() {
@@ -127,11 +155,29 @@ export default {
       orderId: '',
       orderType: 1, 
       loading: true,
-      orderInfo: {}
+      orderInfo: {},
+      expressQueryId: '',
+      latestTrack: null,
+      latestTrackLoading: false
     };
   },
   computed: {
       isPrescription() { return parseInt(this.orderType) === 2; },
+
+      showExpressCard() {
+          return Number(this.orderInfo?.orderStatus) >= 30;
+      },
+
+      latestTrackText() {
+          if (this.latestTrackLoading) return '物流信息加载中...';
+          const track = this.latestTrack || {};
+          return pickFirst(track.acceptStation, track.AcceptStation, '暂无轨迹信息');
+      },
+
+      latestTrackTime() {
+          const track = this.latestTrack || {};
+          return pickFirst(track.acceptTime, track.AcceptTime, '');
+      },
       
       statusIcon() {
           const status = this.orderInfo?.orderStatus;
@@ -161,15 +207,76 @@ export default {
         });
     },
 
+    getOrderSkuId(rawGoodsList = []) {
+        const list = Array.isArray(rawGoodsList) ? rawGoodsList : [];
+        if (list.length === 0) return '';
+        const first = list[0] || {};
+        const sku = first.sku || first.goods || first;
+        return pickFirst(first.id, first.Id, first.orderSkuId, first.OrderSkuId, sku.id, sku.Id);
+    },
+
+    hasTrackContent(track = {}) {
+        return !!pickFirst(track.acceptStation, track.AcceptStation, track.acceptTime, track.AcceptTime);
+    },
+
+    loadLatestTrack() {
+        if (!this.showExpressCard) return;
+        const orderSkuId = pickFirst(this.orderInfo.id, this.orderId, this.expressQueryId);
+        const fallbackOrderSkuId = pickFirst(this.expressQueryId, this.orderInfo.id, this.orderId);
+        const emptyTrack = { acceptStation: '暂无轨迹信息', acceptTime: '' };
+        const setTrack = (res) => {
+            const code = getCode(res);
+            const result = getResult(res);
+            if (code === 200 && result && this.hasTrackContent(result)) {
+                this.latestTrack = result;
+                return true;
+            }
+            return false;
+        };
+
+        if (!orderSkuId) {
+            this.latestTrack = emptyTrack;
+            return;
+        }
+
+        this.latestTrackLoading = true;
+        GetLasetTrack({ orderSkuId }).then(res => {
+            if (setTrack(res)) return;
+
+            if (fallbackOrderSkuId && fallbackOrderSkuId !== orderSkuId) {
+                return GetLasetTrack({ orderSkuId: fallbackOrderSkuId }).then(fallbackRes => {
+                    if (!setTrack(fallbackRes)) this.latestTrack = emptyTrack;
+                }).catch(() => {
+                    this.latestTrack = emptyTrack;
+                });
+            }
+
+            this.latestTrack = emptyTrack;
+        }).catch(() => {
+            this.latestTrack = emptyTrack;
+        }).finally(() => {
+            this.latestTrackLoading = false;
+        });
+    },
+
+    goExpress() {
+        const orderSkuId = pickFirst(this.expressQueryId, this.orderInfo.id, this.orderId);
+        if (!orderSkuId) {
+            uni.showToast({ title: '暂无物流信息', icon: 'none' });
+            return;
+        }
+        uni.navigateTo({ url: `/pages/order/express?orderSkuId=${encodeURIComponent(orderSkuId)}` });
+    },
+
     loadDetail() {
       this.loading = true;
       const api = this.isPrescription ? getPrescriptionDetail(this.orderId) : getOrderDetail(this.orderId);
       
       api.then(res => {
         this.loading = false;
-        const code = res.code !== undefined ? res.code : res.Code;
+        const code = getCode(res);
         if (code === 200) {
-          const data = res.result || res.data || res.Result;
+          const data = getResult(res);
           this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
             uni.showToast({ title: res.message || res.Message || '获取详情失败', icon: 'none' });
@@ -212,9 +319,13 @@ export default {
         if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
             fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
         }
+        const orderSkuId = this.getOrderSkuId(rawGoods) || data.id || data.Id || this.orderId;
+        this.expressQueryId = orderSkuId;
+        this.latestTrack = null;
         
         this.orderInfo = {
             id: data.id || data.Id, orderNo: data.orderNo || data.OrderNo,
+            expressQueryId: orderSkuId,
             orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
             orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
             createTime: data.createTime || data.CreateTime, payTime: data.payTime || data.PayTime,
@@ -226,6 +337,7 @@ export default {
             receiverAddress: fullAddress,
             goodsList: this.aggregateGoods(rawGoods, '配方颗粒')
         };
+        this.loadLatestTrack();
     },
     
     handleProcurementData(data) {
@@ -236,9 +348,13 @@ export default {
         if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
             fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
         }
+        const orderSkuId = this.getOrderSkuId(rawGoods) || data.Id || data.id || this.orderId;
+        this.expressQueryId = orderSkuId;
+        this.latestTrack = null;
         
         this.orderInfo = {
             id: data.Id || data.id, orderNo: data.OrderNo || data.orderNo,
+            expressQueryId: orderSkuId,
             orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
             orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
             createTime: data.CreateTime || data.createTime, payTime: data.PayTime || data.payTime,
@@ -249,6 +365,7 @@ export default {
             receiverAddress: fullAddress,
             goodsList: this.aggregateGoods(rawGoods, '默认规格')
         };
+        this.loadLatestTrack();
     },
     
     getStatusName(status) {
@@ -506,6 +623,56 @@ export default {
             font-size: 26rpx; 
             line-height: 1.5; 
         }
+    }
+}
+
+.express-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .express-left {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .express-icon {
+        width: 60rpx;
+        height: 60rpx;
+        background: linear-gradient(135deg, #2979ff, #629eff);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 24rpx;
+        flex-shrink: 0;
+        box-shadow: 0 4rpx 10rpx rgba(41, 121, 255, 0.3);
+    }
+
+    .express-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .express-title {
+        font-size: 28rpx;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 8rpx;
+    }
+
+    .express-desc {
+        font-size: 25rpx;
+        color: #333;
+        line-height: 1.4;
+    }
+
+    .express-time {
+        margin-top: 6rpx;
+        font-size: 22rpx;
+        color: #909399;
     }
 }
 

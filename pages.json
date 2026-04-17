@@ -63,6 +63,13 @@
 			}
 		},
 		{
+			"path": "pages/order/express",
+			"style": {
+				"navigationBarTitleText": "物流详情",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
 			"path": "pages/order/center",
 			"style": {
 				"navigationBarTitleText": "订单中心"

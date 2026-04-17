@@ -26,6 +26,15 @@
             <view class="num">x{{ goods.goodsNum }}</view>
           </view>
         </view>
+
+        <view v-if="shouldShowExpress(item)" class="express-summary" @click.stop="goExpress(item)">
+          <u-icon name="car" color="#2979ff" size="30"></u-icon>
+          <view class="express-content">
+            <view class="express-text u-line-1">{{ getExpressText(item) }}</view>
+            <view class="express-time" v-if="getExpressTime(item)">{{ getExpressTime(item) }}</view>
+          </view>
+          <u-icon name="arrow-right" color="#c0c4cc" size="26"></u-icon>
+        </view>
         
         <view class="total-row">
           <text>共{{ item.totalNum }}件商品 实付：</text>
@@ -75,6 +84,20 @@ import {
 	confirmB2BPay,
 	confirmPrescriptionPay
 } from '@/api/order/order.js';
+import { GetLasetTrack } from '@/api/order/express.js';
+
+function pickFirst(...values) {
+    const target = values.find(value => value !== undefined && value !== null && value !== '');
+    return target === undefined ? '' : target;
+}
+
+function getCode(res = {}) {
+    return pickFirst(res.code, res.Code);
+}
+
+function getResult(res = {}) {
+    return pickFirst(res.result, res.Result, res.data, {});
+}
 
 export default {
   data() {
@@ -139,8 +162,8 @@ export default {
         this.isLoading = false;
         uni.stopPullDownRefresh();
         
-        if (res.code === 200) {
-          const rawList = res.result || res.data?.list || res.data || [];
+        if (getCode(res) === 200) {
+          const rawList = res.result || res.Result || res.data?.list || res.data || [];
           
           const list = rawList.map(order => {
               let rawGoods = order.OrderSkus || order.listSku || order.goodsList || order.ListGoods || order.list || [];
@@ -164,10 +187,13 @@ export default {
                   orderStatusName: this.getStatusName(order.orderStatus || order.OrderStatus),
                   payPrice: order.payPrice || order.PayPrice || 0,
                   totalNum: order.itemCount || rawGoods.length,
+                  latestTrack: null,
+                  latestTrackLoading: false,
                   goodsList: rawGoods.map(g => {
                       const entity = g.sku || g;
                       const price = entity.SalePrice || entity.salePrice || entity.unitPrice || entity.price || 0;
                       return {
+                          orderSkuId: pickFirst(g.id, g.Id, g.orderSkuId, g.OrderSkuId, entity.id, entity.Id),
                           goodsName: g.isVirtual ? g.goodsName : (entity.GoodsName || entity.goodsName),
                           spec: g.isVirtual ? '' : (entity.SkuName || entity.skuName || entity.spec || (order.orderType===2 ? '配方颗粒' : '默认规格')),
                           imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/empty.png',
@@ -181,11 +207,93 @@ export default {
 
           this.orderList = [...this.orderList, ...list];
           this.loadStatus = list.length < 10 ? 'nomore' : 'loadmore';
+          this.loadLatestTracks(list);
         }
       }).catch(err => {
         this.isLoading = false;
         uni.stopPullDownRefresh();
       });
+    },
+
+    shouldShowExpress(item) {
+        return Number(item.orderStatus) >= 30;
+    },
+
+    getExpressQueryId(item) {
+        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
+        const firstGoods = goodsList.length > 0 ? goodsList[0] : {};
+        return pickFirst(firstGoods.orderSkuId, item.id, item.Id, item.orderId, item.OrderId);
+    },
+
+    getLatestTrackQueryId(item) {
+        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
+        const firstGoods = goodsList.length > 0 ? goodsList[0] : {};
+        return pickFirst(item.id, item.Id, item.orderId, item.OrderId, firstGoods.orderSkuId);
+    },
+
+    getExpressText(item) {
+        if (item.latestTrackLoading) return '物流信息加载中...';
+        const track = item.latestTrack || {};
+        return pickFirst(track.acceptStation, track.AcceptStation, '暂无轨迹信息');
+    },
+
+    getExpressTime(item) {
+        const track = item.latestTrack || {};
+        return pickFirst(track.acceptTime, track.AcceptTime, '');
+    },
+
+    hasTrackContent(track = {}) {
+        return !!pickFirst(track.acceptStation, track.AcceptStation, track.acceptTime, track.AcceptTime);
+    },
+
+    loadLatestTracks(list = []) {
+        list.filter(item => this.shouldShowExpress(item)).forEach(item => {
+            const orderSkuId = this.getLatestTrackQueryId(item);
+            const fallbackOrderSkuId = this.getExpressQueryId(item);
+            const emptyTrack = { acceptStation: '暂无轨迹信息', acceptTime: '' };
+            const setTrack = (res) => {
+                const code = getCode(res);
+                const result = getResult(res);
+                if (code === 200 && result && this.hasTrackContent(result)) {
+                    item.latestTrack = result;
+                    return true;
+                }
+                return false;
+            };
+
+            if (!orderSkuId) {
+                item.latestTrack = emptyTrack;
+                return;
+            }
+
+            item.latestTrackLoading = true;
+            GetLasetTrack({ orderSkuId }).then(res => {
+                if (setTrack(res)) return;
+
+                if (fallbackOrderSkuId && fallbackOrderSkuId !== orderSkuId) {
+                    return GetLasetTrack({ orderSkuId: fallbackOrderSkuId }).then(fallbackRes => {
+                        if (!setTrack(fallbackRes)) item.latestTrack = emptyTrack;
+                    }).catch(() => {
+                        item.latestTrack = emptyTrack;
+                    });
+                }
+
+                item.latestTrack = emptyTrack;
+            }).catch(() => {
+                item.latestTrack = emptyTrack;
+            }).finally(() => {
+                item.latestTrackLoading = false;
+            });
+        });
+    },
+
+    goExpress(item) {
+        const orderSkuId = this.getExpressQueryId(item);
+        if (!orderSkuId) {
+            uni.showToast({ title: '暂无物流信息', icon: 'none' });
+            return;
+        }
+        uni.navigateTo({ url: `/pages/order/express?orderSkuId=${encodeURIComponent(orderSkuId)}` });
     },
     
     getStatusName(status) {
@@ -395,6 +503,11 @@ export default {
       .price { font-size: 28rpx; color: #333; font-weight: bold; }
       .num { font-size: 24rpx; color: #999; margin-top: 6rpx;}
     }
+  }
+  .express-summary { display: flex; align-items: center; padding: 18rpx 20rpx; margin: 4rpx 0 18rpx; background: #f4f8ff; border-radius: 12rpx; border: 1px solid #e1edff;
+    .express-content { flex: 1; min-width: 0; margin: 0 16rpx; }
+    .express-text { font-size: 25rpx; color: #333; line-height: 1.4; }
+    .express-time { margin-top: 6rpx; font-size: 22rpx; color: #909399; }
   }
   .total-row { text-align: right; border-top: 1px solid #f9f9f9; padding-top: 20rpx; font-size: 26rpx; color: #333;
     .price { font-size: 32rpx; color: #333; font-weight: bold; margin-left: 10rpx;}
