@@ -1,277 +1,376 @@
 <template>
   <view class="container">
-    <mescroll-body ref="mescrollRef" :sticky="true" @init="mescrollInit" :down="{ native: true }" @down="downCallback"
-      :up="upOption" @up="upCallback">
+    <view class="tabs-box">
+      <u-tabs
+        :list="tabs"
+        :is-scroll="true"
+        :current="curTab"
+        active-color="#2979ff"
+        @change="onChangeTab"
+      ></u-tabs>
+    </view>
 
-      <u-tabs :list="tabs" :is-scroll="false" :current="curTab" active-color="#FA2209" :duration="0.2"
-        @change="onChangeTab" />
-
-      <view class="widget-list">
-        <view class="widget-detail" v-for="(item, index) in list.data" :key="index">
-          <view class="row-block dis-flex flex-y-center">
-            <view class="flex-box">{{ item.createTime }}</view>
-            <view class="flex-box t-r">
-              <text class="col-m">{{ item.strStatus }}</text>
-            </view>
+    <view class="refund-list">
+      <u-card
+        v-for="(item, index) in refundList"
+        :key="item.id || index"
+        :border="false"
+        margin="24rpx 24rpx 0"
+        border-radius="16"
+        :head-style="{ padding: '24rpx 24rpx 0' }"
+        :body-style="{ padding: '20rpx 24rpx' }"
+        :foot-style="{ padding: '0 24rpx 24rpx' }"
+      >
+        <template v-slot:head>
+          <view class="card-head">
+            <text class="order-no">售后单号：{{ item.refundNo || item.orderNo || '--' }}</text>
+            <text class="status" :class="{ danger: item.statusValue < 0 }">{{ item.statusName }}</text>
           </view>
-          <view class="detail-goods row-block dis-flex" @click.stop="handleTargetDetail(item.order_refund_id)">
-            <view class="goods-image">
-              <image class="image" :src="item.urlSkuThumbnail" mode="aspectFit"></image>
-            </view>
-            <view class="goods-right flex-box">
-              <view class="goods-name">
-                <text class="twoline-hide">{{ item.goodsName }}</text>
+        </template>
+
+        <template v-slot:body>
+          <view class="goods-row" @click.stop="handleTargetDetail(item.id)">
+            <image :src="item.imageUrl" mode="aspectFill" class="thumb"></image>
+            <view class="goods-info">
+              <view class="goods-name u-line-2">{{ item.goodsName }}</view>
+              <view class="goods-spec">{{ item.skuName || '默认规格' }}</view>
+              <view class="refund-meta">
+                <text>{{ item.refundTypeName }}</text>
+                <text class="quantity">x{{ item.quantity }}</text>
               </view>
-              <view class="goods-props clearfix">
-                <view class="goods-props-item" >
-                  <text>{{ item.skuName }}</text>
-                </view>
-              </view>
-              <view class="goods-num t-r">
-                <text class="f-26 col-8">×{{ item.quantity }}</text>
-              </view>
             </view>
           </view>
-          <view class="detail-order row-block">
-            <view class="item dis-flex flex-x-end flex-y-center">
-              <text class="">付款金额：</text>
-              <text class="col-m">￥{{ item.amountExpectRefund }}</text>
-            </view>
-          </view>
-          <view class="detail-operate row-block dis-flex flex-x-end flex-y-center">
-            <view class="detail-btn btn-detail" @click.stop="handleTargetDetail(item.order_refund_id)">查看详情</view>
-          </view>
-        </view>
-      </view>
 
-    </mescroll-body>
+          <view class="amount-row">
+            <text class="label">退款金额</text>
+            <text class="amount">¥{{ item.refundAmount }}</text>
+          </view>
+          <view class="time-row" v-if="item.createTime">申请时间：{{ item.createTime }}</view>
+        </template>
 
+        <template v-slot:foot>
+          <view class="operate-row">
+            <view class="btn plain" @click.stop="handleTargetDetail(item.id)">查看详情</view>
+          </view>
+        </template>
+      </u-card>
+
+      <u-empty
+        v-if="!isLoading && refundList.length === 0"
+        mode="order"
+        text="暂无退款/售后记录"
+        margin-top="120"
+      ></u-empty>
+      <u-loadmore
+        v-if="refundList.length > 0"
+        :status="loadStatus"
+        margin-top="30"
+        margin-bottom="30"
+      ></u-loadmore>
+    </view>
   </view>
 </template>
 
 <script>
-  import MescrollBody from '@/components/mescroll-uni/mescroll-body.vue'
-  import MescrollMixin from '@/components/mescroll-uni/mescroll-mixins'
-  import { getEmptyPaginateObj, getMoreListData } from '@/core/app'
-  // import * as RefundApi from '@/api/order/orderRefundSku' // [模拟修改] 注释API
+import { getRefundList } from '@/api/order/order.js'
 
-  // 每页记录数量
-  const pageSize = 15
+const pageSize = 10
+const tabs = [
+  { name: '全部', value: '' },
+  { name: '待审核', value: 10 },
+  { name: '已拒绝', value: -10 },
+  { name: '退款中', value: 20 },
+  { name: '已退款', value: 80 }
+]
 
-  // tab栏数据
-  const tabs = [{
-    name: '全部',
-    value: 0
-  }, {
-    name: '待处理',
-    value: 10
-  }]
+function pickFirst(...values) {
+  const target = values.find(value => value !== undefined && value !== null && value !== '')
+  return target === undefined ? '' : target
+}
 
-  // [模拟修改] 模拟数据源
-  const mockRefundList = [
-    { 
-      order_refund_id: 101, 
-      createTime: '2023-12-12 10:00:00', 
-      strStatus: '售后审核中', 
-      status: 10, // 待处理
-      urlSkuThumbnail: 'https://via.placeholder.com/200x200', 
-      goodsName: '枸杞', 
-      skuName: '小包装', 
-      quantity: 100, 
-      amountExpectRefund: '29.9' 
-    },
-    { 
-      order_refund_id: 102, 
-      createTime: '2023-12-10 14:30:00', 
-      strStatus: '同意退货', 
-      status: 20, 
-      urlSkuThumbnail: 'https://via.placeholder.com/200x200', 
-      goodsName: '青皮', 
-      skuName: '小包装', 
-      quantity: 200, 
-      amountExpectRefund: '160.0' 
+function getCode(res = {}) {
+  return pickFirst(res.code, res.Code)
+}
+
+function getResult(res = {}) {
+  return pickFirst(res.result, res.Result, res.data, {})
+}
+
+function normalizeListPayload(res = {}) {
+  const result = getResult(res)
+  if (Array.isArray(result)) {
+    return { list: result, count: pickFirst(res.count, res.Count, result.length) }
+  }
+
+  const list = pickFirst(
+    result.list,
+    result.List,
+    result.rows,
+    result.Rows,
+    result.data,
+    result.Data,
+    result.items,
+    result.Items,
+    []
+  )
+  return {
+    list: Array.isArray(list) ? list : [],
+    count: pickFirst(result.count, result.Count, result.total, result.Total, res.count, res.Count, 0)
+  }
+}
+
+export default {
+  data() {
+    return {
+      tabs,
+      curTab: 0,
+      refundList: [],
+      page: 1,
+      isLoading: false,
+      loadStatus: 'loadmore'
     }
-  ]
+  },
 
-  export default {
-    components: {
-      MescrollBody
+  onLoad(options = {}) {
+    const status = pickFirst(options.status, options.refundStatus)
+    if (status !== '') {
+      const index = this.tabs.findIndex(item => String(item.value) === String(status))
+      this.curTab = index > -1 ? index : 0
+    }
+    this.refreshList()
+  },
+
+  onPullDownRefresh() {
+    this.refreshList()
+  },
+
+  onReachBottom() {
+    if (this.loadStatus !== 'loadmore') return
+    this.page += 1
+    this.loadData()
+  },
+
+  methods: {
+    onChangeTab(index) {
+      this.curTab = index
+      this.refreshList()
     },
-    mixins: [MescrollMixin],
-    data() {
+
+    refreshList() {
+      this.page = 1
+      this.refundList = []
+      this.loadStatus = 'loading'
+      this.loadData()
+    },
+
+    loadData() {
+      if (this.isLoading) return
+      this.isLoading = true
+      this.loadStatus = 'loading'
+
+      const status = this.tabs[this.curTab].value
+      const params = {
+        page: this.page,
+        limit: pageSize
+      }
+      if (status !== '') {
+        params.status = status
+      }
+
+      getRefundList(params).then(res => {
+        if (String(getCode(res)) === '200') {
+          const payload = normalizeListPayload(res)
+          const list = payload.list.map(item => this.normalizeRefundItem(item))
+          this.refundList = this.page === 1 ? list : [...this.refundList, ...list]
+          this.loadStatus = list.length < pageSize || this.refundList.length >= Number(payload.count || 0) ? 'nomore' : 'loadmore'
+        } else {
+          this.loadStatus = this.page === 1 ? 'loadmore' : 'nomore'
+          uni.showToast({ title: res.message || res.Message || '获取售后列表失败', icon: 'none' })
+        }
+      }).catch(() => {
+        this.loadStatus = this.page === 1 ? 'loadmore' : 'nomore'
+        uni.showToast({ title: '获取售后列表失败', icon: 'none' })
+      }).finally(() => {
+        this.isLoading = false
+        uni.stopPullDownRefresh()
+      })
+    },
+
+    normalizeRefundItem(item = {}) {
+      const sku = item.sku || item.goods || item.orderSku || item.OrderSku || {}
+      const statusValue = Number(pickFirst(item.status, item.Status, item.refundStatus, item.RefundStatus, item.auditStatus, item.AuditStatus, 0))
       return {
-        // 订单列表数据
-        list: getEmptyPaginateObj(),
-        // tabs栏数据
-        tabs,
-        // 当前标签索引
-        curTab: 0,
-        // 上拉加载配置
-        upOption: {
-          auto: true,
-          page: { size: pageSize },
-          noMoreSize: 2,
-          empty: {
-            tip: '亲，暂无售后单记录'
-          }
-        },
-        canReset: false,
+        id: pickFirst(item.id, item.Id, item.orderRefundSkuId, item.OrderRefundSkuId, item.order_refund_id, item.refundId, item.RefundId),
+        refundNo: pickFirst(item.refundNo, item.RefundNo, item.orderRefundNo, item.OrderRefundNo),
+        orderNo: pickFirst(item.orderNo, item.OrderNo, item.subOrderNo, item.SubOrderNo),
+        statusValue,
+        statusName: pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, item.strRefundStatus, item.StrRefundStatus, this.getStatusName(statusValue)),
+        refundTypeName: pickFirst(item.strRefundType, item.StrRefundType, item.refundTypeName, item.RefundTypeName, '退款/售后'),
+        imageUrl: pickFirst(item.urlSkuThumbnail, item.UrlSkuThumbnail, item.skuImageUrl, item.SkuImageUrl, item.imageUrl, item.ImageUrl, sku.skuImageUrl, sku.imageUrl, '/static/empty.png'),
+        goodsName: pickFirst(item.goodsName, item.GoodsName, sku.goodsName, sku.GoodsName, '未知商品'),
+        skuName: pickFirst(item.skuName, item.SkuName, item.spec, item.Spec, sku.skuName, sku.SkuName, ''),
+        quantity: pickFirst(item.quantity, item.Quantity, item.goodsNum, item.GoodsNum, sku.quantity, sku.Quantity, 1),
+        refundAmount: this.formatPrice(pickFirst(item.amountExpectRefund, item.AmountExpectRefund, item.refundAmount, item.RefundAmount, item.payPrice, item.PayPrice, 0)),
+        createTime: pickFirst(item.createTime, item.CreateTime, item.applyTime, item.ApplyTime, '')
       }
     },
 
-    onShow() {
-      this.canReset && this.onRefreshList()
+    getStatusName(status) {
+      const map = {
+        '-10': '已拒绝',
+        '10': '待审核',
+        '20': '审核通过',
+        '30': '用户已发货',
+        '40': '已收货',
+        '80': '已退款'
+      }
+      return map[String(status)] || '退款/售后'
     },
 
-    methods: {
+    formatPrice(value) {
+      const number = Number(value || 0)
+      return Number.isNaN(number) ? '0.00' : number.toFixed(2)
+    },
 
-      upCallback(page) {
-        const app = this
-        app.getRefundList(page.num)
-          .then(list => {
-            const curlimit = list.data.length
-            app.mescroll.endBySize(curlimit, list.count)
-          })
-          .catch(() => app.mescroll.endErr())
-      },
-
-      // [模拟修改] 获取退款/售后单列表
-      getRefundList(pageNo = 1) {
-        const app = this
-        return new Promise((resolve, reject) => {
-          setTimeout(() => {
-            // 1. 获取当前 Tab 状态 (0:全部, 10:待处理)
-            const currentStatus = app.getTabValue()
-            
-            // 2. 筛选数据
-            let filtered = mockRefundList
-            if (currentStatus == 10) {
-                filtered = mockRefundList.filter(item => item.status == 10)
-            }
-
-            // 3. 模拟分页
-            const total = filtered.length
-            const start = (pageNo - 1) * pageSize
-            const end = start + pageSize
-            const pageData = filtered.slice(start, end)
-
-            // 4. 返回结构
-            const res = {
-                result: pageData,
-                count: total
-            }
-
-            app.list.count = res.count
-            app.list.data = getMoreListData(res.result, app.list, pageNo)
-            resolve(app.list)
-          }, 500)
-        })
-      },
-
-      onChangeTab(index) {
-        const app = this
-        app.curTab = index
-        app.onRefreshList()
-      },
-
-      onRefreshList() {
-        this.list = getEmptyPaginateObj()
-        setTimeout(() => {
-          this.mescroll.resetUpScroll()
-        }, 120)
-      },
-
-      getTabValue() {
-        return this.tabs[this.curTab].value
-      },
-
-      handleTargetDetail(orderRefundSkuId) {
-        this.$navTo('pages/refund/detail', { orderRefundSkuId })
-      },
-
+    handleTargetDetail(orderRefundSkuId) {
+      if (!orderRefundSkuId) {
+        uni.showToast({ title: '缺少售后单参数', icon: 'none' })
+        return
+      }
+      uni.navigateTo({ url: `/pages/refund/detail?orderRefundSkuId=${encodeURIComponent(orderRefundSkuId)}` })
     }
   }
+}
 </script>
 
 <style lang="scss" scoped>
-  .widget-detail {
-    box-sizing: border-box;
-    background: #fff;
-    margin-bottom: 20rpx;
+.container {
+  min-height: 100vh;
+  background-color: #f5f7fa;
+}
 
-    .row-block {
-      padding: 0 20rpx;
-      min-height: 70rpx;
-    }
+.tabs-box {
+  background-color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
 
-    .detail-goods {
-      padding: 20rpx;
-      background: #f9f9f9;
+.refund-list {
+  padding-bottom: 30rpx;
+}
 
-      .goods-image {
-        margin-right: 20rpx;
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 
-        .image {
-          display: block;
-          width: 200rpx;
-          height: 200rpx;
-        }
-      }
+  .order-no {
+    flex: 1;
+    min-width: 0;
+    color: #333;
+    font-size: 26rpx;
+  }
 
-      .goods-right {
-        padding: 15rpx 0;
-      }
+  .status {
+    margin-left: 20rpx;
+    color: #2979ff;
+    font-size: 26rpx;
 
-      .goods-name {
-        margin-bottom: 10rpx;
-      }
-
-
-      .goods-props {
-        margin-top: 14rpx;
-        height: 40rpx;
-        color: #ababab;
-        font-size: 24rpx;
-        overflow: hidden;
-
-        .goods-props-item {
-          display: inline-block;
-          margin-right: 14rpx;
-          padding: 4rpx 16rpx;
-          border-radius: 12rpx;
-          background-color: #F5F5F5;
-          width: auto;
-        }
-      }
-
-    }
-
-    .detail-operate {
-      padding-bottom: 20rpx;
-
-      .detail-btn {
-        border-radius: 4px;
-        border: 1rpx solid #ccc;
-        padding: 8rpx 20rpx;
-        font-size: 28rpx;
-        color: #555;
-        margin-left: 10rpx;
-      }
-    }
-
-    .detail-order {
-      padding: 10rpx 20rpx;
-      font-size: 26rpx;
-      line-height: 50rpx;
-      height: 50rpx;
-
-      .item {
-        margin-bottom: 10rpx;
-
-        &:last-child {
-          margin-bottom: 0;
-        }
-      }
+    &.danger {
+      color: #fa3534;
     }
   }
+}
+
+.goods-row {
+  display: flex;
+  padding: 20rpx;
+  background-color: #f8f9fb;
+  border-radius: 12rpx;
+}
+
+.thumb {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 10rpx;
+  margin-right: 20rpx;
+  background-color: #f0f0f0;
+}
+
+.goods-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.goods-name {
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.4;
+}
+
+.goods-spec {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.refund-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18rpx;
+  color: #666;
+  font-size: 24rpx;
+
+  .quantity {
+    color: #999;
+  }
+}
+
+.amount-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 18rpx;
+  font-size: 26rpx;
+
+  .label {
+    color: #666;
+    margin-right: 12rpx;
+  }
+
+  .amount {
+    color: #fa3534;
+    font-size: 32rpx;
+    font-weight: 600;
+  }
+}
+
+.time-row {
+  margin-top: 12rpx;
+  color: #999;
+  font-size: 24rpx;
+  text-align: right;
+}
+
+.operate-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn {
+  min-width: 148rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  border-radius: 28rpx;
+  font-size: 26rpx;
+
+  &.plain {
+    color: #2979ff;
+    border: 1rpx solid #2979ff;
+    background-color: #fff;
+  }
+}
 </style>

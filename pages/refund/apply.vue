@@ -37,7 +37,7 @@
 			</view>
 		</view>
 
-		<view v-if="formData.refundType == RefundTypeEnum.RETURN.value" class="row-money b-f m-top20 dis-flex">
+		<view class="row-money b-f m-top20 dis-flex">
 			<view class="row-title">退款金额</view>
 			<view class="money col-m">￥{{ sku.payPrice }}</view>
 		</view>
@@ -67,7 +67,8 @@
 
 <script>
 	import { RefundTypeEnum } from '@/common/enum/order/refund'
-	// [模拟修改] 注释掉后端 API
+	import { applyOrderRefundSku } from '@/api/order/order.js'
+	// 后端文档暂未提供凭证图片上传接口，上传成功后需回填 listImageId
 	// import * as UploadApi from '@/api/upload'
 	// import * as OrderSKuApi from '@/api/order/orderSku'
 	// import * as RefundApi from '@/api/order/orderRefundSku'
@@ -103,29 +104,21 @@
 			}
 		},
 
-		onLoad({ orderSkuId }) {
-			this.orderSkuId = orderSkuId
-			this.getSkuDetail()
+		onLoad(options = {}) {
+			this.orderSkuId = options.orderSkuId
+			this.initSkuFromOptions(options)
 		},
 
 		methods: {
-
-			// [模拟修改] 获取订单商品详情
-			getSkuDetail() {
-				const _this = this
-				_this.isLoading = true
-				
-				setTimeout(() => {
-					// 构造模拟商品数据
-					_this.sku = {
-						goodsName: '模拟申请商品：纯棉短袖T恤',
-						skuName: '白色, XL',
-						quantity: 2,
-						skuImageUrl: 'https://via.placeholder.com/200x200',
-						payPrice: '88.00'
-					}
-					_this.isLoading = false
-				}, 300)
+			initSkuFromOptions(options = {}) {
+				this.sku = {
+					goodsName: options.goodsName ? decodeURIComponent(options.goodsName) : '售后商品',
+					skuName: options.skuName ? decodeURIComponent(options.skuName) : '',
+					quantity: options.quantity || 1,
+					skuImageUrl: options.skuImageUrl ? decodeURIComponent(options.skuImageUrl) : '/static/empty.png',
+					payPrice: options.payPrice || '0.00'
+				}
+				this.isLoading = false
 			},
 
 			onSwitchService(value) {
@@ -167,22 +160,40 @@
 				}
 			},
 
-			// [模拟修改] 提交到后端
 			onSubmit() {
 				const _this = this
-				_this.formData.orderSkuId = _this.orderSkuId;
-				
-				// 模拟提交
-				setTimeout(() => {
-					_this.$toast('申请提交成功 (模拟)')
-					setTimeout(() => {
+				if (!_this.orderSkuId) {
+					_this.disabled = false
+					uni.showToast({ title: '缺少订单商品ID', icon: 'none' })
+					return
+				}
+
+				const payload = {
+					orderSkuId: _this.orderSkuId,
+					refundType: _this.formData.refundType,
+					refundDescription: _this.formData.refundDescription || '',
+					listImageId: _this.formData.listImageId || []
+				}
+
+				applyOrderRefundSku(payload).then(res => {
+					const code = res.code !== undefined ? res.code : res.Code
+					if (code === 200) {
+						uni.showToast({ title: '申请提交成功', icon: 'success' })
+						setTimeout(() => {
+							_this.disabled = false
+							uni.navigateBack()
+						}, 1200)
+					} else {
 						_this.disabled = false
-						uni.navigateBack()
-					}, 1500)
-				}, 800)
+						uni.showToast({ title: res.message || res.Message || '申请失败', icon: 'none' })
+					}
+				}).catch(() => {
+					_this.disabled = false
+					uni.showToast({ title: '申请失败', icon: 'none' })
+				})
 			},
 
-			// [模拟修改] 上传图片
+			// TODO: 对接真实上传接口后，将返回的图片 ID 写入 listImageId
 			uploadFile() {
 				const _this = this
 				const { listImage } = _this

@@ -5,6 +5,6 @@ import Enum from '../../enum'
  * RefundTypeEnum
  */
 export default new Enum([
-  { key: 'Return', name: '退货退款', value: 10 },
-  { key: 'Exchange', name: '换货', value: 20 }
+  { key: 'RefundOnly', name: '仅退款', value: 10 },
+  { key: 'Return', name: '退货退款', value: 20 }
 ])

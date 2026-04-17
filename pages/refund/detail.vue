@@ -72,13 +72,13 @@
       </view>
     </view>
 
-    <view v-if="detail.status == RefundStatusEnum.UnApprove.value" class="detail-refund b-f m-top20">
+    <view v-if="detail.status == RefundStatusEnum.UnApprove.value || rejectReason" class="detail-refund b-f m-top20">
       <view class="detail-refund__row dis-flex">
         <view class="text">
           <text class="col-m">拒绝原因：</text>
         </view>
         <view class="flex-box">
-          <text>{{ detail.sellerMark }}</text>
+          <text>{{ rejectReason || '暂无拒绝原因' }}</text>
         </view>
       </view>
     </view>
@@ -177,10 +177,52 @@
 
 <script>
   import {  RefundStatusEnum, RefundTypeEnum } from '@/common/enum/order/refund'
-  // import * as RefundApi from '@/api/order/orderRefundSku' // [模拟修改]
-  // import * as ExpressApi from '@/api/store/storeExpress'   // [模拟修改]
+  import { refundDelivery } from '@/api/order/order.js'
+  // 后端文档暂未提供售后详情与物流公司列表接口
+  // import * as RefundApi from '@/api/order/orderRefundSku'
+  // import * as ExpressApi from '@/api/store/storeExpress'
+
+  function pickFirst(...values) {
+    const target = values.find(value => value !== undefined && value !== null && value !== '')
+    return target === undefined ? '' : target
+  }
+
+  function pickRejectReason(source, depth = 0, visited = []) {
+    if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return ''
+    visited.push(source)
+
+    const directReason = pickFirst(
+      source.rejectReason,
+      source.RejectReason,
+      source.refuseReason,
+      source.RefuseReason,
+      source.rejectRemark,
+      source.RejectRemark,
+      source.auditRejectReason,
+      source.AuditRejectReason,
+      source.auditRemark,
+      source.AuditRemark,
+      source.sellerMark,
+      source.SellerMark
+    )
+    if (directReason) return directReason
+
+    const nestedKeys = ['refundInfo', 'RefundInfo', 'afterSaleInfo', 'AfterSaleInfo', 'auditInfo', 'AuditInfo']
+    for (let i = 0; i < nestedKeys.length; i++) {
+      const reason = pickRejectReason(source[nestedKeys[i]], depth + 1, visited)
+      if (reason) return reason
+    }
+
+    return ''
+  }
 
   export default {
+    computed: {
+      rejectReason() {
+        return pickRejectReason(this.detail)
+      }
+    },
+
     data() {
       return {
         // 枚举类
@@ -214,18 +256,18 @@
           })
       },
 
-      // [模拟修改] 获取售后单详情
+      // TODO: 后端提供售后详情接口后替换这里的占位数据
       getRefundDetail() {
         const app = this
         return new Promise((resolve, reject) => {
           setTimeout(() => {
             // 构造模拟详情数据
-            // status: 20 (商家已同意/待发货) 可以测试发货表单
-            // refundType: 10 (退货退款)
+            // status: 20 (审核通过/待发货) 可以测试发货表单
+            // refundType: 20 (退货退款)
             const mockDetail = {
               status: 20, 
               strStatus: '商家同意退货',
-              refundType: 10,
+              refundType: 20,
               strRefundType: '退货退款',
               type: 10,
               
@@ -266,7 +308,7 @@
         })
       },
 
-      // [模拟修改] 获取物流公司列表
+      // TODO: 后端提供物流公司列表接口后替换这里的占位数据
       getlistExpress() {
         const app = this
         return new Promise((resolve, reject) => {
@@ -314,7 +356,6 @@
         this.formData.expressId = listExpress[expressIndex].id
       },
 
-      // [模拟修改] 表单提交 (发货)
       onSubmit() {
         const app = this
         if (app.disabled === true) return false
@@ -326,15 +367,27 @@
         }
 
 		app.disabled = true
-        
-        // 模拟请求
-        setTimeout(() => {
-            app.$toast('发货成功 (模拟)')
+
+        refundDelivery({
+          orderRefundSkuId: app.orderRefundSkuId,
+          expressId: app.formData.expressId,
+          expressNo: app.formData.expressNo
+        }).then(res => {
+          const code = res.code !== undefined ? res.code : res.Code
+          if (code === 200) {
+            app.$toast('发货成功')
             setTimeout(() => {
               app.disabled = false
               uni.navigateBack()
-            }, 1500)
-        }, 800)
+            }, 1200)
+          } else {
+            app.disabled = false
+            app.$toast(res.message || res.Message || '发货失败')
+          }
+        }).catch(() => {
+          app.disabled = false
+          app.$toast('发货失败')
+        })
       }
 
     }

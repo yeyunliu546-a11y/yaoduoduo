@@ -126,7 +126,8 @@
 		{
 			"path": "pages/refund/index",
 			"style": {
-				"navigationBarTitleText": "退款/售后"
+				"navigationBarTitleText": "退款/售后",
+				"enablePullDownRefresh": true
 			}
 		},
 		{

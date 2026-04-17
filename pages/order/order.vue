@@ -49,14 +49,18 @@
           </block>
           
           <block v-if="item.orderStatus === 20">
-             <view class="btn plain" @click.stop="handleApplyRefund(item)">申请退款</view>
+             <view class="btn plain" @click.stop="handleApplyRefund(item)">申请取消</view>
           </block>
 
           <block v-if="item.orderStatus === 30">
              <view class="btn primary" @click.stop="handleReceive(item)">确认收货</view>
           </block>
+
+          <block v-if="item.orderStatus === 40">
+             <view class="btn plain" @click.stop="handleApplyAfterSale(item)">申请售后</view>
+          </block>
           
-          <block v-if="item.orderStatus === -30 || item.orderStatus === 80">
+          <block v-if="item.orderStatus === -30 || item.orderStatus === 40 || item.orderStatus === 80">
              <view class="btn plain icon-btn" @click.stop="handleDelete(item)">
                  <u-icon name="trash" size="28" color="#666"></u-icon> 删除订单
              </view>
@@ -74,12 +78,14 @@
 
 <script>
 import { 
+    getOrderDetail,
+    getPrescriptionDetail,
     getOrderList, 
     payOrder, 
     payPrescriptionOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
-    applyCancelOrder,
+    applyCancelOrder, applyPrescriptionCancelOrder,
     deleteOrder,
 	confirmB2BPay,
 	confirmPrescriptionPay
@@ -143,6 +149,8 @@ function getPaymentTransactionId(payRes = {}, result = {}) {
     );
 }
 
+const REFUND_ORDER_STATUS = -20;
+
 export default {
   data() {
     return {
@@ -152,14 +160,15 @@ export default {
           { name: '待发货' }, 
           { name: '待收货' }, 
           { name: '已完成' },
-          { name: '已取消' }
+          { name: '已取消' },
+          { name: '退款/售后' }
       ],
       currentStatus: 0,
       orderList: [], 
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      statusMapCode: [0, 10, 20, 30, 80, -30]
+      statusMapCode: [0, 10, 20, 30, 40, -30, REFUND_ORDER_STATUS]
     };
   },
   onLoad(option) {
@@ -199,7 +208,8 @@ export default {
         orderType: 0 
       };
       if (this.currentStatus !== 0) {
-          params.orderStatus = this.statusMapCode[this.currentStatus];
+          const statusCode = this.statusMapCode[this.currentStatus];
+          params.orderStatus = statusCode;
       }
 
       getOrderList(params).then(res => {
@@ -223,21 +233,28 @@ export default {
                   }];
               }
 
+              const orderSkuId = this.getOrderSkuId(rawGoods);
+
+              const orderId = pickFirst(order.id, order.Id, order.orderId, order.OrderId);
+
+              const orderStatus = order.orderStatus || order.OrderStatus;
+
               return {
-                  id: order.id || order.Id,
+                  id: orderId,
                   orderNo: order.orderNo || order.OrderNo,
                   orderType: order.orderType || (String(order.orderNo || '').startsWith('CF') ? 2 : 1),
-                  orderStatus: order.orderStatus || order.OrderStatus,
-                  orderStatusName: this.getStatusName(order.orderStatus || order.OrderStatus),
+                  orderStatus,
+                  orderStatusName: this.getStatusName(orderStatus),
                   payPrice: order.payPrice || order.PayPrice || 0,
                   totalNum: order.itemCount || rawGoods.length,
+                  expressQueryId: pickFirst(orderSkuId, order.orderSkuId, order.OrderSkuId),
                   latestTrack: null,
-                  latestTrackLoading: false,
+                  latestTrackLoading: Number(orderStatus) >= 30,
                   goodsList: rawGoods.map(g => {
                       const entity = g.sku || g;
                       const price = entity.SalePrice || entity.salePrice || entity.unitPrice || entity.price || 0;
                       return {
-                          orderSkuId: pickFirst(g.id, g.Id, g.orderSkuId, g.OrderSkuId, entity.id, entity.Id),
+                          orderSkuId: pickFirst(g.orderSkuId, g.OrderSkuId, g.id, g.Id, entity.orderSkuId, entity.OrderSkuId, entity.id, entity.Id),
                           goodsName: g.isVirtual ? g.goodsName : (entity.GoodsName || entity.goodsName),
                           spec: g.isVirtual ? '' : (entity.SkuName || entity.skuName || entity.spec || (order.orderType===2 ? '配方颗粒' : '默认规格')),
                           imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/empty.png',
@@ -263,16 +280,16 @@ export default {
         return Number(item.orderStatus) >= 30;
     },
 
-    getExpressQueryId(item) {
-        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
-        const firstGoods = goodsList.length > 0 ? goodsList[0] : {};
-        return pickFirst(firstGoods.orderSkuId, item.id, item.Id, item.orderId, item.OrderId);
+    getOrderSkuId(rawGoodsList = []) {
+        const list = Array.isArray(rawGoodsList) ? rawGoodsList : [];
+        if (list.length === 0) return '';
+        const first = list[0] || {};
+        const sku = first.sku || first.goods || first;
+        return pickFirst(first.orderSkuId, first.OrderSkuId, first.id, first.Id, sku.orderSkuId, sku.OrderSkuId, sku.id, sku.Id);
     },
 
-    getLatestTrackQueryId(item) {
-        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
-        const firstGoods = goodsList.length > 0 ? goodsList[0] : {};
-        return pickFirst(item.id, item.Id, item.orderId, item.OrderId, firstGoods.orderSkuId);
+    getExpressQueryId(item) {
+        return pickFirst(item.expressQueryId, item.orderSkuId, item.OrderSkuId, this.getOrderSkuId(item.goodsList));
     },
 
     getExpressText(item) {
@@ -290,58 +307,149 @@ export default {
         return !!pickFirst(track.acceptStation, track.AcceptStation, track.acceptTime, track.AcceptTime);
     },
 
-    loadLatestTracks(list = []) {
-        list.filter(item => this.shouldShowExpress(item)).forEach(item => {
-            const orderSkuId = this.getLatestTrackQueryId(item);
-            const fallbackOrderSkuId = this.getExpressQueryId(item);
-            const emptyTrack = { acceptStation: '暂无轨迹信息', acceptTime: '' };
-            const setTrack = (res) => {
-                const code = getCode(res);
-                const result = getResult(res);
-                if (code === 200 && result && this.hasTrackContent(result)) {
-                    item.latestTrack = result;
-                    return true;
-                }
-                return false;
-            };
+    withTimeout(promise, fallbackValue = null, timeout = 5000) {
+        return new Promise(resolve => {
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve(fallbackValue);
+            }, timeout);
 
-            if (!orderSkuId) {
-                item.latestTrack = emptyTrack;
-                return;
-            }
-
-            item.latestTrackLoading = true;
-            GetLasetTrack({ orderSkuId }).then(res => {
-                if (setTrack(res)) return;
-
-                if (fallbackOrderSkuId && fallbackOrderSkuId !== orderSkuId) {
-                    return GetLasetTrack({ orderSkuId: fallbackOrderSkuId }).then(fallbackRes => {
-                        if (!setTrack(fallbackRes)) item.latestTrack = emptyTrack;
-                    }).catch(() => {
-                        item.latestTrack = emptyTrack;
-                    });
-                }
-
-                item.latestTrack = emptyTrack;
+            Promise.resolve(promise).then(res => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(res);
             }).catch(() => {
-                item.latestTrack = emptyTrack;
-            }).finally(() => {
-                item.latestTrackLoading = false;
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(fallbackValue);
             });
         });
     },
 
-    goExpress(item) {
-        const orderSkuId = this.getExpressQueryId(item);
-        if (!orderSkuId) {
-            uni.showToast({ title: '暂无物流信息', icon: 'none' });
-            return;
+    setLatestTrackState(item, patch = {}) {
+        const orderId = pickFirst(item.id, item.Id, item.orderId, item.OrderId);
+        const index = this.orderList.findIndex(order => pickFirst(order.id, order.Id, order.orderId, order.OrderId) === orderId);
+        Object.assign(item, patch);
+
+        if (index === -1) return;
+        const nextItem = { ...this.orderList[index], ...patch };
+        if (this.$set) {
+            this.$set(this.orderList, index, nextItem);
+        } else {
+            this.orderList.splice(index, 1, nextItem);
         }
-        uni.navigateTo({ url: `/pages/order/express?orderSkuId=${encodeURIComponent(orderSkuId)}` });
+    },
+
+    loadLatestTracks(list = []) {
+        list.filter(item => this.shouldShowExpress(item)).forEach(item => {
+            const emptyTrack = { acceptStation: '暂无轨迹信息', acceptTime: '' };
+            const finishTrack = (track = emptyTrack) => {
+                this.setLatestTrackState(item, {
+                    latestTrack: track,
+                    latestTrackLoading: false
+                });
+            };
+
+            this.setLatestTrackState(item, { latestTrackLoading: true });
+            Promise.resolve().then(() => {
+                return this.withTimeout(this.resolveExpressQueryId(item), '', 5000);
+            }).then(orderSkuId => {
+                if (!orderSkuId) {
+                    finishTrack();
+                    return null;
+                }
+
+                this.setLatestTrackState(item, { expressQueryId: orderSkuId });
+                return this.withTimeout(GetLasetTrack({ orderSkuId }), null, 5000);
+            }).then(res => {
+                if (!res) {
+                    finishTrack();
+                    return;
+                }
+                const code = getCode(res);
+                const result = getResult(res);
+                if (String(code) === '200' && result && this.hasTrackContent(result)) {
+                    finishTrack(result);
+                    return;
+                }
+                finishTrack();
+            }).catch(() => {
+                finishTrack();
+            }).then(() => {
+                const currentOrder = this.orderList.find(order => pickFirst(order.id, order.Id, order.orderId, order.OrderId) === pickFirst(item.id, item.Id, item.orderId, item.OrderId));
+                if (currentOrder && currentOrder.latestTrackLoading) {
+                    this.setLatestTrackState(currentOrder, {
+                        latestTrack: currentOrder.latestTrack || emptyTrack,
+                        latestTrackLoading: false
+                    });
+                }
+            });
+        });
+
+        this.resetStuckTrackLoading(list);
+    },
+
+    resetStuckTrackLoading(list = []) {
+        setTimeout(() => {
+            list.filter(item => this.shouldShowExpress(item) && item.latestTrackLoading).forEach(item => {
+                this.setLatestTrackState(item, {
+                    latestTrack: item.latestTrack || { acceptStation: '暂无轨迹信息', acceptTime: '' },
+                    latestTrackLoading: false
+                });
+            });
+        }, 6000);
+    },
+
+    getDetailGoodsList(data = {}, isPrescription = false) {
+        return isPrescription
+            ? (data.listSku || data.goodsList || data.listGoods || data.OrderSkus || data.ListSku || data.items || [])
+            : (data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || []);
+    },
+
+    resolveExpressQueryId(item) {
+        const directOrderSkuId = this.getExpressQueryId(item);
+        if (directOrderSkuId) return Promise.resolve(directOrderSkuId);
+
+        const orderId = pickFirst(item.id, item.Id, item.orderId, item.OrderId);
+        if (!orderId) return Promise.resolve('');
+
+        const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+        const detailApi = isPrescription ? getPrescriptionDetail(orderId) : getOrderDetail(orderId);
+
+        return detailApi.then(res => {
+            if (getCode(res) !== 200) return '';
+            const data = getResult(res);
+            const rawGoods = this.getDetailGoodsList(data, isPrescription);
+            return this.getOrderSkuId(rawGoods) || pickFirst(data.orderSkuId, data.OrderSkuId);
+        });
+    },
+
+    goExpress(item) {
+        const directOrderSkuId = this.getExpressQueryId(item);
+        if (!directOrderSkuId) {
+            uni.showLoading({ title: '获取物流信息...', mask: true });
+        }
+
+        this.resolveExpressQueryId(item).then(orderSkuId => {
+            if (!directOrderSkuId) uni.hideLoading();
+            if (!orderSkuId) {
+                uni.showToast({ title: '暂无物流信息', icon: 'none' });
+                return;
+            }
+            item.expressQueryId = orderSkuId;
+            uni.navigateTo({ url: `/pages/order/express?orderSkuId=${encodeURIComponent(orderSkuId)}` });
+        }).catch(() => {
+            if (!directOrderSkuId) uni.hideLoading();
+            uni.showToast({ title: '获取物流信息失败', icon: 'none' });
+        });
     },
     
     getStatusName(status) {
-        const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
+        const map = { '-30': '已取消', '-20': '申请取消中', '10': '待付款', '20': '待发货', '30': '待收货', '40': '已完成', '80': '已完成' };
         return map[String(status)] || '未知状态';
     },
 
@@ -409,7 +517,7 @@ export default {
                                             this.currentStatus = 2; 
                                         }
                                         this.refreshList(); 
-                                    }, 1000);
+                                    }, 180);
                                 } else {
                                     uni.showModal({ title: '支付核销异常', content: res.message || res.Message || '请刷新列表或联系客服核实', showCancel: false });
                                     this.refreshList(); // 异常也刷新一下，防止状态其实已经变了
@@ -468,7 +576,7 @@ export default {
                     let promise;
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
                     if (isPrescription) promise = cancelPrescriptionOrder({ orderId: item.id });
-                    else promise = cancelOrder({ OrderId: item.id, Reason: '用户主动取消' });
+                    else promise = cancelOrder({ orderId: item.id, returnMoneyRemark: '用户主动取消' });
 
                     promise.then(r => {
                         if(r.code === 200) {
@@ -483,11 +591,15 @@ export default {
 
     handleApplyRefund(item) {
         uni.showModal({
-            title: '申请退款', editable: true, placeholderText: '请输入退款理由', content: '确定要申请退款吗？',
+            title: '申请取消', editable: true, placeholderText: '请输入取消原因', content: '确定要申请取消该订单吗？',
             success: (res) => {
                 if(res.confirm) {
-                    const reason = res.content || '用户申请退款';
-                    applyCancelOrder({ OrderId: item.id, Reason: reason }).then(r => {
+                    const reason = res.content || '用户申请取消';
+                    const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+                    const promise = isPrescription
+                        ? applyPrescriptionCancelOrder({ orderId: item.id, remark: reason })
+                        : applyCancelOrder({ orderId: item.id });
+                    promise.then(r => {
                         if(r.code === 200) {
                             uni.showToast({ title: '申请提交成功' });
                             this.refreshList();
@@ -496,6 +608,35 @@ export default {
                 }
             }
         })
+    },
+
+    handleApplyAfterSale(item) {
+        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
+        const goods = goodsList[0] || {};
+        const directOrderSkuId = pickFirst(item.expressQueryId, goods.orderSkuId);
+        if (!directOrderSkuId) {
+            uni.showLoading({ title: '获取商品信息...', mask: true });
+        }
+
+        this.resolveExpressQueryId(item).then(orderSkuId => {
+            if (!directOrderSkuId) uni.hideLoading();
+            if (!orderSkuId) {
+                uni.showToast({ title: '缺少订单商品信息', icon: 'none' });
+                return;
+            }
+            const query = [
+                `orderSkuId=${encodeURIComponent(orderSkuId)}`,
+                `goodsName=${encodeURIComponent(goods.goodsName || '')}`,
+                `skuName=${encodeURIComponent(goods.spec || '')}`,
+                `skuImageUrl=${encodeURIComponent(goods.imageUrl || '')}`,
+                `quantity=${encodeURIComponent(goods.goodsNum || 1)}`,
+                `payPrice=${encodeURIComponent(goods.salePrice || 0)}`
+            ].join('&');
+            uni.navigateTo({ url: `/pages/refund/apply?${query}` });
+        }).catch(() => {
+            if (!directOrderSkuId) uni.hideLoading();
+            uni.showToast({ title: '获取商品信息失败', icon: 'none' });
+        });
     },
 
     handleDelete(item) {

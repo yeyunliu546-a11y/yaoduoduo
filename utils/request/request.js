@@ -206,6 +206,7 @@ const request = (options) => {
     const headers = {
       'content-type': 'application/json',
       'X-Token': token || '',
+      'Authorization': token ? `Bearer ${token}` : '',
       'platform': 'MP-WEIXIN',
       'storeId': storeId,
       ...options.header

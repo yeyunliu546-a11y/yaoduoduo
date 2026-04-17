@@ -66,19 +66,6 @@
         </view>
       </block>
 
-      <view class="agreement-box">
-        <view class="checkbox-wrap" @click="isAgree = !isAgree">
-          <u-icon v-if="isAgree" name="checkmark-circle-fill" color="#2979ff" size="36"></u-icon>
-          <view v-else class="circle-icon"></view>
-        </view>
-        <view class="agreement-text">
-          <text @click="isAgree = !isAgree">我已仔细阅读并同意</text>
-          <text class="link" @click.stop="goToAgreement('service')">《用户服务协议》</text>
-          <text @click="isAgree = !isAgree">与</text>
-          <text class="link" @click.stop="goToAgreement('privacy')">《隐私政策》</text>
-        </view>
-      </view>
-
       <button class="primary-btn" hover-class="btn-hover" @click="handleLogin">
         {{ loginMode === 'sms' ? '验证码登录' : '密 码 登 录' }}
       </button>
@@ -98,6 +85,19 @@
         <text class="toggle-mode" @click="toggleLoginMode">
           {{ loginMode === 'sms' ? '切换为账号密码登录' : '切换为手机验证码登录' }}
         </text>
+      </view>
+
+      <view class="agreement-box">
+        <view class="checkbox-wrap" @click="isAgree = !isAgree">
+          <u-icon v-if="isAgree" name="checkmark-circle-fill" color="#2979ff" size="36"></u-icon>
+          <view v-else class="circle-icon"></view>
+        </view>
+        <view class="agreement-text">
+          <text @click="isAgree = !isAgree">我已仔细阅读并同意</text>
+          <text class="link" @click.stop="goToAgreement('service')">《用户服务协议》</text>
+          <text @click="isAgree = !isAgree">与</text>
+          <text class="link" @click.stop="goToAgreement('privacy')">《隐私政策》</text>
+        </view>
       </view>
     </view>
 
@@ -531,8 +531,8 @@ page {
 .agreement-box {
   display: flex;
   align-items: flex-start;
-  margin-top: 20rpx;
-  margin-bottom: 40rpx;
+  margin-top: 24rpx;
+  margin-bottom: 34rpx;
   padding: 0 10rpx;
   
   .checkbox-wrap {

@@ -104,6 +104,26 @@ export function applyCancelOrder(data) {
     return request({ url: '/api/Order/ApplyCancelOrder', method: 'POST', data });
 }
 
+export function applyPrescriptionCancelOrder(data) {
+    return request({ url: '/api/user/prescription/order/apply-cancel', method: 'POST', data });
+}
+
+export function applyOrderRefundSku(data) {
+    return request({ url: '/api/OrderRefundSku/Apply', method: 'POST', data });
+}
+
+export function refundDelivery(data) {
+    return request({ url: '/api/OrderRefundSku/RefundDelivery', method: 'POST', data });
+}
+
+export function getRefundList(params) {
+    return request({
+        url: '/api/OrderRefundSku/List',
+        method: 'GET',
+        params
+    });
+}
+
 export function deleteOrder(data) {
     return request({
         url: '/api/Order/Delete',

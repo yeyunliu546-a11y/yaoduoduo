@@ -108,12 +108,17 @@
             <text class="label">买家留言</text>
             <text class="value">{{ orderInfo.buyerRemark }}</text>
           </view>
+          <view class="cell" v-if="shouldShowRejectReason">
+            <text class="label">拒绝原因</text>
+            <text class="value">{{ rejectReason }}</text>
+          </view>
         </view>
       </view>
 
       <view class="footer-bar">
         <view class="btn plain" v-if="orderInfo.orderStatus === 10" @click="handleCancel">取消订单</view>
-        <view class="btn plain" v-if="orderInfo.orderStatus === 20" @click="handleApplyRefund">申请退款</view>
+        <view class="btn plain" v-if="orderInfo.orderStatus === 20" @click="handleApplyRefund">申请取消</view>
+        <view class="btn plain" v-if="orderInfo.orderStatus === 40" @click="handleApplyAfterSale">申请售后</view>
         <view class="btn primary" v-if="orderInfo.orderStatus === 10" @click="handlePay">立即支付</view>
         <view class="btn primary" v-if="orderInfo.orderStatus === 30" @click="handleReceive">确认收货</view>
       </view>
@@ -130,7 +135,7 @@ import {
     payOrder, payPrescriptionOrder, 
     confirmReceive, confirmPrescriptionReceive,
     cancelOrder, cancelPrescriptionOrder,
-    applyCancelOrder,
+    applyCancelOrder, applyPrescriptionCancelOrder,
     // 🌟 1. 新增引入：核销订单确认支付的接口
     confirmB2BPay, confirmPrescriptionPay 
 } from '@/api/order/order.js';
@@ -193,6 +198,65 @@ function getPaymentTransactionId(payRes = {}, result = {}) {
     );
 }
 
+function pickRejectReason(source, depth = 0, visited = []) {
+    if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return '';
+    visited.push(source);
+
+    const directReason = pickFirst(
+        source.rejectReason,
+        source.RejectReason,
+        source.refuseReason,
+        source.RefuseReason,
+        source.rejectRemark,
+        source.RejectRemark,
+        source.refuseRemark,
+        source.RefuseRemark,
+        source.auditRejectReason,
+        source.AuditRejectReason,
+        source.auditRemark,
+        source.AuditRemark,
+        source.sellerMark,
+        source.SellerMark
+    );
+    if (directReason) return directReason;
+
+    const nestedKeys = [
+        'refundInfo', 'RefundInfo',
+        'afterSaleInfo', 'AfterSaleInfo',
+        'refundApply', 'RefundApply',
+        'refundOrder', 'RefundOrder',
+        'orderRefund', 'OrderRefund',
+        'orderRefundSku', 'OrderRefundSku',
+        'auditInfo', 'AuditInfo'
+    ];
+
+    for (let i = 0; i < nestedKeys.length; i++) {
+        const reason = pickRejectReason(source[nestedKeys[i]], depth + 1, visited);
+        if (reason) return reason;
+    }
+
+    const nestedLists = [
+        source.listSku,
+        source.ListSku,
+        source.goodsList,
+        source.GoodsList,
+        source.OrderSkus,
+        source.orderSkus,
+        source.items,
+        source.Items
+    ];
+    for (let i = 0; i < nestedLists.length; i++) {
+        const list = nestedLists[i];
+        if (!Array.isArray(list)) continue;
+        for (let j = 0; j < list.length; j++) {
+            const reason = pickRejectReason(list[j], depth + 1, visited);
+            if (reason) return reason;
+        }
+    }
+
+    return '';
+}
+
 export default {
   data() {
     return {
@@ -200,6 +264,7 @@ export default {
       orderType: 1, 
       loading: true,
       orderInfo: {},
+      rawOrderInfo: {},
       expressQueryId: '',
       latestTrack: null,
       latestTrackLoading: false
@@ -222,13 +287,21 @@ export default {
           const track = this.latestTrack || {};
           return pickFirst(track.acceptTime, track.AcceptTime, '');
       },
+
+      rejectReason() {
+          return pickRejectReason(this.orderInfo) || pickRejectReason(this.rawOrderInfo);
+      },
+
+      shouldShowRejectReason() {
+          return !!this.rejectReason;
+      },
       
       statusIcon() {
           const status = this.orderInfo?.orderStatus;
           if (status === 10) return 'clock-fill'; 
           if (status === 20) return 'car-fill';   
           if (status === 30) return 'gift-fill';  
-          if (status === 80) return 'checkmark-circle-fill'; 
+          if (status === 40 || status === 80) return 'checkmark-circle-fill';
           if (status === -20 || status === -30) return 'close-circle-fill'; 
           return 'order';
       }
@@ -256,7 +329,7 @@ export default {
         if (list.length === 0) return '';
         const first = list[0] || {};
         const sku = first.sku || first.goods || first;
-        return pickFirst(first.id, first.Id, first.orderSkuId, first.OrderSkuId, sku.id, sku.Id);
+        return pickFirst(first.orderSkuId, first.OrderSkuId, first.id, first.Id, sku.orderSkuId, sku.OrderSkuId, sku.id, sku.Id);
     },
 
     hasTrackContent(track = {}) {
@@ -265,8 +338,7 @@ export default {
 
     loadLatestTrack() {
         if (!this.showExpressCard) return;
-        const orderSkuId = pickFirst(this.orderInfo.id, this.orderId, this.expressQueryId);
-        const fallbackOrderSkuId = pickFirst(this.expressQueryId, this.orderInfo.id, this.orderId);
+        const orderSkuId = pickFirst(this.expressQueryId, this.orderInfo.expressQueryId, this.getOrderSkuId(this.orderInfo.goodsList));
         const emptyTrack = { acceptStation: '暂无轨迹信息', acceptTime: '' };
         const setTrack = (res) => {
             const code = getCode(res);
@@ -280,21 +352,13 @@ export default {
 
         if (!orderSkuId) {
             this.latestTrack = emptyTrack;
+            this.latestTrackLoading = false;
             return;
         }
 
         this.latestTrackLoading = true;
         GetLasetTrack({ orderSkuId }).then(res => {
             if (setTrack(res)) return;
-
-            if (fallbackOrderSkuId && fallbackOrderSkuId !== orderSkuId) {
-                return GetLasetTrack({ orderSkuId: fallbackOrderSkuId }).then(fallbackRes => {
-                    if (!setTrack(fallbackRes)) this.latestTrack = emptyTrack;
-                }).catch(() => {
-                    this.latestTrack = emptyTrack;
-                });
-            }
-
             this.latestTrack = emptyTrack;
         }).catch(() => {
             this.latestTrack = emptyTrack;
@@ -304,7 +368,7 @@ export default {
     },
 
     goExpress() {
-        const orderSkuId = pickFirst(this.expressQueryId, this.orderInfo.id, this.orderId);
+        const orderSkuId = pickFirst(this.expressQueryId, this.orderInfo.expressQueryId, this.getOrderSkuId(this.orderInfo.goodsList));
         if (!orderSkuId) {
             uni.showToast({ title: '暂无物流信息', icon: 'none' });
             return;
@@ -317,10 +381,12 @@ export default {
       const api = this.isPrescription ? getPrescriptionDetail(this.orderId) : getOrderDetail(this.orderId);
       
       api.then(res => {
+        console.log('====== 详情原始数据 ====== ', res);
         this.loading = false;
         const code = getCode(res);
         if (code === 200) {
           const data = getResult(res);
+          this.rawOrderInfo = data || {};
           this.isPrescription ? this.handlePrescriptionData(data) : this.handleProcurementData(data);
         } else {
             uni.showToast({ title: res.message || res.Message || '获取详情失败', icon: 'none' });
@@ -346,6 +412,7 @@ export default {
                 map[uniqueKey].goodsNum += num;
             } else {
                 map[uniqueKey] = {
+                    orderSkuId: pickFirst(g.orderSkuId, g.OrderSkuId, g.id, g.Id, sku.orderSkuId, sku.OrderSkuId, sku.id, sku.Id),
                     goodsName: name, spec: spec, imageUrl: imageUrl,
                     salePrice: Number(salePrice).toFixed(2), goodsNum: num
                 };
@@ -363,17 +430,23 @@ export default {
         if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
             fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
         }
-        const orderSkuId = this.getOrderSkuId(rawGoods) || data.id || data.Id || this.orderId;
+        const orderSkuId = this.getOrderSkuId(rawGoods) || pickFirst(data.orderSkuId, data.OrderSkuId);
+        const orderStatus = data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus;
         this.expressQueryId = orderSkuId;
         this.latestTrack = null;
+        this.latestTrackLoading = Number(orderStatus) >= 30;
         
         this.orderInfo = {
             id: data.id || data.Id, orderNo: data.orderNo || data.OrderNo,
             expressQueryId: orderSkuId,
-            orderStatus: data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus,
-            orderStatusName: this.getStatusName(data.orderStatus !== undefined ? data.orderStatus : data.OrderStatus),
+            orderStatus,
+            orderStatusName: data.orderStatusName || data.OrderStatusName || this.getStatusName(orderStatus),
             createTime: data.createTime || data.CreateTime, payTime: data.payTime || data.PayTime,
             payPrice: data.payPrice || data.PayPrice || 0, expressNo: data.expressNo || data.ExpressNo,
+            rejectReason: pickRejectReason(data),
+            refundInfo: data.refundInfo || data.RefundInfo || data.afterSaleInfo || data.AfterSaleInfo || {},
+            afterSaleStatus: data.afterSaleStatus || data.AfterSaleStatus || data.refundStatus || data.RefundStatus || data.cancelStatus || data.CancelStatus,
+            afterSaleStatusName: data.afterSaleStatusName || data.AfterSaleStatusName || data.refundStatusName || data.RefundStatusName,
             dosageDesc: data.dosageDesc || data.DosageDesc || `共服${data.dosageDays || data.DosageDays || 0}天`,
             medicalAdvice: data.medicalAdvice || data.MedicalAdvice, buyerRemark: data.buyerRemark || data.BuyerRemark,
             receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
@@ -392,18 +465,24 @@ export default {
         if (!fullAddress && (addr.province || addr.Province || addr.city || addr.City)) {
             fullAddress = `${addr.province || addr.Province || ''}${addr.city || addr.City || ''}${addr.district || addr.District || ''} ${addr.detail || addr.Detail || addr.address || addr.Address || ''}`;
         }
-        const orderSkuId = this.getOrderSkuId(rawGoods) || data.Id || data.id || this.orderId;
+        const orderSkuId = this.getOrderSkuId(rawGoods) || pickFirst(data.orderSkuId, data.OrderSkuId);
+        const orderStatus = data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus;
         this.expressQueryId = orderSkuId;
         this.latestTrack = null;
+        this.latestTrackLoading = Number(orderStatus) >= 30;
         
         this.orderInfo = {
             id: data.Id || data.id, orderNo: data.OrderNo || data.orderNo,
             expressQueryId: orderSkuId,
-            orderStatus: data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus,
-            orderStatusName: this.getStatusName(data.OrderStatus !== undefined ? data.OrderStatus : data.orderStatus),
+            orderStatus,
+            orderStatusName: data.OrderStatusName || data.orderStatusName || this.getStatusName(orderStatus),
             createTime: data.CreateTime || data.createTime, payTime: data.PayTime || data.payTime,
             payPrice: data.payPrice || data.PayPrice || data.orderPayPrice || 0, 
             expressNo: data.ExpressNo || data.expressNo, buyerRemark: data.BuyerRemark || data.buyerRemark,
+            rejectReason: pickRejectReason(data),
+            refundInfo: data.RefundInfo || data.refundInfo || data.AfterSaleInfo || data.afterSaleInfo || {},
+            afterSaleStatus: data.AfterSaleStatus || data.afterSaleStatus || data.RefundStatus || data.refundStatus || data.CancelStatus || data.cancelStatus,
+            afterSaleStatusName: data.AfterSaleStatusName || data.afterSaleStatusName || data.RefundStatusName || data.refundStatusName,
             receiverName: addr.name || addr.Name || addr.receiverName || data.receiverName || addr.consignee || '',
             receiverPhone: addr.phone || addr.Phone || addr.receiverPhone || addr.mobile || data.receiverPhone || data.mobile || '',
             receiverAddress: fullAddress,
@@ -413,7 +492,7 @@ export default {
     },
     
     getStatusName(status) {
-        const map = { '-30': '已取消', '-20': '申请取消', '10': '待付款', '20': '待发货', '30': '待收货', '80': '已完成' };
+        const map = { '-30': '已取消', '-20': '申请取消中', '10': '待付款', '20': '待发货', '30': '待收货', '40': '已完成', '80': '已完成' };
         return map[String(status)] || '未知状态';
     },
     
@@ -461,7 +540,7 @@ export default {
 
                             const confirmApi = this.isPrescription ? confirmPrescriptionPay : confirmB2BPay;
 
-                            // 🌟 核心优化 1：前端故意等 1.5 秒再去请求核销，给微信服务器一点同步数据的时间！
+                            // 🌟 核心优化 1：前端短暂等待后再请求核销，给微信服务器一点同步数据的时间！
                             setTimeout(() => {
                                 confirmApi(confirmParams).then(confirmRes => {
                                     uni.hideLoading();
@@ -492,7 +571,7 @@ export default {
                                     });
                                     this.loadDetail();
                                 });
-                            }, 1500); // 延迟 1500 毫秒
+                            }, 80); // 延迟 80 毫秒
                         },
 					    fail: (err) => {
                              if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
@@ -542,7 +621,7 @@ export default {
             success: (r) => {
                 if(r.confirm) {
                     uni.showLoading();
-                    let promise = this.isPrescription ? cancelPrescriptionOrder({ orderId: this.orderId }) : cancelOrder({ OrderId: this.orderId, Reason: '用户取消' });
+                    let promise = this.isPrescription ? cancelPrescriptionOrder({ orderId: this.orderId }) : cancelOrder({ orderId: this.orderId, returnMoneyRemark: '用户取消' });
                     promise.then(res => {
                         uni.hideLoading();
                         const code = res.code !== undefined ? res.code : res.Code;
@@ -558,11 +637,14 @@ export default {
 
     handleApplyRefund() {
         uni.showModal({
-            title: '申请退款', editable: true, placeholderText: '请输入退款理由', content: '确定要申请退款吗？',
+            title: '申请取消', editable: true, placeholderText: '请输入取消原因', content: '确定要申请取消该订单吗？',
             success: (res) => {
                 if(res.confirm) {
-                    const reason = res.content || '用户申请退款';
-                    applyCancelOrder({ OrderId: this.orderId, Reason: reason }).then(r => {
+                    const reason = res.content || '用户申请取消';
+                    const promise = this.isPrescription
+                        ? applyPrescriptionCancelOrder({ orderId: this.orderId, remark: reason })
+                        : applyCancelOrder({ orderId: this.orderId });
+                    promise.then(r => {
                         const code = r.code !== undefined ? r.code : r.Code;
                         if(code === 200) {
                             uni.showToast({ title: '申请提交成功' });
@@ -572,6 +654,25 @@ export default {
                 }
             }
         })
+    },
+
+    handleApplyAfterSale() {
+        const goodsList = Array.isArray(this.orderInfo.goodsList) ? this.orderInfo.goodsList : [];
+        const goods = goodsList[0] || {};
+        const orderSkuId = pickFirst(goods.orderSkuId, this.expressQueryId);
+        if (!orderSkuId) {
+            uni.showToast({ title: '缺少订单商品信息', icon: 'none' });
+            return;
+        }
+        const query = [
+            `orderSkuId=${encodeURIComponent(orderSkuId)}`,
+            `goodsName=${encodeURIComponent(goods.goodsName || '')}`,
+            `skuName=${encodeURIComponent(goods.spec || '')}`,
+            `skuImageUrl=${encodeURIComponent(goods.imageUrl || '')}`,
+            `quantity=${encodeURIComponent(goods.goodsNum || 1)}`,
+            `payPrice=${encodeURIComponent(goods.salePrice || 0)}`
+        ].join('&');
+        uni.navigateTo({ url: `/pages/refund/apply?${query}` });
     }
   }
 }
