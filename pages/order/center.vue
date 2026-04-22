@@ -86,6 +86,7 @@
 <script>
 // 引入修改后的 API 文件
 import { getOrderSettlement, createOrder } from '@/api/order/order.js';
+import { SUBSCRIBE_TMPL, requestSubscribe } from '@/utils/subscribe.js';
 
 export default {
   data() {
@@ -181,10 +182,12 @@ export default {
       uni.navigateTo({ url: '/pages/address/index?source=order' });
     },
 
-    submitOrder() {
+    async submitOrder() {
       if (!this.address.id) return uni.showToast({ title: '请选择收货地址', icon: 'none' });
+      if (this.submitting) return;
 
       this.submitting = true;
+      await requestSubscribe([SUBSCRIBE_TMPL.tmpl_pay], 'order-center-pay');
       
       const payload = {
         addressId: this.address.id,

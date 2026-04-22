@@ -140,6 +140,7 @@ import {
     confirmB2BPay, confirmPrescriptionPay 
 } from '@/api/order/order.js';
 import { GetLasetTrack } from '@/api/order/express.js';
+import { SUBSCRIBE_TMPL, requestSubscribe } from '@/utils/subscribe.js';
 
 function pickFirst(...values) {
     const target = values.find(value => value !== undefined && value !== null && value !== '');
@@ -202,22 +203,7 @@ function pickRejectReason(source, depth = 0, visited = []) {
     if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return '';
     visited.push(source);
 
-    const directReason = pickFirst(
-        source.rejectReason,
-        source.RejectReason,
-        source.refuseReason,
-        source.RefuseReason,
-        source.rejectRemark,
-        source.RejectRemark,
-        source.refuseRemark,
-        source.RefuseRemark,
-        source.auditRejectReason,
-        source.AuditRejectReason,
-        source.auditRemark,
-        source.AuditRemark,
-        source.sellerMark,
-        source.SellerMark
-    );
+    const directReason = pickFirst(source.sellerMark, source.SellerMark);
     if (directReason) return directReason;
 
     const nestedKeys = [
@@ -496,7 +482,8 @@ export default {
         return map[String(status)] || '未知状态';
     },
     
-    handlePay() {
+    async handlePay() {
+        await requestSubscribe([SUBSCRIBE_TMPL.tmpl_ship], 'order-detail-pay-ship');
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
         let payApi = this.isPrescription 

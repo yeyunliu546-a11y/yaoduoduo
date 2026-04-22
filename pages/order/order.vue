@@ -91,6 +91,7 @@ import {
 	confirmPrescriptionPay
 } from '@/api/order/order.js';
 import { GetLasetTrack } from '@/api/order/express.js';
+import { SUBSCRIBE_TMPL, requestSubscribe } from '@/utils/subscribe.js';
 
 function pickFirst(...values) {
     const target = values.find(value => value !== undefined && value !== null && value !== '');
@@ -149,7 +150,7 @@ function getPaymentTransactionId(payRes = {}, result = {}) {
     );
 }
 
-const REFUND_ORDER_STATUS = -20;
+const REFUND_TAB_NAME = '退款/售后';
 
 export default {
   data() {
@@ -168,7 +169,7 @@ export default {
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      statusMapCode: [0, 10, 20, 30, 40, -30, REFUND_ORDER_STATUS]
+      statusMapCode: [0, 10, 20, 30, 40, -30, null]
     };
   },
   onLoad(option) {
@@ -191,6 +192,10 @@ export default {
   },
   methods: {
     changeStatus(index) {
+      if (this.statusList[index] && this.statusList[index].name === REFUND_TAB_NAME) {
+        uni.navigateTo({ url: '/pages/refund/index' });
+        return;
+      }
       this.currentStatus = index;
       this.refreshList();
     },
@@ -458,7 +463,8 @@ export default {
     },
     
     // 🌟 原生 API 支付：纯净无组件版本
-    handlePay(item) {
+    async handlePay(item) {
+        await requestSubscribe([SUBSCRIBE_TMPL.tmpl_ship], 'order-list-pay-ship');
         uni.showLoading({ title: '获取支付信息...', mask: true });
         
         const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');

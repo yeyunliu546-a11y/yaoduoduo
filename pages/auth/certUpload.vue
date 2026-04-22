@@ -93,6 +93,7 @@
 <script>
 import request from '@/utils/request/request.js'
 import { getClinicExampleImages } from '@/api/user/user.js'
+import { SUBSCRIBE_TMPL, requestSubscribe } from '@/utils/subscribe.js'
 
 const BASE_URL = 'https://www.yaoduoduo.top'
 const EXAMPLE_IMAGE_TYPE_MAP = {
@@ -545,7 +546,7 @@ export default {
       })
     },
 
-    submitCert() {
+    async submitCert() {
       const token = uni.getStorageSync('token')
       if (!token) {
         uni.showToast({ title: '登录状态已失效，请重新登录', icon: 'none' })
@@ -568,6 +569,8 @@ export default {
           fileId: item.fileId
         }))
       }
+
+      await requestSubscribe([SUBSCRIBE_TMPL.tmpl_cert], 'cert-submit')
 
       uni.showLoading({ title: '提交中...' })
       request.post('/api/Clinic/SubmitCertificate', submitData, {

@@ -68,12 +68,22 @@
 <script>
 	import { RefundTypeEnum } from '@/common/enum/order/refund'
 	import { applyOrderRefundSku } from '@/api/order/order.js'
-	// 后端文档暂未提供凭证图片上传接口，上传成功后需回填 listImageId
-	// import * as UploadApi from '@/api/upload'
-	// import * as OrderSKuApi from '@/api/order/orderSku'
-	// import * as RefundApi from '@/api/order/orderRefundSku'
 
 	const maxImageLength = 6
+	const BASE_URL = 'https://www.yaoduoduo.top'
+
+	function pickFirst(...values) {
+		const target = values.find(value => value !== undefined && value !== null && value !== '')
+		return target === undefined ? '' : target
+	}
+
+	function getCode(payload = {}) {
+		return pickFirst(payload.code, payload.Code)
+	}
+
+	function getResult(payload = {}) {
+		return pickFirst(payload.result, payload.Result)
+	}
 
 	export default {
 		data() {
@@ -177,7 +187,7 @@
 
 				applyOrderRefundSku(payload).then(res => {
 					const code = res.code !== undefined ? res.code : res.Code
-					if (code === 200) {
+					if (String(code) === '200') {
 						uni.showToast({ title: '申请提交成功', icon: 'success' })
 						setTimeout(() => {
 							_this.disabled = false
@@ -193,17 +203,57 @@
 				})
 			},
 
-			// TODO: 对接真实上传接口后，将返回的图片 ID 写入 listImageId
 			uploadFile() {
 				const _this = this
 				const { listImage } = _this
-				return new Promise((resolve, reject) => {
-					// 模拟上传成功，返回虚拟文件ID
-					setTimeout(() => {
-						const mockFileIds = listImage.map((_, index) => 1000 + index)
-						_this.formData.listImageId = mockFileIds
-						resolve(mockFileIds)
-					}, 500)
+				const token = uni.getStorageSync('token')
+				const storeId = uni.getStorageSync('storeId') || '1448d0f2e01143a9bdfa4634b543c945'
+				uni.showLoading({ title: '上传凭证中...', mask: true })
+
+				const tasks = listImage.map(file => {
+					return new Promise((resolve, reject) => {
+						uni.uploadFile({
+							url: `${BASE_URL}/api/Files/Upload`,
+							filePath: file.path || file.tempFilePath,
+							name: 'files',
+							header: {
+								'X-Token': token || '',
+								'Authorization': token ? `Bearer ${token}` : '',
+								'platform': 'MP-WEIXIN',
+								'storeId': storeId
+							},
+							success(uploadRes) {
+								try {
+									const data = typeof uploadRes.data === 'string' ? JSON.parse(uploadRes.data || '{}') : uploadRes.data
+									const result = getResult(data) || []
+									if (String(getCode(data)) === '200' && Array.isArray(result) && result.length > 0) {
+										const uploadedFile = result[0]
+										const fileId = pickFirst(uploadedFile.id, uploadedFile.Id)
+										if (fileId) {
+											resolve(fileId)
+											return
+										}
+									}
+									reject(new Error(data.message || data.Message || '凭证上传失败'))
+								} catch (err) {
+									reject(err)
+								}
+							},
+							fail(err) {
+								reject(err)
+							}
+						})
+					})
+				})
+
+				return Promise.all(tasks).then(fileIds => {
+					_this.formData.listImageId = fileIds
+					return fileIds
+				}).catch(err => {
+					uni.showToast({ title: err.message || '凭证上传失败', icon: 'none' })
+					throw err
+				}).finally(() => {
+					uni.hideLoading()
 				})
 			}
 

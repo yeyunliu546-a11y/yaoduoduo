@@ -77,10 +77,7 @@ import { getRefundList } from '@/api/order/order.js'
 const pageSize = 10
 const tabs = [
   { name: '全部', value: '' },
-  { name: '待审核', value: 10 },
-  { name: '已拒绝', value: -10 },
-  { name: '退款中', value: 20 },
-  { name: '已退款', value: 80 }
+  { name: '待处理', value: 10 }
 ]
 
 function pickFirst(...values) {
@@ -132,9 +129,9 @@ export default {
   },
 
   onLoad(options = {}) {
-    const status = pickFirst(options.status, options.refundStatus)
-    if (status !== '') {
-      const index = this.tabs.findIndex(item => String(item.value) === String(status))
+    const bigStatus = pickFirst(options.bigStatus, options.status, options.refundStatus)
+    if (bigStatus !== '') {
+      const index = this.tabs.findIndex(item => String(item.value) === String(bigStatus))
       this.curTab = index > -1 ? index : 0
     }
     this.refreshList()
@@ -168,13 +165,14 @@ export default {
       this.isLoading = true
       this.loadStatus = 'loading'
 
-      const status = this.tabs[this.curTab].value
+      const bigStatus = this.tabs[this.curTab].value
       const params = {
         page: this.page,
-        limit: pageSize
+        limit: pageSize,
+        onlyMy: true
       }
-      if (status !== '') {
-        params.status = status
+      if (bigStatus !== '') {
+        params.bigStatus = bigStatus
       }
 
       getRefundList(params).then(res => {
@@ -206,6 +204,7 @@ export default {
         statusValue,
         statusName: pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, item.strRefundStatus, item.StrRefundStatus, this.getStatusName(statusValue)),
         refundTypeName: pickFirst(item.strRefundType, item.StrRefundType, item.refundTypeName, item.RefundTypeName, '退款/售后'),
+        sellerMark: pickFirst(item.sellerMark, item.SellerMark, ''),
         imageUrl: pickFirst(item.urlSkuThumbnail, item.UrlSkuThumbnail, item.skuImageUrl, item.SkuImageUrl, item.imageUrl, item.ImageUrl, sku.skuImageUrl, sku.imageUrl, '/static/empty.png'),
         goodsName: pickFirst(item.goodsName, item.GoodsName, sku.goodsName, sku.GoodsName, '未知商品'),
         skuName: pickFirst(item.skuName, item.SkuName, item.spec, item.Spec, sku.skuName, sku.SkuName, ''),

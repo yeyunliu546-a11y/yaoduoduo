@@ -167,6 +167,7 @@
 import { getOrderSettlement, getPrescriptionSettlement, createOrder, createPrescriptionOrder } from '@/api/order/order.js';
 import { getAvailableCoupons } from '@/api/user/coupon.js';
 import { deleteCart, removePrescriptionCart } from '@/api/goods/cart.js'; 
+import { SUBSCRIBE_TMPL, requestSubscribe } from '@/utils/subscribe.js';
 
 export default {
   data() {
@@ -353,15 +354,17 @@ export default {
         this.settlement.payAmount = (pay < 0 ? 0 : pay).toFixed(2);
     },
 
-    submitOrder() {
+    async submitOrder() {
         if (this.goodsList.length === 0) {
             return uni.showToast({ title: '商品数据异常，请返回重新结算', icon: 'none' });
         }
         if (!this.address.id) {
             return uni.showToast({ title: '请选择收货地址', icon: 'none' });
         }
+        if (this.submitting) return;
 
         this.submitting = true;
+        await requestSubscribe([SUBSCRIBE_TMPL.tmpl_pay], 'order-create-pay');
         const idsStr = this.getIdsString();
         const commonPayload = { addressId: this.address.id, buyerRemark: this.buyerRemark, payType: 20, appKey: 'MP-WEIXIN' };
 

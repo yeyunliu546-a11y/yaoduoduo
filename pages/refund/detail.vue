@@ -177,9 +177,8 @@
 
 <script>
   import {  RefundStatusEnum, RefundTypeEnum } from '@/common/enum/order/refund'
-  import { refundDelivery } from '@/api/order/order.js'
-  // 后端文档暂未提供售后详情与物流公司列表接口
-  // import * as RefundApi from '@/api/order/orderRefundSku'
+  import { getRefundOrderDetail, refundDelivery } from '@/api/order/order.js'
+  // 后端文档暂未提供物流公司列表接口
   // import * as ExpressApi from '@/api/store/storeExpress'
 
   function pickFirst(...values) {
@@ -187,39 +186,10 @@
     return target === undefined ? '' : target
   }
 
-  function pickRejectReason(source, depth = 0, visited = []) {
-    if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return ''
-    visited.push(source)
-
-    const directReason = pickFirst(
-      source.rejectReason,
-      source.RejectReason,
-      source.refuseReason,
-      source.RefuseReason,
-      source.rejectRemark,
-      source.RejectRemark,
-      source.auditRejectReason,
-      source.AuditRejectReason,
-      source.auditRemark,
-      source.AuditRemark,
-      source.sellerMark,
-      source.SellerMark
-    )
-    if (directReason) return directReason
-
-    const nestedKeys = ['refundInfo', 'RefundInfo', 'afterSaleInfo', 'AfterSaleInfo', 'auditInfo', 'AuditInfo']
-    for (let i = 0; i < nestedKeys.length; i++) {
-      const reason = pickRejectReason(source[nestedKeys[i]], depth + 1, visited)
-      if (reason) return reason
-    }
-
-    return ''
-  }
-
   export default {
     computed: {
       rejectReason() {
-        return pickRejectReason(this.detail)
+        return pickFirst(this.detail.sellerMark, this.detail.SellerMark, '')
       }
     },
 
@@ -230,7 +200,12 @@
         RefundTypeEnum,
         isLoading: true,
         orderRefundSkuId: null,
-        detail: {},
+        detail: {
+          listRefundProof: [],
+          refundAddress: {},
+          express: {},
+          listRecord: []
+        },
         listExpress: [],
         formData: {
           expressId: null,
@@ -251,61 +226,67 @@
         const app = this
         app.isLoading = true
         Promise.all([app.getRefundDetail(), app.getlistExpress()])
-          .then(result => {
+          .then(() => {
+            app.isLoading = false
+          })
+          .catch(() => {
             app.isLoading = false
           })
       },
 
-      // TODO: 后端提供售后详情接口后替换这里的占位数据
       getRefundDetail() {
         const app = this
-        return new Promise((resolve, reject) => {
-          setTimeout(() => {
-            // 构造模拟详情数据
-            // status: 20 (审核通过/待发货) 可以测试发货表单
-            // refundType: 20 (退货退款)
-            const mockDetail = {
-              status: 20, 
-              strStatus: '商家同意退货',
-              refundType: 20,
-              strRefundType: '退货退款',
-              type: 10,
-              
-              goodsId: 999,
-              urlSkuThumbnail: 'https://via.placeholder.com/200x200',
-              goodsName: '模拟商品详情：冬季加绒卫衣',
-              skuName: '藏青色, L码',
-              quantity: 1,
-              amountExpectRefund: '128.00',
-              amountRealRefund: '0.00',
-              mark: '尺码不合适，想要换个大号',
-              sellerMark: '',
-              listRefundProof: ['https://via.placeholder.com/200x200'], // 凭证图片
-              
-              // 商家地址
-              refundAddress: {
-                name: '售后中心-张三',
-                phone: '13800138000',
-                fullAddress: 'xx省xx市xx区xx工业园A栋'
-              },
-              
-              // 物流信息 (如果是已发货状态会用到)
-              is_user_send: false,
-              express: { expressName: '' },
-              express_no: '',
-              send_time: '',
+        if (!app.orderRefundSkuId) {
+          app.$toast('缺少售后单参数')
+          return Promise.resolve()
+        }
 
-              // 时间轴
-              listRecord: [
-                { info: '商家同意了您的售后申请，请尽快发货', createTime: '2023-12-12 14:00:00' },
-                { info: '您发起了售后申请，原因：尺码不合适', createTime: '2023-12-12 10:00:00' }
-              ]
-            }
-            
-            app.detail = mockDetail
-            resolve()
-          }, 500)
+        return getRefundOrderDetail({ orderRefundSkuId: app.orderRefundSkuId }).then(res => {
+          const code = pickFirst(res.code, res.Code)
+          if (String(code) === '200') {
+            const data = pickFirst(res.result, res.Result, res.data, {}) || {}
+            app.detail = app.normalizeRefundDetail(data)
+          } else {
+            app.$toast(res.message || res.Message || '获取售后详情失败')
+          }
         })
+      },
+
+      normalizeRefundDetail(data = {}) {
+        const refundAddress = pickFirst(data.refundAddress, data.RefundAddress, {}) || {}
+        const express = pickFirst(data.express, data.Express, {}) || {}
+        const listRefundProof = pickFirst(data.listRefundProof, data.ListRefundProof, [])
+        const listRecord = pickFirst(data.listRecord, data.ListRecord, [])
+        return {
+          ...data,
+          status: pickFirst(data.status, data.Status, 0),
+          strStatus: pickFirst(data.strStatus, data.StrStatus, ''),
+          refundType: pickFirst(data.refundType, data.RefundType, data.type, data.Type),
+          strRefundType: pickFirst(data.strRefundType, data.StrRefundType, ''),
+          goodsId: pickFirst(data.goodsId, data.GoodsId, ''),
+          urlSkuThumbnail: pickFirst(data.urlSkuThumbnail, data.UrlSkuThumbnail, data.skuImageUrl, data.SkuImageUrl, '/static/empty.png'),
+          goodsName: pickFirst(data.goodsName, data.GoodsName, '售后商品'),
+          skuName: pickFirst(data.skuName, data.SkuName, ''),
+          quantity: pickFirst(data.quantity, data.Quantity, 1),
+          amountExpectRefund: pickFirst(data.amountExpectRefund, data.AmountExpectRefund, data.refundAmount, data.RefundAmount, '0.00'),
+          amountRealRefund: pickFirst(data.amountRealRefund, data.AmountRealRefund, '0.00'),
+          mark: pickFirst(data.mark, data.Mark, data.refundDescription, data.RefundDescription, ''),
+          sellerMark: pickFirst(data.sellerMark, data.SellerMark, ''),
+          listRefundProof: Array.isArray(listRefundProof) ? listRefundProof : [],
+          refundAddress: {
+            name: pickFirst(refundAddress.name, refundAddress.Name, ''),
+            phone: pickFirst(refundAddress.phone, refundAddress.Phone, ''),
+            fullAddress: pickFirst(refundAddress.fullAddress, refundAddress.FullAddress, '')
+          },
+          is_user_send: !!pickFirst(data.is_user_send, data.isUserSend, data.IsUserSend, data.expressNo, data.ExpressNo, false),
+          express: {
+            ...express,
+            expressName: pickFirst(express.expressName, express.ExpressName, data.expressName, data.ExpressName, '')
+          },
+          express_no: pickFirst(data.express_no, data.expressNo, data.ExpressNo, ''),
+          send_time: pickFirst(data.send_time, data.sendTime, data.SendTime, ''),
+          listRecord: Array.isArray(listRecord) ? listRecord : []
+        }
       },
 
       // TODO: 后端提供物流公司列表接口后替换这里的占位数据
@@ -325,13 +306,12 @@
       },
 
       onGoodsDetail(goodsId) {
-        // this.$navTo('pages/goods/detail', { goodsId })
-        this.$toast('模拟跳转商品详情: ' + goodsId)
+        if (!goodsId) return
+        uni.navigateTo({ url: `/pages/good/detail?id=${encodeURIComponent(goodsId)}` })
       },
 
       handlePreviewImages(index) {
         const { detail: { listRefundProof } } = this
-        // 注意：原代码用的 images，模拟数据改为了 listRefundProof 保持一致
         const imageUrls = listRefundProof || [] 
         uni.previewImage({
           current: imageUrls[index],
@@ -374,7 +354,7 @@
           expressNo: app.formData.expressNo
         }).then(res => {
           const code = res.code !== undefined ? res.code : res.Code
-          if (code === 200) {
+          if (String(code) === '200') {
             app.$toast('发货成功')
             setTimeout(() => {
               app.disabled = false

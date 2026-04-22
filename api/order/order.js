@@ -118,7 +118,15 @@ export function refundDelivery(data) {
 
 export function getRefundList(params) {
     return request({
-        url: '/api/OrderRefundSku/List',
+        url: '/api/OrderRefundSku/Load',
+        method: 'GET',
+        params
+    });
+}
+
+export function getRefundOrderDetail(params) {
+    return request({
+        url: '/api/OrderRefundSku/GetRefundOrderDetail',
         method: 'GET',
         params
     });
