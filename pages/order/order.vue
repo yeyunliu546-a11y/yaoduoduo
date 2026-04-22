@@ -48,7 +48,7 @@
              <view class="btn primary" @click.stop="handlePay(item)">立即支付</view>
           </block>
           
-          <block v-if="item.orderStatus === 20">
+          <block v-if="canApplyCancel(item)">
              <view class="btn plain" @click.stop="handleApplyRefund(item)">申请取消</view>
           </block>
 
@@ -56,7 +56,7 @@
              <view class="btn primary" @click.stop="handleReceive(item)">确认收货</view>
           </block>
 
-          <block v-if="item.orderStatus === 40">
+          <block v-if="canApplyAfterSale(item)">
              <view class="btn plain" @click.stop="handleApplyAfterSale(item)">申请售后</view>
           </block>
           
@@ -458,6 +458,14 @@ export default {
         return map[String(status)] || '未知状态';
     },
 
+    canApplyCancel(item = {}) {
+        return [20, 30].indexOf(Number(item.orderStatus)) !== -1;
+    },
+
+    canApplyAfterSale(item = {}) {
+        return [40, 60, 80].indexOf(Number(item.orderStatus)) !== -1;
+    },
+
     goDetail(item) {
       uni.navigateTo({ url: `/pages/order/detail?id=${item.id}&type=${item.orderType}` });
     },
@@ -597,19 +605,19 @@ export default {
 
     handleApplyRefund(item) {
         uni.showModal({
-            title: '申请取消', editable: true, placeholderText: '请输入取消原因', content: '确定要申请取消该订单吗？',
+            title: '申请取消',
+            content: '确定要申请取消该订单吗？',
             success: (res) => {
                 if(res.confirm) {
-                    const reason = res.content || '用户申请取消';
                     const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
                     const promise = isPrescription
-                        ? applyPrescriptionCancelOrder({ orderId: item.id, remark: reason })
+                        ? applyPrescriptionCancelOrder({ orderId: item.id, remark: '用户申请取消' })
                         : applyCancelOrder({ orderId: item.id });
                     promise.then(r => {
-                        if(r.code === 200) {
+                        if(String(getCode(r)) === '200') {
                             uni.showToast({ title: '申请提交成功' });
                             this.refreshList();
-                        } else uni.showToast({ title: r.message || '申请失败', icon: 'none' });
+                        } else uni.showToast({ title: r.message || r.Message || '申请失败', icon: 'none' });
                     });
                 }
             }

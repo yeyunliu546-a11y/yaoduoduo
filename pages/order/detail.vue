@@ -69,6 +69,7 @@
                 <text class="price"><text class="symbol">¥</text>{{ item.salePrice }}</text>
                 <text class="num">x{{ item.goodsNum }}</text>
               </view>
+              <view class="sku-action" v-if="canApplyAfterSale" @click.stop="handleApplyAfterSale(item)">申请售后</view>
             </view>
           </view>
           
@@ -117,8 +118,8 @@
 
       <view class="footer-bar">
         <view class="btn plain" v-if="orderInfo.orderStatus === 10" @click="handleCancel">取消订单</view>
-        <view class="btn plain" v-if="orderInfo.orderStatus === 20" @click="handleApplyRefund">申请取消</view>
-        <view class="btn plain" v-if="orderInfo.orderStatus === 40" @click="handleApplyAfterSale">申请售后</view>
+        <view class="btn plain" v-if="canApplyCancel" @click="handleApplyRefund">申请取消</view>
+        <view class="btn plain" v-if="canApplyAfterSale" @click="handleApplyAfterSale">申请售后</view>
         <view class="btn primary" v-if="orderInfo.orderStatus === 10" @click="handlePay">立即支付</view>
         <view class="btn primary" v-if="orderInfo.orderStatus === 30" @click="handleReceive">确认收货</view>
       </view>
@@ -203,7 +204,7 @@ function pickRejectReason(source, depth = 0, visited = []) {
     if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return '';
     visited.push(source);
 
-    const directReason = pickFirst(source.sellerMark, source.SellerMark);
+    const directReason = pickFirst(source.cancelRemark, source.CancelRemark, source.sellerMark, source.SellerMark);
     if (directReason) return directReason;
 
     const nestedKeys = [
@@ -280,6 +281,14 @@ export default {
 
       shouldShowRejectReason() {
           return !!this.rejectReason;
+      },
+
+      canApplyCancel() {
+          return [20, 30].indexOf(Number(this.orderInfo?.orderStatus)) !== -1;
+      },
+
+      canApplyAfterSale() {
+          return [40, 60, 80].indexOf(Number(this.orderInfo?.orderStatus)) !== -1;
       },
       
       statusIcon() {
@@ -429,6 +438,7 @@ export default {
             orderStatusName: data.orderStatusName || data.OrderStatusName || this.getStatusName(orderStatus),
             createTime: data.createTime || data.CreateTime, payTime: data.payTime || data.PayTime,
             payPrice: data.payPrice || data.PayPrice || 0, expressNo: data.expressNo || data.ExpressNo,
+            cancelRemark: pickFirst(data.cancelRemark, data.CancelRemark, ''),
             rejectReason: pickRejectReason(data),
             refundInfo: data.refundInfo || data.RefundInfo || data.afterSaleInfo || data.AfterSaleInfo || {},
             afterSaleStatus: data.afterSaleStatus || data.AfterSaleStatus || data.refundStatus || data.RefundStatus || data.cancelStatus || data.CancelStatus,
@@ -465,6 +475,7 @@ export default {
             createTime: data.CreateTime || data.createTime, payTime: data.PayTime || data.payTime,
             payPrice: data.payPrice || data.PayPrice || data.orderPayPrice || 0, 
             expressNo: data.ExpressNo || data.expressNo, buyerRemark: data.BuyerRemark || data.buyerRemark,
+            cancelRemark: pickFirst(data.CancelRemark, data.cancelRemark, ''),
             rejectReason: pickRejectReason(data),
             refundInfo: data.RefundInfo || data.refundInfo || data.AfterSaleInfo || data.afterSaleInfo || {},
             afterSaleStatus: data.AfterSaleStatus || data.afterSaleStatus || data.RefundStatus || data.refundStatus || data.CancelStatus || data.cancelStatus,
@@ -624,12 +635,12 @@ export default {
 
     handleApplyRefund() {
         uni.showModal({
-            title: '申请取消', editable: true, placeholderText: '请输入取消原因', content: '确定要申请取消该订单吗？',
+            title: '申请取消',
+            content: '确定要申请取消该订单吗？',
             success: (res) => {
                 if(res.confirm) {
-                    const reason = res.content || '用户申请取消';
                     const promise = this.isPrescription
-                        ? applyPrescriptionCancelOrder({ orderId: this.orderId, remark: reason })
+                        ? applyPrescriptionCancelOrder({ orderId: this.orderId, remark: '用户申请取消' })
                         : applyCancelOrder({ orderId: this.orderId });
                     promise.then(r => {
                         const code = r.code !== undefined ? r.code : r.Code;
@@ -643,9 +654,9 @@ export default {
         })
     },
 
-    handleApplyAfterSale() {
+    handleApplyAfterSale(targetGoods) {
         const goodsList = Array.isArray(this.orderInfo.goodsList) ? this.orderInfo.goodsList : [];
-        const goods = goodsList[0] || {};
+        const goods = targetGoods || goodsList[0] || {};
         const orderSkuId = pickFirst(goods.orderSkuId, this.expressQueryId);
         if (!orderSkuId) {
             uni.showToast({ title: '缺少订单商品信息', icon: 'none' });
@@ -862,6 +873,18 @@ export default {
                 .symbol { font-size: 24rpx; margin-right: 4rpx; font-weight: normal; }
             }
             .num { color: #999; font-size: 26rpx; }
+        }
+        .sku-action {
+            align-self: flex-end;
+            min-width: 132rpx;
+            height: 48rpx;
+            line-height: 48rpx;
+            margin-top: 12rpx;
+            text-align: center;
+            color: #2979ff;
+            border: 1rpx solid #2979ff;
+            border-radius: 24rpx;
+            font-size: 24rpx;
         }
       }
     }

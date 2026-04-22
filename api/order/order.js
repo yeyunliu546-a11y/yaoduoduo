@@ -116,11 +116,31 @@ export function refundDelivery(data) {
     return request({ url: '/api/OrderRefundSku/RefundDelivery', method: 'POST', data });
 }
 
+export function getStoreExpressList(params = {}) {
+    return request({
+        url: '/api/StoreExpress/ListByWhere',
+        method: 'GET',
+        params
+    });
+}
+
 export function getRefundList(params) {
     return request({
         url: '/api/OrderRefundSku/Load',
         method: 'GET',
         params
+    });
+}
+
+export function getCancelOrderList(params) {
+    return request({
+        url: '/api/Order/Load',
+        method: 'GET',
+        params: {
+            ...params,
+            onlyMy: true,
+            orderStatus: -20
+        }
     });
 }
 

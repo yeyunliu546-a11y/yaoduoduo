@@ -13,23 +13,23 @@
     <view class="refund-list">
       <u-card
         v-for="(item, index) in refundList"
-        :key="item.id || index"
+        :key="`${item.type}-${item.id || index}`"
         :border="false"
         margin="24rpx 24rpx 0"
-        border-radius="16"
+        border-radius="12"
         :head-style="{ padding: '24rpx 24rpx 0' }"
         :body-style="{ padding: '20rpx 24rpx' }"
         :foot-style="{ padding: '0 24rpx 24rpx' }"
       >
         <template v-slot:head>
           <view class="card-head">
-            <text class="order-no">售后单号：{{ item.refundNo || item.orderNo || '--' }}</text>
+            <text class="order-no">{{ item.noLabel }}：{{ item.refundNo || item.orderNo || '--' }}</text>
             <text class="status" :class="{ danger: item.statusValue < 0 }">{{ item.statusName }}</text>
           </view>
         </template>
 
         <template v-slot:body>
-          <view class="goods-row" @click.stop="handleTargetDetail(item.id)">
+          <view class="goods-row" @click.stop="handleTargetDetail(item)">
             <image :src="item.imageUrl" mode="aspectFill" class="thumb"></image>
             <view class="goods-info">
               <view class="goods-name u-line-2">{{ item.goodsName }}</view>
@@ -42,15 +42,18 @@
           </view>
 
           <view class="amount-row">
-            <text class="label">退款金额</text>
+            <text class="label">{{ item.amountLabel }}</text>
             <text class="amount">¥{{ item.refundAmount }}</text>
+          </view>
+          <view class="reject-row" v-if="item.sellerMark">
+            拒绝原因：{{ item.sellerMark }}
           </view>
           <view class="time-row" v-if="item.createTime">申请时间：{{ item.createTime }}</view>
         </template>
 
         <template v-slot:foot>
           <view class="operate-row">
-            <view class="btn plain" @click.stop="handleTargetDetail(item.id)">查看详情</view>
+            <view class="btn plain" @click.stop="handleTargetDetail(item)">查看详情</view>
           </view>
         </template>
       </u-card>
@@ -58,7 +61,7 @@
       <u-empty
         v-if="!isLoading && refundList.length === 0"
         mode="order"
-        text="暂无退款/售后记录"
+        :text="emptyText"
         margin-top="120"
       ></u-empty>
       <u-loadmore
@@ -72,12 +75,13 @@
 </template>
 
 <script>
-import { getRefundList } from '@/api/order/order.js'
+import { getCancelOrderList, getRefundList } from '@/api/order/order.js'
 
 const pageSize = 10
 const tabs = [
-  { name: '全部', value: '' },
-  { name: '待处理', value: 10 }
+  { name: '售后退款', type: 'refund', bigStatus: '' },
+  { name: '售后待处理', type: 'refund', bigStatus: 10 },
+  { name: '申请取消', type: 'cancel' }
 ]
 
 function pickFirst(...values) {
@@ -128,11 +132,25 @@ export default {
     }
   },
 
+  computed: {
+    currentTab() {
+      return this.tabs[this.curTab] || this.tabs[0]
+    },
+
+    emptyText() {
+      return this.currentTab.type === 'cancel' ? '暂无申请取消订单' : '暂无退款/售后记录'
+    }
+  },
+
   onLoad(options = {}) {
-    const bigStatus = pickFirst(options.bigStatus, options.status, options.refundStatus)
-    if (bigStatus !== '') {
-      const index = this.tabs.findIndex(item => String(item.value) === String(bigStatus))
-      this.curTab = index > -1 ? index : 0
+    if (options.type === 'cancel') {
+      this.curTab = this.tabs.findIndex(item => item.type === 'cancel')
+    } else {
+      const bigStatus = pickFirst(options.bigStatus, options.status, options.refundStatus)
+      if (bigStatus !== '') {
+        const index = this.tabs.findIndex(item => item.type === 'refund' && String(item.bigStatus) === String(bigStatus))
+        this.curTab = index > -1 ? index : 0
+      }
     }
     this.refreshList()
   },
@@ -165,65 +183,143 @@ export default {
       this.isLoading = true
       this.loadStatus = 'loading'
 
-      const bigStatus = this.tabs[this.curTab].value
-      const params = {
-        page: this.page,
-        limit: pageSize,
-        onlyMy: true
-      }
-      if (bigStatus !== '') {
-        params.bigStatus = bigStatus
-      }
-
-      getRefundList(params).then(res => {
-        if (String(getCode(res)) === '200') {
-          const payload = normalizeListPayload(res)
-          const list = payload.list.map(item => this.normalizeRefundItem(item))
-          this.refundList = this.page === 1 ? list : [...this.refundList, ...list]
-          this.loadStatus = list.length < pageSize || this.refundList.length >= Number(payload.count || 0) ? 'nomore' : 'loadmore'
-        } else {
-          this.loadStatus = this.page === 1 ? 'loadmore' : 'nomore'
-          uni.showToast({ title: res.message || res.Message || '获取售后列表失败', icon: 'none' })
-        }
-      }).catch(() => {
-        this.loadStatus = this.page === 1 ? 'loadmore' : 'nomore'
-        uni.showToast({ title: '获取售后列表失败', icon: 'none' })
-      }).finally(() => {
+      const requestTask = this.currentTab.type === 'cancel' ? this.loadCancelOrders() : this.loadRefundOrders()
+      requestTask.finally(() => {
         this.isLoading = false
         uni.stopPullDownRefresh()
       })
     },
 
+    loadRefundOrders() {
+      const params = {
+        page: this.page,
+        limit: pageSize,
+        onlyMy: true
+      }
+      if (this.currentTab.bigStatus !== '') {
+        params.bigStatus = this.currentTab.bigStatus
+      }
+
+      return getRefundList(params).then(res => {
+        if (String(getCode(res)) === '200') {
+          const payload = normalizeListPayload(res)
+          const list = payload.list.map(item => this.normalizeRefundItem(item))
+          this.applyListResult(list, payload.count)
+        } else {
+          this.handleLoadError(res.message || res.Message || '获取售后列表失败')
+        }
+      }).catch(() => {
+        this.handleLoadError('获取售后列表失败')
+      })
+    },
+
+    loadCancelOrders() {
+      return getCancelOrderList({
+        page: this.page,
+        limit: pageSize
+      }).then(res => {
+        if (String(getCode(res)) === '200') {
+          const payload = normalizeListPayload(res)
+          const list = payload.list.map(item => this.normalizeCancelItem(item))
+          this.applyListResult(list, payload.count)
+        } else {
+          this.handleLoadError(res.message || res.Message || '获取申请取消订单失败')
+        }
+      }).catch(() => {
+        this.handleLoadError('获取申请取消订单失败')
+      })
+    },
+
+    applyListResult(list, count) {
+      this.refundList = this.page === 1 ? list : [...this.refundList, ...list]
+      this.loadStatus = list.length < pageSize || this.refundList.length >= Number(count || 0) ? 'nomore' : 'loadmore'
+    },
+
+    handleLoadError(message) {
+      this.loadStatus = this.page === 1 ? 'loadmore' : 'nomore'
+      uni.showToast({ title: message, icon: 'none' })
+    },
+
     normalizeRefundItem(item = {}) {
       const sku = item.sku || item.goods || item.orderSku || item.OrderSku || {}
-      const statusValue = Number(pickFirst(item.status, item.Status, item.refundStatus, item.RefundStatus, item.auditStatus, item.AuditStatus, 0))
+      const statusValue = Number(pickFirst(item.status, item.Status, item.refundStatus, item.RefundStatus, 0))
+      const refundType = Number(pickFirst(item.refundType, item.RefundType, 0))
       return {
-        id: pickFirst(item.id, item.Id, item.orderRefundSkuId, item.OrderRefundSkuId, item.order_refund_id, item.refundId, item.RefundId),
+        type: 'refund',
+        noLabel: '售后单号',
+        amountLabel: '退款金额',
+        id: pickFirst(item.id, item.Id, item.orderRefundSkuId, item.OrderRefundSkuId, item.refundId, item.RefundId),
         refundNo: pickFirst(item.refundNo, item.RefundNo, item.orderRefundNo, item.OrderRefundNo),
         orderNo: pickFirst(item.orderNo, item.OrderNo, item.subOrderNo, item.SubOrderNo),
         statusValue,
-        statusName: pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, item.strRefundStatus, item.StrRefundStatus, this.getStatusName(statusValue)),
-        refundTypeName: pickFirst(item.strRefundType, item.StrRefundType, item.refundTypeName, item.RefundTypeName, '退款/售后'),
+        statusName: pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, this.getRefundStatusName(statusValue)),
+        refundType,
+        refundTypeName: pickFirst(item.strRefundType, item.StrRefundType, this.getRefundTypeName(refundType)),
         sellerMark: pickFirst(item.sellerMark, item.SellerMark, ''),
         imageUrl: pickFirst(item.urlSkuThumbnail, item.UrlSkuThumbnail, item.skuImageUrl, item.SkuImageUrl, item.imageUrl, item.ImageUrl, sku.skuImageUrl, sku.imageUrl, '/static/empty.png'),
         goodsName: pickFirst(item.goodsName, item.GoodsName, sku.goodsName, sku.GoodsName, '未知商品'),
         skuName: pickFirst(item.skuName, item.SkuName, item.spec, item.Spec, sku.skuName, sku.SkuName, ''),
-        quantity: pickFirst(item.quantity, item.Quantity, item.goodsNum, item.GoodsNum, sku.quantity, sku.Quantity, 1),
+        quantity: pickFirst(item.refundQuantity, item.RefundQuantity, item.quantity, item.Quantity, item.goodsNum, item.GoodsNum, sku.quantity, sku.Quantity, 1),
         refundAmount: this.formatPrice(pickFirst(item.amountExpectRefund, item.AmountExpectRefund, item.refundAmount, item.RefundAmount, item.payPrice, item.PayPrice, 0)),
         createTime: pickFirst(item.createTime, item.CreateTime, item.applyTime, item.ApplyTime, '')
       }
     },
 
-    getStatusName(status) {
+    normalizeCancelItem(item = {}) {
+      const rawGoods = item.listSku || item.ListSku || item.goodsList || item.GoodsList || item.orderGoodsList || item.items || []
+      const firstGoods = Array.isArray(rawGoods) ? (rawGoods[0] || {}) : {}
+      const sku = firstGoods.sku || firstGoods.goods || firstGoods
+      const statusValue = Number(pickFirst(item.orderStatus, item.OrderStatus, -20))
+      return {
+        type: 'cancel',
+        noLabel: '订单编号',
+        amountLabel: '订单金额',
+        id: pickFirst(item.id, item.Id, item.orderId, item.OrderId),
+        orderNo: pickFirst(item.orderNo, item.OrderNo, '--'),
+        orderType: pickFirst(item.orderType, item.OrderType, 1),
+        statusValue,
+        statusName: pickFirst(item.strOrderStatus, item.StrOrderStatus, item.orderStatusName, item.OrderStatusName, this.getOrderStatusName(statusValue)),
+        refundTypeName: '申请取消订单',
+        sellerMark: pickFirst(item.cancelRemark, item.CancelRemark, ''),
+        imageUrl: pickFirst(firstGoods.skuImageUrl, firstGoods.SkuImageUrl, firstGoods.imageUrl, firstGoods.ImageUrl, sku.skuImageUrl, sku.imageUrl, '/static/empty.png'),
+        goodsName: pickFirst(firstGoods.goodsName, firstGoods.GoodsName, sku.goodsName, sku.GoodsName, '整单取消申请'),
+        skuName: pickFirst(firstGoods.skuName, firstGoods.SkuName, firstGoods.spec, firstGoods.Spec, sku.skuName, sku.SkuName, ''),
+        quantity: pickFirst(firstGoods.quantity, firstGoods.Quantity, firstGoods.goodsNum, firstGoods.GoodsNum, item.goodsTotalNum, item.GoodsTotalNum, 1),
+        refundAmount: this.formatPrice(pickFirst(item.payPrice, item.PayPrice, item.orderPrice, item.OrderPrice, 0)),
+        createTime: pickFirst(item.updateTime, item.UpdateTime, item.createTime, item.CreateTime, '')
+      }
+    },
+
+    getRefundStatusName(status) {
       const map = {
-        '-10': '已拒绝',
+        '-10': '审核拒绝',
         '10': '待审核',
         '20': '审核通过',
         '30': '用户已发货',
-        '40': '已收货',
         '80': '已退款'
       }
       return map[String(status)] || '退款/售后'
+    },
+
+    getOrderStatusName(status) {
+      const map = {
+        '-30': '已取消',
+        '-20': '申请取消中',
+        '10': '待付款',
+        '20': '待发货',
+        '30': '待收货',
+        '40': '已完成',
+        '80': '已完成'
+      }
+      return map[String(status)] || '订单处理中'
+    },
+
+    getRefundTypeName(type) {
+      const map = {
+        '10': '退货退款',
+        '20': '仅退款'
+      }
+      return map[String(type)] || '退款/售后'
     },
 
     formatPrice(value) {
@@ -231,12 +327,18 @@ export default {
       return Number.isNaN(number) ? '0.00' : number.toFixed(2)
     },
 
-    handleTargetDetail(orderRefundSkuId) {
-      if (!orderRefundSkuId) {
-        uni.showToast({ title: '缺少售后单参数', icon: 'none' })
+    handleTargetDetail(item) {
+      if (!item || !item.id) {
+        uni.showToast({ title: '缺少详情参数', icon: 'none' })
         return
       }
-      uni.navigateTo({ url: `/pages/refund/detail?orderRefundSkuId=${encodeURIComponent(orderRefundSkuId)}` })
+
+      if (item.type === 'cancel') {
+        uni.navigateTo({ url: `/pages/order/detail?id=${encodeURIComponent(item.id)}&type=${encodeURIComponent(item.orderType || 1)}` })
+        return
+      }
+
+      uni.navigateTo({ url: `/pages/refund/detail?orderRefundSkuId=${encodeURIComponent(item.id)}` })
     }
   }
 }
@@ -263,22 +365,22 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
 
-  .order-no {
-    flex: 1;
-    min-width: 0;
-    color: #333;
-    font-size: 26rpx;
-  }
+.order-no {
+  flex: 1;
+  min-width: 0;
+  color: #333;
+  font-size: 26rpx;
+}
 
-  .status {
-    margin-left: 20rpx;
-    color: #2979ff;
-    font-size: 26rpx;
+.status {
+  margin-left: 20rpx;
+  color: #2979ff;
+  font-size: 26rpx;
 
-    &.danger {
-      color: #fa3534;
-    }
+  &.danger {
+    color: #fa3534;
   }
 }
 
@@ -286,13 +388,13 @@ export default {
   display: flex;
   padding: 20rpx;
   background-color: #f8f9fb;
-  border-radius: 12rpx;
+  border-radius: 8rpx;
 }
 
 .thumb {
   width: 150rpx;
   height: 150rpx;
-  border-radius: 10rpx;
+  border-radius: 8rpx;
   margin-right: 20rpx;
   background-color: #f0f0f0;
 }
@@ -333,17 +435,27 @@ export default {
   justify-content: flex-end;
   margin-top: 18rpx;
   font-size: 26rpx;
+}
 
-  .label {
-    color: #666;
-    margin-right: 12rpx;
-  }
+.label {
+  color: #666;
+  margin-right: 12rpx;
+}
 
-  .amount {
-    color: #fa3534;
-    font-size: 32rpx;
-    font-weight: 600;
-  }
+.amount {
+  color: #fa3534;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.reject-row {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 8rpx;
+  background: #fff5f5;
+  color: #fa3534;
+  font-size: 24rpx;
+  line-height: 1.5;
 }
 
 .time-row {
