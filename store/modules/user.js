@@ -60,6 +60,10 @@ function persistUserInfo(raw = {}) {
   return normalized
 }
 
+function isNeedBindWechat(result = {}) {
+  return !!pickFirst(result.NeedBindWechat, result.needBindWechat, false)
+}
+
 const user = {
   state: {
     token: '',
@@ -103,6 +107,23 @@ const user = {
     LoginByPhone({ dispatch }, data) {
       return new Promise((resolve, reject) => {
         apiLogin.loginByPhone(data).then(res => {
+          const code = res.Code !== undefined ? res.Code : res.code
+          const result = res.Result !== undefined ? res.Result : res.result
+          if (code === 200) {
+            if (!isNeedBindWechat(result || {})) {
+              dispatch('LoginSuccess', result || {})
+            }
+            resolve(res)
+          } else {
+            reject(res)
+          }
+        }).catch(reject)
+      })
+    },
+
+    BindWechatByPhone({ dispatch }, data) {
+      return new Promise((resolve, reject) => {
+        apiLogin.bindWechatByPhone(data).then(res => {
           const code = res.Code !== undefined ? res.Code : res.code
           const result = res.Result !== undefined ? res.Result : res.result
           if (code === 200) {

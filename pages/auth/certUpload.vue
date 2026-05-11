@@ -102,9 +102,7 @@ const EXAMPLE_IMAGE_TYPE_MAP = {
   legal_id_front: 'legalPersonIdFront',
   legal_id_back: 'legalPersonIdBack',
   id_card_front: 'idCardFront',
-  id_card_back: 'idCardBack',
-  power_of_attorney: 'powerOfAttorney',
-  quality_agreement: 'qualityAgreement'
+  id_card_back: 'idCardBack'
 }
 
 function pushUnique(list, value) {
@@ -167,6 +165,21 @@ function syncAuditCache(payload = {}) {
   })
 }
 
+function removeDeprecatedCerts(certList = {}, fileInfo = []) {
+  const nextCertList = { ...certList }
+  delete nextCertList.powerOfAttorney
+  delete nextCertList.qualityAgreement
+
+  const nextFileInfo = Array.isArray(fileInfo)
+    ? fileInfo.filter(item => item.type !== 'powerOfAttorney' && item.type !== 'qualityAgreement')
+    : []
+
+  return {
+    certList: nextCertList,
+    fileInfo: nextFileInfo
+  }
+}
+
 export default {
   data() {
     return {
@@ -186,9 +199,7 @@ export default {
         { label: '法人身份证正面', type: 'legalPersonIdFront', fileType: 7, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
         { label: '法人身份证反面', type: 'legalPersonIdBack', fileType: 8, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
         { label: '委托人身份证正面', type: 'idCardFront', fileType: 3, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
-        { label: '委托人身份证反面', type: 'idCardBack', fileType: 4, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false },
-        { label: '采购委托书', type: 'powerOfAttorney', fileType: 5, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（白纸黑字、签字、盖章）', templateDownload: true },
-        { label: '药品质量保证协议照片', type: 'qualityAgreement', fileType: 6, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖公章）', templateDownload: true }
+        { label: '委托人身份证反面', type: 'idCardBack', fileType: 4, exampleImage: '', exampleImageCandidates: [], exampleImageCandidateIndex: -1, desc: '（复印件盖红章）', templateDownload: false }
       ],
       certList: {
         businessLicense: '',
@@ -196,9 +207,7 @@ export default {
         legalPersonIdFront: '',
         legalPersonIdBack: '',
         idCardFront: '',
-        idCardBack: '',
-        powerOfAttorney: '',
-        qualityAgreement: ''
+        idCardBack: ''
       },
       fileInfo: [],
       isInfoValid: false,
@@ -228,9 +237,12 @@ export default {
     const cachedFileInfo = uni.getStorageSync('fileInfo') || []
 
     if (Object.keys(cachedInfo).length > 0) {
+      const sanitizedCache = removeDeprecatedCerts(cachedCert, cachedFileInfo)
       this.clinicInfo = { ...this.clinicInfo, ...cachedInfo }
-      this.certList = { ...this.certList, ...cachedCert }
-      this.fileInfo = cachedFileInfo
+      this.certList = { ...this.certList, ...sanitizedCache.certList }
+      this.fileInfo = sanitizedCache.fileInfo
+      uni.setStorageSync('certList', this.certList)
+      uni.setStorageSync('fileInfo', this.fileInfo)
     }
 
     this.checkInfoValid()
@@ -483,8 +495,6 @@ export default {
         2: '医疗机构执业许可证',
         3: '委托人身份证正面',
         4: '委托人身份证反面',
-        5: '采购委托书',
-        6: '药品质量保证协议照片',
         7: '法人身份证正面',
         8: '法人身份证反面'
       }
@@ -513,37 +523,7 @@ export default {
     },
 
     downloadTemplate(type) {
-      let apiUrl = ''
-      if (type === 'powerOfAttorney') {
-        apiUrl = `${BASE_URL}/api/Resource/DownloadPurchaseEntrust`
-      } else if (type === 'qualityAgreement') {
-        apiUrl = `${BASE_URL}/api/Resource/DownloadDrugQualityAgreement`
-      } else {
-        return
-      }
-
-      uni.showLoading({ title: '下载中...' })
-      uni.downloadFile({
-        url: apiUrl,
-        success: (res) => {
-          uni.hideLoading()
-          if (res.statusCode === 200) {
-            uni.openDocument({
-              filePath: res.tempFilePath,
-              fileType: 'pdf',
-              fail: () => {
-                uni.showToast({ title: '打开失败，请重试', icon: 'none' })
-              }
-            })
-          } else {
-            uni.showToast({ title: '下载失败', icon: 'none' })
-          }
-        },
-        fail: () => {
-          uni.hideLoading()
-          uni.showToast({ title: '网络错误', icon: 'none' })
-        }
-      })
+      uni.showToast({ title: '暂无模板下载', icon: 'none' })
     },
 
     async submitCert() {
@@ -553,6 +533,10 @@ export default {
         setTimeout(() => uni.redirectTo({ url: '/pages/login/index' }), 1200)
         return
       }
+
+      const sanitizedCerts = removeDeprecatedCerts(this.certList, this.fileInfo)
+      this.certList = { ...this.certList, ...sanitizedCerts.certList }
+      this.fileInfo = sanitizedCerts.fileInfo
 
       const submitData = {
         clinicName: this.clinicInfo.clinicName,

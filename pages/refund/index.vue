@@ -45,7 +45,7 @@
             <text class="label">{{ item.amountLabel }}</text>
             <text class="amount">¥{{ item.refundAmount }}</text>
           </view>
-          <view class="reject-row" v-if="item.sellerMark">
+          <view class="reject-row" v-if="item.showRejectReason">
             拒绝原因：{{ item.sellerMark }}
           </view>
           <view class="time-row" v-if="item.createTime">申请时间：{{ item.createTime }}</view>
@@ -87,6 +87,13 @@ const tabs = [
 function pickFirst(...values) {
   const target = values.find(value => value !== undefined && value !== null && value !== '')
   return target === undefined ? '' : target
+}
+
+function isRejectStatus(value) {
+  if (value === undefined || value === null || value === '') return false
+  if (Number(value) === -10) return true
+  const text = String(value)
+  return text.indexOf('\u62d2\u7edd') > -1 || text.indexOf('\u9a73\u56de') > -1
 }
 
 function getCode(res = {}) {
@@ -244,6 +251,8 @@ export default {
       const sku = item.sku || item.goods || item.orderSku || item.OrderSku || {}
       const statusValue = Number(pickFirst(item.status, item.Status, item.refundStatus, item.RefundStatus, 0))
       const refundType = Number(pickFirst(item.refundType, item.RefundType, 0))
+      const statusName = pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, this.getRefundStatusName(statusValue))
+      const sellerMark = pickFirst(item.sellerMark, item.SellerMark, '')
       return {
         type: 'refund',
         noLabel: '售后单号',
@@ -252,10 +261,11 @@ export default {
         refundNo: pickFirst(item.refundNo, item.RefundNo, item.orderRefundNo, item.OrderRefundNo),
         orderNo: pickFirst(item.orderNo, item.OrderNo, item.subOrderNo, item.SubOrderNo),
         statusValue,
-        statusName: pickFirst(item.strStatus, item.StrStatus, item.statusName, item.StatusName, this.getRefundStatusName(statusValue)),
+        statusName,
         refundType,
         refundTypeName: pickFirst(item.strRefundType, item.StrRefundType, this.getRefundTypeName(refundType)),
-        sellerMark: pickFirst(item.sellerMark, item.SellerMark, ''),
+        sellerMark,
+        showRejectReason: !!sellerMark && (isRejectStatus(statusValue) || isRejectStatus(statusName)),
         imageUrl: pickFirst(item.urlSkuThumbnail, item.UrlSkuThumbnail, item.skuImageUrl, item.SkuImageUrl, item.imageUrl, item.ImageUrl, sku.skuImageUrl, sku.imageUrl, '/static/empty.png'),
         goodsName: pickFirst(item.goodsName, item.GoodsName, sku.goodsName, sku.GoodsName, '未知商品'),
         skuName: pickFirst(item.skuName, item.SkuName, item.spec, item.Spec, sku.skuName, sku.SkuName, ''),

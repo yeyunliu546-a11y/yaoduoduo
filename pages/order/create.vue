@@ -436,7 +436,7 @@ export default {
         uni.showToast({ title: '支付成功', icon: 'success' });
         
         const detailUrl = this.isDispensing ? `/pages/order/detail?id=${this.orderId}&type=2` : `/pages/order/detail?id=${this.orderId}&type=1`;
-        setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 1500);
+        setTimeout(() => { uni.redirectTo({ url: detailUrl }); }, 180);
     },
 
     onPayFail(err) {

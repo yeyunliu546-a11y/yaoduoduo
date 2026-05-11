@@ -102,18 +102,34 @@
     </view>
 
     <view class="footer-area">
-      <view class="service-tip" @click="showService = true">
-        遇到问题？<text class="link">联系客服</text>
+      <view class="service-tip">
+        <text>遇到问题？</text>
+        <button class="service-link reset-btn" open-type="contact">在线客服</button>
+        <text class="split">|</text>
+        <text class="service-link" @click="handlePhoneCall">电话客服</text>
       </view>
     </view>
 
-    <u-action-sheet 
-      :list="serviceList" 
-      v-model="showService" 
-      @click="handleServiceClick"
-      border-radius="24"
-      cancel-text="取消"
-    ></u-action-sheet>
+    <u-popup v-model="showBindWechatPopup" mode="center" border-radius="20" :mask-close-able="false">
+      <view class="bind-wechat-modal">
+        <view class="bind-title">绑定当前微信</view>
+        <view class="bind-desc">
+          手机号 {{ maskedMobile || mobile }} 将绑定当前微信账号。为保障账号安全，请确认这是你本人微信。
+        </view>
+        <view class="bind-tips">绑定后，下次可直接使用微信一键登录。</view>
+        <view class="bind-actions">
+          <button class="bind-btn bind-cancel reset-btn" @click="cancelBindWechat">取消</button>
+          <button
+            class="bind-btn bind-confirm reset-btn"
+            open-type="getPhoneNumber"
+            :loading="isBindingWechat"
+            @getphonenumber="handleBindWechatPhone"
+          >
+            确认绑定
+          </button>
+        </view>
+      </view>
+    </u-popup>
 
   </view>
 </template>
@@ -139,11 +155,12 @@ export default {
       isSending: false,
       countdown: 60,
 
-      showService: false,
-      serviceList: [
-        { text: '在线客服 (工作日 9:00-18:00)', subText: '解答您的操作疑问' },
-        { text: '拨打热线电话: 400-XXX-XXXX', color: '#2979ff' }
-      ]
+      servicePhone: '18865080808',
+      showBindWechatPopup: false,
+      bindTicket: '',
+      maskedMobile: '',
+      bindWxCode: '',
+      isBindingWechat: false
     }
   },
   computed: {
@@ -178,14 +195,132 @@ export default {
       });
     },
 
-    handleServiceClick(index) {
-        if (index === 0) {
-            uni.showToast({ title: '请在小程序“我的”页面联系在线客服', icon: 'none' });
-        } else if (index === 1) {
-            uni.makePhoneCall({
-                phoneNumber: '400-123-4567' 
-            });
+    handlePhoneCall() {
+        uni.makePhoneCall({
+            phoneNumber: this.servicePhone
+        });
+    },
+
+    getResponseResult(res) {
+      return (res && (res.Result || res.result)) || {};
+    },
+
+    isWechatBindRequired(res) {
+      const result = this.getResponseResult(res);
+      return !!(result.NeedBindWechat || result.needBindWechat);
+    },
+
+    getWechatLoginCode() {
+      return new Promise((resolve, reject) => {
+        // #ifdef MP-WEIXIN
+        uni.login({
+          provider: 'weixin',
+          success: (loginRes) => {
+            if (loginRes.code) {
+              resolve(loginRes.code);
+            } else {
+              reject(new Error('获取微信Code失败'));
+            }
+          },
+          fail: reject
+        });
+        // #endif
+
+        // #ifndef MP-WEIXIN
+        reject(new Error('请在微信小程序中测试该功能'));
+        // #endif
+      });
+    },
+
+    async openBindWechatPopup(result = {}) {
+      const bindTicket = result.BindTicket || result.bindTicket || '';
+      if (!bindTicket) {
+        uni.showToast({ title: '绑定凭证缺失，请重新登录', icon: 'none' });
+        return;
+      }
+
+      this.bindTicket = bindTicket;
+      this.maskedMobile = result.MaskedMobile || result.maskedMobile || this.mobile;
+      this.bindWxCode = '';
+      this.showBindWechatPopup = true;
+
+      try {
+        this.bindWxCode = await this.getWechatLoginCode();
+      } catch (e) {
+        console.warn('预取微信Code失败，确认绑定时会重试', e);
+      }
+    },
+
+    cancelBindWechat() {
+      this.showBindWechatPopup = false;
+      this.bindTicket = '';
+      this.maskedMobile = '';
+      this.bindWxCode = '';
+      this.isBindingWechat = false;
+    },
+
+    getBindWechatErrorMessage(err = {}) {
+      const code = err.Code !== undefined ? err.Code : err.code;
+      const messageMap = {
+        40001: '绑定凭证已过期，请重新获取验证码后登录',
+        40002: '微信授权失败，请重试',
+        40901: '当前微信已绑定其他账号，请更换微信或联系客服',
+        40902: '该手机号已绑定其他微信，请使用原微信登录或联系客服',
+        40903: '授权手机号与登录手机号不一致，请使用本人微信绑定'
+      };
+      return messageMap[code] || err.Message || err.message || '绑定失败，请重试';
+    },
+
+    resetBindWechatLoginState() {
+      this.cancelBindWechat();
+      this.smsCode = '';
+      this.smsVerifyCodeId = '';
+      this.refreshCaptcha();
+    },
+
+    async handleBindWechatPhone(e) {
+      if (this.isBindingWechat) return;
+
+      const detail = e && e.detail ? e.detail : {};
+      const phoneCode = detail.code || detail.PhoneCode || '';
+      if (!phoneCode) {
+        return uni.showToast({ title: '手机号授权失败，请重新点击绑定', icon: 'none' });
+      }
+      if (!this.bindTicket) {
+        this.resetBindWechatLoginState();
+        return uni.showToast({ title: '绑定凭证失效，请重新登录', icon: 'none' });
+      }
+
+      this.isBindingWechat = true;
+      uni.showLoading({ title: '绑定中...' });
+
+      try {
+        const wxCode = this.bindWxCode || await this.getWechatLoginCode();
+        const res = await this.$store.dispatch('BindWechatByPhone', {
+          bindTicket: this.bindTicket,
+          WxCode: wxCode,
+          PhoneCode: phoneCode,
+          AppKey: 'MP-WEIXIN'
+        });
+
+        this.showBindWechatPopup = false;
+        this.bindTicket = '';
+        this.maskedMobile = '';
+        this.bindWxCode = '';
+        this.processLoginResult(res);
+      } catch (err) {
+        uni.hideLoading();
+        console.error('绑定微信失败', err);
+        const code = err.Code !== undefined ? err.Code : err.code;
+        uni.showToast({ title: this.getBindWechatErrorMessage(err), icon: 'none' });
+        this.bindWxCode = '';
+
+        if ([40001, 40901, 40902, 40903].indexOf(Number(code)) > -1) {
+          this.resetBindWechatLoginState();
         }
+      } finally {
+        this.isBindingWechat = false;
+      }
     },
 
     async refreshCaptcha() {
@@ -332,11 +467,18 @@ export default {
                  res = await this.$store.dispatch('LoginByPhone', { 
                      Mobile: this.mobile, 
                      SmsCode: this.smsCode,
+                     AppKey: 'MP-WEIXIN',
                      
                      // 🌟 第二道防线：不管后端要大写还是小写，我们双管齐下全传过去！
                      SmsVerifyCodeId: this.smsVerifyCodeId,
                      smsVerifyCodeId: this.smsVerifyCodeId 
                  });
+
+                 if (this.isWechatBindRequired(res)) {
+                    uni.hideLoading();
+                    await this.openBindWechatPopup(this.getResponseResult(res));
+                    return;
+                 }
         } else {
            if (!this.password) {
                           uni.hideLoading();
@@ -384,6 +526,11 @@ export default {
         
         const code = res.Code !== undefined ? res.Code : res.code;
         const result = res.Result || res.result;
+
+        if (this.isWechatBindRequired(res)) {
+            this.openBindWechatPopup(result || {});
+            return;
+        }
 
         if (code === 200 && result) {
             uni.showToast({ title: '登录成功', icon: 'success' });
@@ -584,7 +731,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 50rpx 0 10rpx;
+  margin: 34rpx 0 28rpx;
   .line { flex: 1; height: 1px; background-color: #f0f0f0; }
   .text { font-size: 24rpx; color: #999; margin: 0 30rpx; }
 }
@@ -600,7 +747,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 10rpx;
+  margin-top: 0;
   box-shadow: 0 8rpx 20rpx rgba(7, 193, 96, 0.3);
   border: none;
   .text { margin-left: 12rpx; }
@@ -614,6 +761,65 @@ page {
   .toggle-mode { font-size: 28rpx; color: #666; }
 }
 
+.bind-wechat-modal {
+  width: 620rpx;
+  background-color: #ffffff;
+  border-radius: 20rpx;
+  padding: 44rpx 36rpx 32rpx;
+  box-sizing: border-box;
+
+  .bind-title {
+    font-size: 36rpx;
+    font-weight: 700;
+    color: #222;
+    text-align: center;
+    margin-bottom: 24rpx;
+  }
+
+  .bind-desc {
+    font-size: 28rpx;
+    color: #333;
+    line-height: 1.7;
+  }
+
+  .bind-tips {
+    margin-top: 16rpx;
+    font-size: 24rpx;
+    color: #909399;
+    line-height: 1.6;
+  }
+
+  .bind-actions {
+    display: flex;
+    align-items: center;
+    gap: 24rpx;
+    margin-top: 40rpx;
+  }
+
+  .bind-btn {
+    flex: 1;
+    height: 82rpx;
+    border-radius: 42rpx;
+    font-size: 28rpx;
+    line-height: 82rpx;
+    text-align: center;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    &::after { border: 0; }
+  }
+
+  .bind-cancel {
+    color: #666;
+    background-color: #f4f6fa;
+  }
+
+  .bind-confirm {
+    color: #ffffff;
+    background: linear-gradient(90deg, #5b8ff9, #2979ff);
+  }
+}
+
 .footer-area {
   margin-top: auto;
   padding-bottom: env(safe-area-inset-bottom);
@@ -621,10 +827,33 @@ page {
   position: relative;
   z-index: 1;
   .service-tip {
+    display: block;
     text-align: center;
     font-size: 26rpx;
     color: #999;
-    .link { color: #2979ff; margin-left: 8rpx; font-weight: bold; }
+    .service-link {
+      display: inline;
+      color: #2979ff;
+      margin-left: 8rpx;
+      font-size: 26rpx;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+    .split {
+      margin-left: 8rpx;
+      color: #d0d4dc;
+    }
+    .reset-btn {
+      width: auto;
+      min-width: 0;
+      padding: 0;
+      margin: 0 0 0 8rpx;
+      background: transparent;
+      border: 0;
+      line-height: 1.4;
+      vertical-align: baseline;
+      &::after { border: 0; }
+    }
   }
 }
 </style>

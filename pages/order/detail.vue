@@ -35,6 +35,20 @@
           </view>
         </view>
 
+        <view v-if="shouldShowRejectReason" class="card reject-card" @click="showRejectReasonModal">
+          <view class="reject-icon">
+            <u-icon name="error-circle-fill" color="#fa3534" size="36"></u-icon>
+          </view>
+          <view class="reject-info">
+            <view class="reject-title">{{ rejectReasonTitle }}</view>
+            <view class="reject-desc u-line-1">{{ displayedRejectReason }}</view>
+          </view>
+          <view class="reject-action">
+            <text>查看原因</text>
+            <u-icon name="arrow-right" color="#fa3534" size="24"></u-icon>
+          </view>
+        </view>
+
         <view v-if="showExpressCard" class="card express-card" @click="goExpress">
           <view class="express-left">
             <view class="express-icon">
@@ -108,10 +122,6 @@
           <view class="cell" v-if="orderInfo.buyerRemark">
             <text class="label">买家留言</text>
             <text class="value">{{ orderInfo.buyerRemark }}</text>
-          </view>
-          <view class="cell" v-if="shouldShowRejectReason">
-            <text class="label">拒绝原因</text>
-            <text class="value">{{ rejectReason }}</text>
           </view>
         </view>
       </view>
@@ -200,6 +210,103 @@ function getPaymentTransactionId(payRes = {}, result = {}) {
     );
 }
 
+function isRejectStatus(value) {
+    if (value === undefined || value === null || value === '') return false;
+    if (Number(value) === -10) return true;
+    const text = String(value);
+    return text.indexOf('\u62d2\u7edd') > -1 || text.indexOf('\u9a73\u56de') > -1;
+}
+
+function hasRejectedAfterSale(source, depth = 0, visited = []) {
+    if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return false;
+    visited.push(source);
+
+    const directStatus = pickFirst(
+        source.afterSaleStatus,
+        source.AfterSaleStatus,
+        source.refundStatus,
+        source.RefundStatus,
+        source.status,
+        source.Status
+    );
+    if (isRejectStatus(directStatus)) return true;
+
+    const directStatusName = pickFirst(
+        source.afterSaleStatusName,
+        source.AfterSaleStatusName,
+        source.strRefundStatus,
+        source.StrRefundStatus,
+        source.strStatus,
+        source.StrStatus,
+        source.statusName,
+        source.StatusName
+    );
+    if (isRejectStatus(directStatusName)) return true;
+
+    const nestedKeys = [
+        'refundInfo', 'RefundInfo',
+        'afterSaleInfo', 'AfterSaleInfo',
+        'refundApply', 'RefundApply',
+        'refundOrder', 'RefundOrder',
+        'orderRefund', 'OrderRefund',
+        'orderRefundSku', 'OrderRefundSku',
+        'auditInfo', 'AuditInfo'
+    ];
+
+    for (let i = 0; i < nestedKeys.length; i++) {
+        if (hasRejectedAfterSale(source[nestedKeys[i]], depth + 1, visited)) return true;
+    }
+
+    const nestedLists = [
+        source.listSku,
+        source.ListSku,
+        source.goodsList,
+        source.GoodsList,
+        source.OrderSkus,
+        source.orderSkus,
+        source.items,
+        source.Items
+    ];
+    for (let i = 0; i < nestedLists.length; i++) {
+        const list = nestedLists[i];
+        if (!Array.isArray(list)) continue;
+        for (let j = 0; j < list.length; j++) {
+            if (hasRejectedAfterSale(list[j], depth + 1, visited)) return true;
+        }
+    }
+
+    return false;
+}
+
+function pickCancelRejectReason(source, depth = 0, visited = []) {
+    if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return '';
+    visited.push(source);
+
+    const directReason = pickFirst(source.cancelRemark, source.CancelRemark);
+    if (directReason) return directReason;
+
+    const nestedLists = [
+        source.listSku,
+        source.ListSku,
+        source.goodsList,
+        source.GoodsList,
+        source.OrderSkus,
+        source.orderSkus,
+        source.items,
+        source.Items
+    ];
+    for (let i = 0; i < nestedLists.length; i++) {
+        const list = nestedLists[i];
+        if (!Array.isArray(list)) continue;
+        for (let j = 0; j < list.length; j++) {
+            const reason = pickCancelRejectReason(list[j], depth + 1, visited);
+            if (reason) return reason;
+        }
+    }
+
+    return '';
+}
+
 function pickRejectReason(source, depth = 0, visited = []) {
     if (!source || typeof source !== 'object' || depth > 4 || visited.indexOf(source) !== -1) return '';
     visited.push(source);
@@ -279,11 +386,24 @@ export default {
           return pickRejectReason(this.orderInfo) || pickRejectReason(this.rawOrderInfo);
       },
 
+      cancelRejectReason() {
+          return pickCancelRejectReason(this.orderInfo) || pickCancelRejectReason(this.rawOrderInfo);
+      },
+
+      displayedRejectReason() {
+          return this.cancelRejectReason || this.rejectReason;
+      },
+
+      rejectReasonTitle() {
+          return this.cancelRejectReason ? '申请取消被拒' : '申请售后被拒';
+      },
+
       shouldShowRejectReason() {
-          return !!this.rejectReason;
+          return !!this.cancelRejectReason || (!!this.rejectReason && (hasRejectedAfterSale(this.orderInfo) || hasRejectedAfterSale(this.rawOrderInfo)));
       },
 
       canApplyCancel() {
+          if (this.orderInfo?.isPaySyncing) return false;
           return [20, 30].indexOf(Number(this.orderInfo?.orderStatus)) !== -1;
       },
 
@@ -371,6 +491,16 @@ export default {
         uni.navigateTo({ url: `/pages/order/express?orderSkuId=${encodeURIComponent(orderSkuId)}` });
     },
 
+    showRejectReasonModal() {
+        if (!this.displayedRejectReason) return;
+        uni.showModal({
+            title: '申请拒绝原因',
+            content: this.displayedRejectReason,
+            showCancel: false,
+            confirmText: '我知道了'
+        });
+    },
+
     loadDetail() {
       this.loading = true;
       const api = this.isPrescription ? getPrescriptionDetail(this.orderId) : getOrderDetail(this.orderId);
@@ -397,8 +527,8 @@ export default {
             const sku = g.sku || g.goods || g;
             const name = sku.GoodsName || sku.goodsName || g.goodsName || g.GoodsName || '未知商品';
             const spec = sku.SkuName || sku.skuName || sku.spec || g.specification || g.spec || defaultSpec;
-            const imageUrl = sku.skuImageUrl || g.skuImageUrl || sku.ImageUrl || sku.GoodsImg || sku.imageUrl || sku.skuUrlImage || g.imageUrl || g.urlImg || '/static/empty.png';
-            const salePrice = sku.SalePrice || sku.PayPrice || sku.unitPrice || sku.salePrice || sku.price || g.unitPrice || g.salePrice || g.price || 0;
+            const imageUrl = pickFirst(sku.skuImageUrl, sku.SkuImageUrl, g.skuImageUrl, g.SkuImageUrl, sku.ImageUrl, sku.GoodsImg, sku.imageUrl, sku.skuUrlImage, g.imageUrl, g.urlImg, '/static/empty.png');
+            const salePrice = pickFirst(sku.PayPrice, sku.payPrice, g.payPrice, g.PayPrice, sku.SalePrice, sku.salePrice, sku.unitPrice, sku.price, g.unitPrice, g.salePrice, g.price, 0);
             const num = Number(sku.Quantity || sku.quantity || g.quantity || g.goodsNum || g.buyNum || 1);
             
             const uniqueKey = `${name}_${spec}`;
@@ -492,6 +622,24 @@ export default {
         const map = { '-30': '已取消', '-20': '申请取消中', '10': '待付款', '20': '待发货', '30': '待收货', '40': '已完成', '80': '已完成' };
         return map[String(status)] || '未知状态';
     },
+
+    markDetailPaid() {
+        this.orderInfo = {
+            ...this.orderInfo,
+            isPaySyncing: false,
+            orderStatus: 20,
+            orderStatusName: this.getStatusName(20)
+        };
+    },
+
+    markDetailPaySyncing() {
+        this.orderInfo = {
+            ...this.orderInfo,
+            isPaySyncing: true,
+            orderStatus: 20,
+            orderStatusName: '支付同步中'
+        };
+    },
     
     async handlePay() {
         await requestSubscribe([SUBSCRIBE_TMPL.tmpl_ship], 'order-detail-pay-ship');
@@ -527,6 +675,7 @@ export default {
                         paySig: paySig,
                         signature: signature,
 						success: (payRes) => {
+                            this.markDetailPaySyncing();
                             console.log('====== 详情页：微信底层扣款成功 ======', payRes);
                             uni.showLoading({ title: '正在同步支付结果...', mask: true });
                             const transactionId = getPaymentTransactionId(payRes, result);
@@ -545,10 +694,11 @@ export default {
                                     const confirmCode = confirmRes.code !== undefined ? confirmRes.code : confirmRes.Code;
                                     
                                     if (confirmCode === 200) {
+                                        this.markDetailPaid();
                                         uni.showToast({ title: '支付成功', icon: 'success' });
                                         setTimeout(() => {
                                             this.loadDetail(); 
-                                        }, 1000);
+                                        }, 180);
                                     } else {
                                         // 🌟 核心优化 2：即使后端查单失败（可能还是延迟或者网络波动），不报死错！
                                         // 用友好的话术安抚用户，并强行刷新页面。
@@ -656,19 +806,27 @@ export default {
 
     handleApplyAfterSale(targetGoods) {
         const goodsList = Array.isArray(this.orderInfo.goodsList) ? this.orderInfo.goodsList : [];
-        const goods = targetGoods || goodsList[0] || {};
+        const isGoodsPayload = targetGoods && (
+            targetGoods.orderSkuId ||
+            targetGoods.goodsName ||
+            targetGoods.imageUrl ||
+            targetGoods.salePrice ||
+            targetGoods.goodsNum
+        );
+        const goods = isGoodsPayload ? targetGoods : (goodsList[0] || {});
         const orderSkuId = pickFirst(goods.orderSkuId, this.expressQueryId);
         if (!orderSkuId) {
             uni.showToast({ title: '缺少订单商品信息', icon: 'none' });
             return;
         }
+        const refundPrice = pickFirst(goods.salePrice, goods.payPrice, this.orderInfo.payPrice, 0);
         const query = [
             `orderSkuId=${encodeURIComponent(orderSkuId)}`,
             `goodsName=${encodeURIComponent(goods.goodsName || '')}`,
             `skuName=${encodeURIComponent(goods.spec || '')}`,
             `skuImageUrl=${encodeURIComponent(goods.imageUrl || '')}`,
             `quantity=${encodeURIComponent(goods.goodsNum || 1)}`,
-            `payPrice=${encodeURIComponent(goods.salePrice || 0)}`
+            `payPrice=${encodeURIComponent(refundPrice)}`
         ].join('&');
         uni.navigateTo({ url: `/pages/refund/apply?${query}` });
     }
@@ -768,6 +926,53 @@ export default {
             font-size: 26rpx; 
             line-height: 1.5; 
         }
+    }
+}
+
+.reject-card {
+    display: flex;
+    align-items: center;
+    border: 1rpx solid #ffd1d1;
+    background: #fff6f6;
+    box-shadow: 0 6rpx 18rpx rgba(250, 53, 52, 0.08);
+
+    .reject-icon {
+        width: 60rpx;
+        height: 60rpx;
+        border-radius: 50%;
+        background: #ffe8e8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 20rpx;
+        flex-shrink: 0;
+    }
+
+    .reject-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .reject-title {
+        color: #fa3534;
+        font-size: 28rpx;
+        font-weight: bold;
+        margin-bottom: 8rpx;
+    }
+
+    .reject-desc {
+        color: #8f4b4b;
+        font-size: 24rpx;
+        line-height: 1.4;
+    }
+
+    .reject-action {
+        display: flex;
+        align-items: center;
+        margin-left: 20rpx;
+        color: #fa3534;
+        font-size: 24rpx;
+        flex-shrink: 0;
     }
 }
 

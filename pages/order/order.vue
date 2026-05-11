@@ -43,7 +43,11 @@
         
         <view class="action-box">
           
-          <block v-if="item.orderStatus === 10">
+          <block v-if="item.isPaySyncing">
+             <view class="btn primary disabled">支付同步中</view>
+          </block>
+
+          <block v-if="item.orderStatus === 10 && !item.isPaySyncing">
              <view class="btn plain" @click.stop="handleCancel(item)">取消订单</view>
              <view class="btn primary" @click.stop="handlePay(item)">立即支付</view>
           </block>
@@ -169,7 +173,7 @@ export default {
       page: 1,
       isLoading: false,
       loadStatus: 'loadmore',
-      statusMapCode: [0, 10, 20, 30, 40, -30, null]
+      statusMapCode: [0, 10, 20, 30, 80, -30, null]
     };
   },
   onLoad(option) {
@@ -257,15 +261,15 @@ export default {
                   latestTrackLoading: Number(orderStatus) >= 30,
                   goodsList: rawGoods.map(g => {
                       const entity = g.sku || g;
-                      const price = entity.SalePrice || entity.salePrice || entity.unitPrice || entity.price || 0;
+                      const price = pickFirst(entity.PayPrice, entity.payPrice, g.payPrice, g.PayPrice, entity.SalePrice, entity.salePrice, entity.unitPrice, entity.price, 0);
                       return {
                           orderSkuId: pickFirst(g.orderSkuId, g.OrderSkuId, g.id, g.Id, entity.orderSkuId, entity.OrderSkuId, entity.id, entity.Id),
-                          goodsName: g.isVirtual ? g.goodsName : (entity.GoodsName || entity.goodsName),
-                          spec: g.isVirtual ? '' : (entity.SkuName || entity.skuName || entity.spec || (order.orderType===2 ? '配方颗粒' : '默认规格')),
-                          imageUrl: entity.ImageUrl || entity.imageUrl || entity.urlImg || entity.GoodsImage || entity.skuUrlImage || '/static/empty.png',
+                          goodsName: g.isVirtual ? g.goodsName : pickFirst(entity.GoodsName, entity.goodsName, g.GoodsName, g.goodsName, '售后商品'),
+                          spec: g.isVirtual ? '' : pickFirst(entity.SkuName, entity.skuName, g.SkuName, g.skuName, entity.spec, g.spec, order.orderType===2 ? '配方颗粒' : '默认规格'),
+                          imageUrl: pickFirst(entity.skuImageUrl, entity.SkuImageUrl, g.skuImageUrl, g.SkuImageUrl, entity.ImageUrl, entity.imageUrl, entity.urlImg, entity.GoodsImage, entity.skuUrlImage, '/static/empty.png'),
                           salePrice: price,
                           pricePerGram: entity.PricePerGram || entity.pricePerGram,
-                          goodsNum: g.isVirtual ? g.goodsNum : (entity.Quantity || entity.goodsNum || entity.quantity || 1)
+                          goodsNum: g.isVirtual ? g.goodsNum : pickFirst(entity.Quantity, entity.quantity, g.quantity, g.Quantity, entity.goodsNum, g.goodsNum, 1)
                       };
                   })
               };
@@ -415,6 +419,47 @@ export default {
             : (data.OrderSkus || data.ListSku || data.listSku || data.goodsList || data.listGoods || data.orderGoodsList || data.items || []);
     },
 
+    normalizeAfterSaleGoods(rawGoods = {}, fallbackGoods = {}, fallbackOrder = {}) {
+        const entity = rawGoods.sku || rawGoods.goods || rawGoods;
+        return {
+            orderSkuId: pickFirst(rawGoods.orderSkuId, rawGoods.OrderSkuId, rawGoods.id, rawGoods.Id, entity.orderSkuId, entity.OrderSkuId, entity.id, entity.Id, fallbackGoods.orderSkuId, fallbackOrder.expressQueryId),
+            goodsName: pickFirst(entity.GoodsName, entity.goodsName, rawGoods.GoodsName, rawGoods.goodsName, fallbackGoods.goodsName, '售后商品'),
+            spec: pickFirst(entity.SkuName, entity.skuName, rawGoods.SkuName, rawGoods.skuName, entity.spec, rawGoods.spec, fallbackGoods.spec, '默认规格'),
+            imageUrl: pickFirst(entity.skuImageUrl, entity.SkuImageUrl, rawGoods.skuImageUrl, rawGoods.SkuImageUrl, entity.ImageUrl, entity.imageUrl, entity.urlImg, entity.GoodsImage, entity.GoodsImg, entity.skuUrlImage, rawGoods.imageUrl, rawGoods.urlImg, fallbackGoods.imageUrl, '/static/empty.png'),
+            salePrice: pickFirst(entity.PayPrice, entity.payPrice, rawGoods.payPrice, rawGoods.PayPrice, entity.SalePrice, entity.salePrice, entity.unitPrice, entity.price, rawGoods.salePrice, fallbackGoods.salePrice, fallbackGoods.payPrice, fallbackOrder.payPrice, 0),
+            goodsNum: pickFirst(entity.Quantity, entity.quantity, rawGoods.quantity, rawGoods.Quantity, entity.goodsNum, rawGoods.goodsNum, fallbackGoods.goodsNum, 1)
+        };
+    },
+
+    resolveAfterSaleGoods(item = {}) {
+        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
+        const fallbackGoods = goodsList[0] || {};
+        const directOrderSkuId = pickFirst(item.expressQueryId, fallbackGoods.orderSkuId);
+        const orderId = pickFirst(item.id, item.Id, item.orderId, item.OrderId);
+
+        if (!orderId) {
+            return Promise.resolve(this.normalizeAfterSaleGoods(fallbackGoods, fallbackGoods, item));
+        }
+
+        const isPrescription = item.orderType == 2 || String(item.orderNo).startsWith('CF');
+        const detailApi = isPrescription ? getPrescriptionDetail(orderId) : getOrderDetail(orderId);
+
+        return detailApi.then(res => {
+            if (getCode(res) !== 200) {
+                return this.normalizeAfterSaleGoods(fallbackGoods, fallbackGoods, item);
+            }
+            const data = getResult(res);
+            const rawGoodsList = this.getDetailGoodsList(data, isPrescription);
+            const normalizedList = (Array.isArray(rawGoodsList) ? rawGoodsList : []).map(rawGoods => {
+                return this.normalizeAfterSaleGoods(rawGoods, fallbackGoods, item);
+            });
+            const matchedGoods = directOrderSkuId
+                ? normalizedList.find(goods => String(goods.orderSkuId) === String(directOrderSkuId))
+                : null;
+            return matchedGoods || normalizedList[0] || this.normalizeAfterSaleGoods(fallbackGoods, fallbackGoods, item);
+        });
+    },
+
     resolveExpressQueryId(item) {
         const directOrderSkuId = this.getExpressQueryId(item);
         if (directOrderSkuId) return Promise.resolve(directOrderSkuId);
@@ -459,6 +504,7 @@ export default {
     },
 
     canApplyCancel(item = {}) {
+        if (item.isPaySyncing) return false;
         return [20, 30].indexOf(Number(item.orderStatus)) !== -1;
     },
 
@@ -468,6 +514,26 @@ export default {
 
     goDetail(item) {
       uni.navigateTo({ url: `/pages/order/detail?id=${item.id}&type=${item.orderType}` });
+    },
+
+    markOrderPaid(item) {
+        if (!item) return;
+        item.isPaySyncing = false;
+        item.orderStatus = 20;
+        item.orderStatusName = this.getStatusName(20);
+        if (this.currentStatus === 1 || this.currentStatus === 10) {
+            this.currentStatus = 2;
+        }
+    },
+
+    markOrderPaySyncing(item) {
+        if (!item) return;
+        item.isPaySyncing = true;
+        item.orderStatus = 20;
+        item.orderStatusName = '支付同步中';
+        if (this.currentStatus === 1 || this.currentStatus === 10) {
+            this.currentStatus = 2;
+        }
     },
     
     // 🌟 原生 API 支付：纯净无组件版本
@@ -506,6 +572,7 @@ export default {
                         paySig: paySig,
                         signature: signature,
                         success: (payRes) => {
+                            this.markOrderPaySyncing(item);
                             console.log('====== 微信底层扣款成功 ======', payRes);
                             
                             uni.showLoading({ title: '正在确认订单状态...', mask: true });
@@ -523,13 +590,10 @@ export default {
                             confirmApi(confirmParams).then(res => {
                                 uni.hideLoading();
                                 if (getCode(res) === 200) {
+                                    this.markOrderPaid(item);
                                     uni.showToast({ title: '支付成功', icon: 'success' });
                                     
                                     setTimeout(() => {
-                                        // 自动切换到“待发货”列表并刷新
-                                        if (this.currentStatus === 1 || this.currentStatus === 10) { 
-                                            this.currentStatus = 2; 
-                                        }
                                         this.refreshList(); 
                                     }, 180);
                                 } else {
@@ -625,30 +689,27 @@ export default {
     },
 
     handleApplyAfterSale(item) {
-        const goodsList = Array.isArray(item.goodsList) ? item.goodsList : [];
-        const goods = goodsList[0] || {};
-        const directOrderSkuId = pickFirst(item.expressQueryId, goods.orderSkuId);
-        if (!directOrderSkuId) {
-            uni.showLoading({ title: '获取商品信息...', mask: true });
-        }
+        uni.showLoading({ title: '获取商品信息...', mask: true });
 
-        this.resolveExpressQueryId(item).then(orderSkuId => {
-            if (!directOrderSkuId) uni.hideLoading();
+        this.resolveAfterSaleGoods(item).then(goods => {
+            uni.hideLoading();
+            const orderSkuId = pickFirst(goods.orderSkuId, item.expressQueryId);
             if (!orderSkuId) {
                 uni.showToast({ title: '缺少订单商品信息', icon: 'none' });
                 return;
             }
+            const refundPrice = pickFirst(goods.salePrice, goods.payPrice, item.payPrice, item.PayPrice, 0);
             const query = [
                 `orderSkuId=${encodeURIComponent(orderSkuId)}`,
                 `goodsName=${encodeURIComponent(goods.goodsName || '')}`,
                 `skuName=${encodeURIComponent(goods.spec || '')}`,
                 `skuImageUrl=${encodeURIComponent(goods.imageUrl || '')}`,
                 `quantity=${encodeURIComponent(goods.goodsNum || 1)}`,
-                `payPrice=${encodeURIComponent(goods.salePrice || 0)}`
+                `payPrice=${encodeURIComponent(refundPrice)}`
             ].join('&');
             uni.navigateTo({ url: `/pages/refund/apply?${query}` });
         }).catch(() => {
-            if (!directOrderSkuId) uni.hideLoading();
+            uni.hideLoading();
             uni.showToast({ title: '获取商品信息失败', icon: 'none' });
         });
     },
@@ -714,6 +775,7 @@ export default {
     .btn { width: 160rpx; height: 60rpx; line-height: 60rpx; text-align: center; border-radius: 30rpx; font-size: 26rpx; margin-left: 20rpx;
       &.plain { border: 1px solid #ccc; color: #666; }
       &.primary { background: #2979ff; color: #fff; border: 1px solid #2979ff; }
+      &.disabled { opacity: 0.72; }
       &.icon-btn { display: flex; align-items: center; justify-content: center; width: auto; padding: 0 30rpx;}
     }
   }

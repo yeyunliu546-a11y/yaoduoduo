@@ -54,7 +54,7 @@
       </view>
     </view>
 
-    <view v-if="rejectReason" class="section reject-section">
+    <view v-if="showRejectReason" class="section reject-section">
       <view class="section-title danger">拒绝原因</view>
       <view class="reject-text">{{ rejectReason }}</view>
     </view>
@@ -127,6 +127,13 @@ function pickFirst(...values) {
   return target === undefined ? '' : target
 }
 
+function isRejectStatus(value) {
+  if (value === undefined || value === null || value === '') return false
+  if (Number(value) === RefundStatusEnum.UnApprove.value) return true
+  const text = String(value)
+  return text.indexOf('\u62d2\u7edd') > -1 || text.indexOf('\u9a73\u56de') > -1
+}
+
 export default {
   data() {
     return {
@@ -153,6 +160,10 @@ export default {
   computed: {
     rejectReason() {
       return pickFirst(this.detail.sellerMark, this.detail.SellerMark, '')
+    },
+
+    showRejectReason() {
+      return !!this.rejectReason && (isRejectStatus(this.detail.status) || isRejectStatus(this.detail.strStatus))
     },
 
     isReturnRefund() {
@@ -198,6 +209,7 @@ export default {
 
     getRefundDetail() {
       return getRefundOrderDetail({ orderRefundSkuId: this.orderRefundSkuId }).then(res => {
+        console.log('====== 售后详情原始数据 ====== ', res)
         const code = pickFirst(res.code, res.Code)
         if (String(code) === '200') {
           const data = pickFirst(res.result, res.Result, res.data, {}) || {}

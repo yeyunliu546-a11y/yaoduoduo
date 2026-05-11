@@ -18,6 +18,13 @@ export function loginByPhone(data) {
   return request.post('/api/Check/MiniAppLoginByPhone', data)
 }
 
+// 2.1 手机验证码登录后绑定当前微信
+// URL: /api/Check/BindWechatByPhone
+// 参数: { bindTicket, WxCode, PhoneCode, AppKey }
+export function bindWechatByPhone(data) {
+  return request.post('/api/Check/BindWechatByPhone', data)
+}
+
 // 3. 账号密码登录
 // URL: /api/Check/MiniAppLoginByPassword
 // 参数: { Account, Password, AppKey: 'wxapp', VerifyCode... }
